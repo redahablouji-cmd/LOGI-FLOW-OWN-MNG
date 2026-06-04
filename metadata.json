@@ -1,0 +1,8 @@
+{
+  "name": "Logi-Flow Portal",
+  "description": "Portail Propriétaire et Manager pour LOGI-FLOW ERP. Hub de gestion d'authentification et d'administration multi-tenant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
