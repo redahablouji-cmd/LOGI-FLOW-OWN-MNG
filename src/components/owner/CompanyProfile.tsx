@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Building2, Copy, Check, Calendar, Users, Mail, User, Edit2, Save, X } from 'lucide-react';
-import { Company, StaffProfile, getCompanyStaff, isSupabaseConfigured, supabase } from '../../lib/auth';
+import { Company, StaffProfile, isSupabaseConfigured, supabase } from '../../lib/auth';
+import { getCompanyStaff } from '../../lib/auth';
 import { toast } from 'sonner';
 
 interface CompanyProfileProps {

@@ -71,16 +71,17 @@ export default function RegisterCompanyPage() {
       if (authErr) throw new Error(authErr.message || "Impossible de créer le compte utilisateur.");
 
       const { error: dbErr } = await registerCompanyAndOwner({
-        companyName:      companyName.trim(),
-        ownerName:        ownerName.trim(),
-        email:            email.trim(),
-        authUserId:       authUser.id,
-        businessCode:     code,
-        phone:            phone.trim(),
-        city:             city.trim(),
-        fleetSize:        fleetSize ? parseInt(fleetSize) : null,
-        subscriptionPlan: subscriptionPlan,
-      });
+  companyName:      companyName.trim(),
+  ownerName:        ownerName.trim(),
+  email:            email.trim(),
+  password:         password.trim(),   // ← add this
+  authUserId:       authUser.id,
+  businessCode:     code,
+  phone:            phone.trim(),
+  city:             city.trim(),
+  fleetSize:        fleetSize ? parseInt(fleetSize) : null,
+  subscriptionPlan: subscriptionPlan,
+});
 
       if (dbErr) throw new Error(dbErr.message || "Erreur d'écriture en base de données.");
 

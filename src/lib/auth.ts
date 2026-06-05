@@ -166,6 +166,7 @@ export async function createStaffAccount(email: string, password: string): Promi
     try {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
+      if (!data.user) throw new Error("Création du compte échouée.");
       return { user: data.user, error: null };
     } catch (err: any) {
       return { user: null, error: err };
@@ -199,56 +200,58 @@ export async function getCurrentProfile(auth_user_id: string): Promise<{ profile
   }
 }
 
-// ── DB Writers ─────────────────────────────────────────────────────────────
-
 export async function registerCompanyAndOwner(params: {
-  companyName:      string;
-  ownerName:        string;
-  email:            string;
-  authUserId:       string;
-  businessCode:     string;
-  phone?:           string;
-  city?:            string;
-  fleetSize?:       number | null;
+  companyName:       string;
+  ownerName:         string;
+  email:             string;
+  password:          string;
+  authUserId:        string;
+  businessCode:      string;
+  phone?:            string;
+  city?:             string;
+  fleetSize?:        number | null;
   subscriptionPlan?: string;
 }): Promise<{ company: Company | null; profile: StaffProfile | null; error: any }> {
   if (isSupabaseConfigured) {
-    try {
-      const { data: companyData, error: companyErr } = await supabase
-        .from('companies')
-        .insert({
-          name:              params.companyName,
-          business_code:     params.businessCode,
-          owner_name:        params.ownerName,
-          owner_email:       params.email,
-          phone:             params.phone     || null,
-          city:              params.city      || null,
-          fleet_size:        params.fleetSize || null,
-          subscription_plan: params.subscriptionPlan || 'starter',
-        })
-        .select()
-        .single();
+  try {
+    // 1. Insert Company
+    const { data: companyData, error: companyErr } = await supabase
+      .from('companies')
+      .insert({
+        name:              params.companyName,
+        business_code:     params.businessCode,
+        owner_name:        params.ownerName,
+        owner_email:       params.email,
+        phone:             params.phone     || null,
+        city:              params.city      || null,
+        fleet_size:        params.fleetSize || null,
+        subscription_plan: params.subscriptionPlan || 'starter',
+      })
+      .select()
+      .single();
 
-      if (companyErr) throw companyErr;
+    if (companyErr) throw companyErr;
 
-      const { data: profileData, error: profileErr } = await supabase
-        .from('staff_profiles')
-        .insert({
-          company_id:   companyData.id,
-          full_name:    params.ownerName,
-          role:         'owner',
-          auth_user_id: params.authUserId,
-          is_active:    true,
-        })
-        .select()
-        .single();
+    // 2. Insert staff profile directly — no FK constraint anymore
+    const { data: profileData, error: profileErr } = await supabase
+      .from('staff_profiles')
+      .insert({
+        company_id:   companyData.id,
+        full_name:    params.ownerName,
+        role:         'owner',
+        auth_user_id: params.authUserId,
+        is_active:    true,
+      })
+      .select()
+      .single();
 
-      if (profileErr) throw profileErr;
+    if (profileErr) throw profileErr;
 
-      return { company: companyData, profile: profileData, error: null };
-    } catch (err: any) {
-      return { company: null, profile: null, error: err };
-    }
+    return { company: companyData, profile: profileData, error: null };
+  } catch (err: any) {
+    return { company: null, profile: null, error: err };
+  }
+
   } else {
     const { companies, staff_profiles } = getMockData();
 
@@ -267,24 +270,28 @@ export async function registerCompanyAndOwner(params: {
     };
 
     const newOwner: StaffProfile = {
-      id:           `owner-prof-${Math.random().toString(36).substr(2, 9)}`,
-      company_id:   newCompany.id,
-      full_name:    params.ownerName,
-      role:         'owner',
+      id:            `owner-prof-${Math.random().toString(36).substr(2, 9)}`,
+      company_id:    newCompany.id,
+      full_name:     params.ownerName,
+      role:          'owner',
       employee_code: 'EMP-OWNER-NEW',
-      auth_user_id: params.authUserId,
-      is_active:    true,
-      created_at:   new Date().toISOString(),
+      auth_user_id:  params.authUserId,
+      is_active:     true,
+      created_at:    new Date().toISOString(),
     };
 
     companies.push(newCompany);
     staff_profiles.push(newOwner);
-    saveMockData(companies, staff_profiles, { id: params.authUserId, email: params.email, user_metadata: { full_name: params.ownerName } });
+    saveMockData(companies, staff_profiles, {
+      id: params.authUserId,
+      email: params.email,
+      user_metadata: { full_name: params.ownerName }
+    });
 
     return { company: newCompany, profile: newOwner, error: null };
   }
-}
 
+}
 export async function getCompanyStaff(companyId: string, options?: { role?: string; excludeRoles?: string[] }): Promise<StaffProfile[]> {
   if (isSupabaseConfigured) {
     try {
