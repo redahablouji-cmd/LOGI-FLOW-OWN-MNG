@@ -40,59 +40,55 @@ const ROLE_PORTAL: Record<string, { label: string; color: string }> = {
 };
 
 export default function CreateStaffForm({ companyId }: CreateStaffFormProps) {
-  // Form State
-  const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState('driver');
-  const [employeeCode, setEmployeeCode] = useState('');
-  const [vehiclePlate, setVehiclePlate] = useState('');
-  const [email, setEmail] = useState('');
-  const [tempPassword, setTempPassword] = useState('');
-  
-  const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // ── Persist form state in sessionStorage so switching apps doesn't lose data ──
+const getStored = (key: string, fallback: string) =>
+  sessionStorage.getItem(`csf_${key}`) ?? fallback;
 
-  // Staff List State
-  const [staffList, setStaffList] = useState<StaffProfile[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
+const [fullName,     setFullNameRaw]     = useState(() => getStored('fullName', ''));
+const [role,         setRoleRaw]         = useState(() => getStored('role', 'purchase_responsible'));
+const [employeeCode, setEmployeeCodeRaw] = useState(() => getStored('employeeCode', ''));
+const [vehiclePlate, setVehiclePlateRaw] = useState(() => getStored('vehiclePlate', ''));
+const [email,        setEmailRaw]        = useState(() => getStored('email', ''));
+const [tempPassword, setTempPasswordRaw] = useState(() => getStored('tempPassword', ''));
 
-  // Security Credentials Modal
-  const [createdCredentials, setCreatedCredentials] = useState<{
-    name: string;
-    role: string;
-    code: string;
-    email: string;
-    pass: string;
-  } | null>(null);
-  const [copiedModal, setCopiedModal] = useState(false);
+// Wrapped setters that also save to sessionStorage
+const setFullName     = (v: string) => { sessionStorage.setItem('csf_fullName', v);     setFullNameRaw(v);     };
+const setRole         = (v: string) => { sessionStorage.setItem('csf_role', v);         setRoleRaw(v);         };
+const setEmployeeCode = (v: string) => { sessionStorage.setItem('csf_employeeCode', v); setEmployeeCodeRaw(v); };
+const setVehiclePlate = (v: string) => { sessionStorage.setItem('csf_vehiclePlate', v); setVehiclePlateRaw(v); };
+const setEmail        = (v: string) => { sessionStorage.setItem('csf_email', v);        setEmailRaw(v);        };
+const setTempPassword = (v: string) => { sessionStorage.setItem('csf_tempPassword', v); setTempPasswordRaw(v); };
 
-  // Load staff list (exclude owner and other managers as per prompt)
-  const loadStaffList = async () => {
-    try {
-      setLoadingList(true);
-      const data = await getCompanyStaff(companyId, { excludeRoles: ['owner', 'manager'] });
-      setStaffList(data);
-    } catch (err) {
-      console.error('Error fetching staff:', err);
-    } finally {
-      setLoadingList(false);
-    }
-  };
+const [showPassword,  setShowPassword]  = useState(false);
+const [isSubmitting,  setIsSubmitting]  = useState(false);
+const [staffList,     setStaffList]     = useState<StaffProfile[]>([]);
+const [loadingList,   setLoadingList]   = useState(true);
+const [createdCredentials, setCreatedCredentials] = useState<{
+  name: string; role: string; code: string; email: string; pass: string;
+} | null>(null);
+const [copiedModal, setCopiedModal] = useState(false);
 
-  useEffect(() => {
-    if (companyId) {
-      loadStaffList();
-    }
-  }, [companyId]);
+// Clear sessionStorage after successful submit
+const clearForm = () => {
+  ['fullName','role','employeeCode','vehiclePlate','email','tempPassword']
+    .forEach(k => sessionStorage.removeItem(`csf_${k}`));
+  setFullNameRaw('');
+  setRoleRaw('purchase_responsible');
+  setEmployeeCodeRaw('');
+  setVehiclePlateRaw('');
+  setEmailRaw('');
+  setTempPasswordRaw('');
+  setShowPassword(false);
+};
 
-  // Pass generation
-  const handleGeneratePassword = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setTempPassword(password);
-  };
+const handleGeneratePassword = () => {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
+  let password = '';
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  setTempPassword(password);
+};
 
   const handleCreateStaff = async (e: FormEvent) => {
     e.preventDefault();
@@ -146,13 +142,7 @@ export default function CreateStaffForm({ companyId }: CreateStaffFormProps) {
         pass: tempPassword.trim()
       });
 
-      // Clear Form
-      setFullName('');
-      setEmployeeCode('');
-      setVehiclePlate('');
-      setEmail('');
-      setTempPassword('');
-      setShowPassword(false);
+      clearForm();
 
       // Reload list
       await loadStaffList();
