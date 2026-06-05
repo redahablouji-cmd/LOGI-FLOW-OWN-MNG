@@ -89,6 +89,24 @@ const handleGeneratePassword = () => {
   }
   setTempPassword(password);
 };
+// Load staff list
+const loadStaffList = async () => {
+  try {
+    setLoadingList(true);
+    const data = await getCompanyStaff(companyId, { excludeRoles: ['owner', 'manager'] });
+    setStaffList(data);
+  } catch (err) {
+    console.error('Error fetching staff:', err);
+  } finally {
+    setLoadingList(false);
+  }
+};
+
+useEffect(() => {
+  if (companyId) {
+    loadStaffList();
+  }
+}, [companyId]);
 
   const handleCreateStaff = async (e: FormEvent) => {
     e.preventDefault();
@@ -424,10 +442,10 @@ Mot de passe temporaire: ${createdCredentials.pass}
                     <td className="p-4 font-mono text-xs font-bold text-blue-600">{staff.employee_code}</td>
                     <td className="p-4 font-bold text-slate-800">{staff.full_name}</td>
                     <td className="p-4 text-xs font-medium text-slate-600">
-                      <span className="px-2 py-0.5 bg-slate-105 border border-slate-200 rounded">
-                        {ROLE_LABELS[staff.role] || staff.role}
-                      </span>
-                    </td>
+  <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded">
+    {ROLE_LABELS[staff.role] || staff.role}
+  </span>
+</td>
                     <td className="p-4">
                       {staff.vehicle_plate ? (
                         <span className="font-mono text-xs bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded">
@@ -438,16 +456,11 @@ Mot de passe temporaire: ${createdCredentials.pass}
                       )}
                     </td>
                     <td className="p-4">
-  <div className="flex flex-col gap-1">
-    <span className="text-xs font-medium text-slate-600 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded inline-block">
-      {ROLE_LABELS[staff.role] || staff.role}
+  {ROLE_PORTAL[staff.role] && (
+    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-block ${ROLE_PORTAL[staff.role].color}`}>
+      {ROLE_PORTAL[staff.role].label}
     </span>
-    {ROLE_PORTAL[staff.role] && (
-      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-block ${ROLE_PORTAL[staff.role].color}`}>
-        {ROLE_PORTAL[staff.role].label}
-      </span>
-    )}
-  </div>
+  )}
 </td>
                   </tr>
                 ))}
