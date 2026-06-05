@@ -15,14 +15,28 @@ interface CreateStaffFormProps {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  accountant: 'Comptable',
-  dispatcher: 'Dispatcher / Répartiteur',
-  mechanic: 'Mécanicien',
-  driver: 'Chauffeur / Conducteur',
-  staff: 'Personnel de bureau',
-  cleaning: 'Entretien / Nettoyage',
-  security: 'Sécurité',
-  local: 'Local / Logistique'
+  purchase_responsible: 'Responsable des Achats',
+  accountant:           'Comptable',
+  dispatcher:           'Dispatcher / Répartiteur',
+  mechanic:             'Mécanicien',
+  driver:               'Chauffeur / Conducteur',
+  staff:                'Personnel de bureau',
+  cleaning:             'Entretien / Nettoyage',
+  security:             'Sécurité',
+  local:                'Local / Logistique',
+};
+
+// Which portal each role accesses
+const ROLE_PORTAL: Record<string, { label: string; color: string }> = {
+  purchase_responsible: { label: 'Portail Achats & Facturation',  color: 'bg-blue-50 text-blue-700 border-blue-200'    },
+  accountant:           { label: 'Portail Caisse & Chauffeurs',   color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  dispatcher:           { label: 'Portail Caisse & Chauffeurs',   color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  mechanic:             { label: 'FleetFix Mobile',               color: 'bg-amber-50 text-amber-700 border-amber-200'   },
+  driver:               { label: 'Aucun portail web',             color: 'bg-slate-100 text-slate-500 border-slate-200'  },
+  staff:                { label: 'Aucun portail web',             color: 'bg-slate-100 text-slate-500 border-slate-200'  },
+  cleaning:             { label: 'Aucun portail web',             color: 'bg-slate-100 text-slate-500 border-slate-200'  },
+  security:             { label: 'Aucun portail web',             color: 'bg-slate-100 text-slate-500 border-slate-200'  },
+  local:                { label: 'Aucun portail web',             color: 'bg-slate-100 text-slate-500 border-slate-200'  },
 };
 
 export default function CreateStaffForm({ companyId }: CreateStaffFormProps) {
@@ -225,28 +239,35 @@ Mot de passe temporaire: ${createdCredentials.pass}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                Rôle attribué <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Briefcase className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full text-sm rounded-lg border border-slate-200 pl-10 pr-3.5 py-2.5 outline-hidden focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-slate-800 bg-white cursor-pointer"
-                  id="staff-role-select"
-                >
-                  <option value="driver">Chauffeur / Conducteur</option>
-                  <option value="dispatcher">Dispatcher / Répartiteur</option>
-                  <option value="mechanic">Mécanicien</option>
-                  <option value="accountant">Comptable</option>
-                  <option value="staff">Personnel de bureau</option>
-                  <option value="cleaning">Entretien / Nettoyage</option>
-                  <option value="security">Sécurité</option>
-                  <option value="local">Local / Logistique</option>
-                </select>
-              </div>
-            </div>
+  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+    Rôle attribué <span className="text-red-500">*</span>
+  </label>
+  <div className="relative">
+    <Briefcase className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+    <select
+      value={role}
+      onChange={(e) => setRole(e.target.value)}
+      className="w-full text-sm rounded-lg border border-slate-200 pl-10 pr-3.5 py-2.5 outline-hidden focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-slate-800 bg-white cursor-pointer"
+      id="staff-role-select"
+    >
+      <option value="purchase_responsible">Responsable des Achats</option>
+      <option value="accountant">Comptable</option>
+      <option value="dispatcher">Dispatcher / Répartiteur</option>
+      <option value="mechanic">Mécanicien</option>
+      <option value="driver">Chauffeur / Conducteur</option>
+      <option value="staff">Personnel de bureau</option>
+      <option value="cleaning">Entretien / Nettoyage</option>
+      <option value="security">Sécurité</option>
+      <option value="local">Local / Logistique</option>
+    </select>
+  </div>
+  {/* Portal indicator — shows which portal this role accesses */}
+  {role && ROLE_PORTAL[role] && (
+    <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] font-bold uppercase tracking-wider ${ROLE_PORTAL[role].color}`}>
+      <span>→ {ROLE_PORTAL[role].label}</span>
+    </div>
+  )}
+</div>
 
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -426,19 +447,18 @@ Mot de passe temporaire: ${createdCredentials.pass}
                         <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="p-4 text-center">
-                      <button
-                        onClick={() => handleToggleActive(staff)}
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider cursor-pointer transition-all ${
-                          staff.is_active 
-                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100/80' 
-                            : 'bg-slate-100 text-slate-400 hover:bg-slate-150'
-                        }`}
-                        id={`toggle-staff-${staff.id}`}
-                      >
-                        {staff.is_active ? 'Actif' : 'Bloqué'}
-                      </button>
-                    </td>
+                    <td className="p-4">
+  <div className="flex flex-col gap-1">
+    <span className="text-xs font-medium text-slate-600 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded inline-block">
+      {ROLE_LABELS[staff.role] || staff.role}
+    </span>
+    {ROLE_PORTAL[staff.role] && (
+      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-block ${ROLE_PORTAL[staff.role].color}`}>
+        {ROLE_PORTAL[staff.role].label}
+      </span>
+    )}
+  </div>
+</td>
                   </tr>
                 ))}
               </tbody>
