@@ -4,7 +4,7 @@ import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, Refre
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { Company } from '../lib/auth';
-import CreateStaffForm from '../components/manager/CreateStaffForm';
+import CreateStaffForm from '../../components/manager/CreateStaffForm';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 
