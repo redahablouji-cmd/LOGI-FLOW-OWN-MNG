@@ -233,8 +233,13 @@ console.log('Delete result:', error);
   };
 const handleDeleteRecord = async (id: string) => {
   if (!confirm('Supprimer cette fiche ?')) return;
-  const { error } = await supabase.from('purchases').delete().eq('id', id);
-console.log('Delete result:', error);
+  console.log('Deleting maintenance record with id:', id);
+  const { data, error } = await supabase
+    .from('maintenance_records')
+    .delete()
+    .eq('id', id)
+    .select();
+  console.log('Delete response:', { data, error });
   if (!error) {
     setMaintenance(prev => prev.filter(r => r.id !== id));
     toast.success("Fiche supprimée.");
