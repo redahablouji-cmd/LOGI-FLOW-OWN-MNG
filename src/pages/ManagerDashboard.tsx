@@ -214,10 +214,12 @@ export default function ManagerDashboard() {
 const handleDeletePurchase = async (id: string) => {
   if (!confirm('Supprimer cet achat ?')) return;
   const { error } = await supabase.from('purchases').delete().eq('id', id);
+console.log('Delete result:', error);
   if (!error) {
     setPurchases(prev => prev.filter(p => p.id !== id));
     toast.success("Achat supprimé.");
   } else toast.error(`Erreur: ${error.message}`);
+  
 };
   // ── Maintenance edit/save ──────────────────────────────────────────────
   const handleSaveRecord = async () => {
@@ -231,7 +233,8 @@ const handleDeletePurchase = async (id: string) => {
   };
 const handleDeleteRecord = async (id: string) => {
   if (!confirm('Supprimer cette fiche ?')) return;
-  const { error } = await supabase.from('maintenance_records').delete().eq('id', id);
+  const { error } = await supabase.from('purchases').delete().eq('id', id);
+console.log('Delete result:', error);
   if (!error) {
     setMaintenance(prev => prev.filter(r => r.id !== id));
     toast.success("Fiche supprimée.");
