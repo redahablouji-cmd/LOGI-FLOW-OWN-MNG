@@ -1,13 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Company } from '../lib/auth';
 import CreateStaffForm from '../components/manager/CreateStaffForm';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-
+const exportToXLS = (data: any[], filename: string) => {
+  if (!data.length) return;
+  const headers = Object.keys(data[0]);
+  const rows    = data.map(row => headers.map(h => row[h] ?? '').join('\t'));
+  const content = [headers.join('\t'), ...rows].join('\n');
+  const blob    = new Blob([content], { type: 'application/vnd.ms-excel' });
+  const url     = URL.createObjectURL(blob);
+  const a       = document.createElement('a');
+  a.href        = url;
+  a.download    = `${filename}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 type ManagerTab = 'staff' | 'purchases' | 'fleetfix';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -408,6 +420,23 @@ export default function ManagerDashboard() {
                   <button onClick={fetchPurchases} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer">
                     <RefreshCw className="w-3.5 h-3.5" /> Actualiser
                   </button>
+                  <button
+  onClick={() => exportToXLS(purchases.map(p => ({
+    'Date':          p.date_achat || '',
+    'Catégorie':     CATEGORY_LABELS[p.category] || p.category,
+    'Fournisseur':   p.fournisseur || '',
+    'N° Facture':    p.numero_facture || '',
+    'Montant HT':    p.montant_ht,
+    'TVA':           p.tva_amount,
+    'Montant TTC':   p.montant_ttc,
+    'Banque':        p.banque || '',
+    'Mode Paiement': p.mode_paiement || '',
+    'Notes':         p.notes || '',
+  })), 'achats_historique')}
+  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+>
+  <Download size={14} /> Export XLS
+</button>
                 </div>
               </div>
 
@@ -472,6 +501,22 @@ export default function ManagerDashboard() {
                     className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer">
                     <RefreshCw className="w-3.5 h-3.5" /> Actualiser
                   </button>
+                  <button
+  onClick={() => exportToXLS(maintenance.map(r => ({
+    'Date':       r.date,
+    'Camion':     r.truck_plate,
+    'Catégorie':  r.type,
+    'Pièce':      r.part_fixed,
+    'Garage':     r.garage_name,
+    'Coût MAD':   r.total_cost,
+    'Notes':      r.notes || '',
+    'Mécanicien': selectedMechanic?.full_name || '',
+  })), `fleetfix_${selectedMechanic?.full_name || 'export'}`)}
+  disabled={!selectedMechanic || maintenance.length === 0}
+  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+>
+  <Download size={14} /> Export XLS
+</button>
                 </div>
               </div>
 
