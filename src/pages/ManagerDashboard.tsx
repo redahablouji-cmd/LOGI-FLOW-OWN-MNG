@@ -8,7 +8,6 @@ import CreateStaffForm from '../components/manager/CreateStaffForm';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 
-// ── XLS Export ─────────────────────────────────────────────────────────────
 const exportToXLS = (data: any[], filename: string) => {
   if (!data.length) return;
   const headers = Object.keys(data[0]);
@@ -22,7 +21,6 @@ const exportToXLS = (data: any[], filename: string) => {
 
 type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi';
 
-// ── Types ──────────────────────────────────────────────────────────────────
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
   date_achat: string; montant_ht: number; tva_rate: number; tva_amount: number;
@@ -76,6 +74,9 @@ export default function ManagerDashboard() {
   const [topupNotes,       setTopupNotes]       = useState('');
   const [viewingReceipt,   setViewingReceipt]   = useState<string | null>(null);
   const [editingRecord,    setEditingRecord]    = useState<MaintenanceRecord | null>(null);
+  const [editingTopup,     setEditingTopup]     = useState<FundTopup | null>(null);
+  const [topupEditAmount,  setTopupEditAmount]  = useState('');
+  const [topupEditNotes,   setTopupEditNotes]   = useState('');
 
   // Suivi Facturation
   const [suiviList,        setSuiviList]        = useState<SuiviRecord[]>([]);
@@ -135,6 +136,7 @@ export default function ManagerDashboard() {
   const mechanicBalance = () =>
     topups.reduce((s, t) => s + t.amount, 0) - maintenance.reduce((s, r) => s + r.total_cost, 0);
 
+  // ── Fund topup ─────────────────────────────────────────────────────────
   const handleTopup = async () => {
     if (!selectedMechanic || !topupAmount) return;
     const amount = parseFloat(topupAmount);
@@ -150,56 +152,29 @@ export default function ManagerDashboard() {
     } else toast.error(`Erreur: ${error.message}`);
   };
 
-  // ── Fetch Suivi Facturation ────────────────────────────────────────────
-  const fetchSuivi = async () => {
-    setLoadingSuivi(true);
-    const { data } = await supabase.from('suivi_facturation')
-      .select('*').order('created_at', { ascending: false });
-    setSuiviList(data || []);
-    setLoadingSuivi(false);
+  const handleDeleteTopup = async (id: string) => {
+    if (!confirm('Supprimer ce versement ?')) return;
+    const { error } = await supabase.from('fund_topups').delete().eq('id', id);
+    if (!error) {
+      setTopups(prev => prev.filter(t => t.id !== id));
+      toast.success("Versement supprimé.");
+    } else toast.error(`Erreur: ${error.message}`);
   };
 
-  const handleSaveSuivi = async () => {
-    const payload = {
-      company_id:    companyId    || null,
-      manager_id:    managerId    || null,
-      date:          suiviForm.date          || null,
-      matricule:     suiviForm.matricule     || null,
-      type:          suiviForm.type          || null,
-      facture:       suiviForm.facture       || null,
-      bon_commande:  suiviForm.bon_commande  || null,
-      ot_bl_bs_be:   suiviForm.ot_bl_bs_be   || null,
-      client:        suiviForm.client        || null,
-      depart:        suiviForm.depart        || null,
-      arrivee:       suiviForm.arrivee       || null,
-      manutention:   parseFloat(suiviForm.manutention  as string) || 0,
-      immobilisation:parseFloat(suiviForm.immobilisation as string) || 0,
-      prix_ht:       parseFloat(suiviForm.prix_ht      as string) || 0,
-      prix_ttc:      parseFloat(suiviForm.prix_ttc     as string) || 0,
-      cout_revient:  parseFloat(suiviForm.cout_revient as string) || 0,
-      benefice:      parseFloat(suiviForm.benefice     as string) || 0,
-    };
-
-    if (editingSuivi) {
-      const { error } = await supabase.from('suivi_facturation').update(payload).eq('id', editingSuivi.id);
-      if (!error) { toast.success("Enregistrement modifié."); setEditingSuivi(null); fetchSuivi(); }
-      else toast.error(`Erreur: ${error.message}`);
-    } else {
-      const { error } = await supabase.from('suivi_facturation').insert(payload);
-      if (!error) { toast.success("Enregistrement ajouté."); setShowSuiviForm(false); fetchSuivi(); }
-      else toast.error(`Erreur: ${error.message}`);
-    }
-    setSuiviForm(emptySuivi);
+  const handleEditTopupSave = async () => {
+    if (!editingTopup) return;
+    const { error } = await supabase.from('fund_topups').update({
+      amount: parseFloat(topupEditAmount) || 0,
+      notes:  topupEditNotes,
+    }).eq('id', editingTopup.id);
+    if (!error) {
+      toast.success("Versement modifié.");
+      setEditingTopup(null);
+      if (selectedMechanic) fetchMechanicData(selectedMechanic.id);
+    } else toast.error(`Erreur: ${error.message}`);
   };
 
-  const handleDeleteSuivi = async (id: string) => {
-    if (!confirm('Supprimer cet enregistrement ?')) return;
-    const { error } = await supabase.from('suivi_facturation').delete().eq('id', id);
-    if (!error) { setSuiviList(prev => prev.filter(s => s.id !== id)); toast.success("Supprimé."); }
-    else toast.error(`Erreur: ${error.message}`);
-  };
-
-  // ── Purchases edit/save ────────────────────────────────────────────────
+  // ── Purchases ──────────────────────────────────────────────────────────
   const handleSavePurchase = async () => {
     if (!editingPurchase) return;
     const { error } = await supabase.from('purchases').update({
@@ -211,17 +186,15 @@ export default function ManagerDashboard() {
     if (!error) { toast.success("Modifié."); setEditingPurchase(null); fetchPurchases(); }
     else toast.error(`Erreur: ${error.message}`);
   };
-const handleDeletePurchase = async (id: string) => {
-  if (!confirm('Supprimer cet achat ?')) return;
-  const { error } = await supabase.from('purchases').delete().eq('id', id);
-console.log('Delete result:', error);
-  if (!error) {
-    setPurchases(prev => prev.filter(p => p.id !== id));
-    toast.success("Achat supprimé.");
-  } else toast.error(`Erreur: ${error.message}`);
-  
-};
-  // ── Maintenance edit/save ──────────────────────────────────────────────
+
+  const handleDeletePurchase = async (id: string) => {
+    if (!confirm('Supprimer cet achat ?')) return;
+    const { error } = await supabase.from('purchases').delete().eq('id', id);
+    if (!error) { setPurchases(prev => prev.filter(p => p.id !== id)); toast.success("Supprimé."); }
+    else toast.error(`Erreur: ${error.message}`);
+  };
+
+  // ── Maintenance ────────────────────────────────────────────────────────
   const handleSaveRecord = async () => {
     if (!editingRecord) return;
     const { error } = await supabase.from('maintenance_records').update({
@@ -231,20 +204,55 @@ console.log('Delete result:', error);
     if (!error) { toast.success("Modifié."); setEditingRecord(null); if (selectedMechanic) fetchMechanicData(selectedMechanic.id); }
     else toast.error(`Erreur: ${error.message}`);
   };
-const handleDeleteRecord = async (id: string) => {
-  if (!confirm('Supprimer cette fiche ?')) return;
-  console.log('Deleting maintenance record with id:', id);
-  const { data, error } = await supabase
-    .from('maintenance_records')
-    .delete()
-    .eq('id', id)
-    .select();
-  console.log('Delete response:', { data, error });
-  if (!error) {
-    setMaintenance(prev => prev.filter(r => r.id !== id));
-    toast.success("Fiche supprimée.");
-  } else toast.error(`Erreur: ${error.message}`);
-};
+
+  const handleDeleteRecord = async (id: string) => {
+    if (!confirm('Supprimer cette fiche ?')) return;
+    const { error } = await supabase.from('maintenance_records').delete().eq('id', id);
+    if (!error) { setMaintenance(prev => prev.filter(r => r.id !== id)); toast.success("Supprimé."); }
+    else toast.error(`Erreur: ${error.message}`);
+  };
+
+  // ── Suivi Facturation ──────────────────────────────────────────────────
+  const fetchSuivi = async () => {
+    setLoadingSuivi(true);
+    const { data } = await supabase.from('suivi_facturation').select('*').order('created_at', { ascending: false });
+    setSuiviList(data || []);
+    setLoadingSuivi(false);
+  };
+
+  const handleSaveSuivi = async () => {
+    const payload = {
+      company_id: companyId || null, manager_id: managerId || null,
+      date: suiviForm.date || null, matricule: suiviForm.matricule || null,
+      type: suiviForm.type || null, facture: suiviForm.facture || null,
+      bon_commande: suiviForm.bon_commande || null, ot_bl_bs_be: suiviForm.ot_bl_bs_be || null,
+      client: suiviForm.client || null, depart: suiviForm.depart || null, arrivee: suiviForm.arrivee || null,
+      manutention:    parseFloat(suiviForm.manutention    as string) || 0,
+      immobilisation: parseFloat(suiviForm.immobilisation as string) || 0,
+      prix_ht:        parseFloat(suiviForm.prix_ht        as string) || 0,
+      prix_ttc:       parseFloat(suiviForm.prix_ttc       as string) || 0,
+      cout_revient:   parseFloat(suiviForm.cout_revient   as string) || 0,
+      benefice:       parseFloat(suiviForm.benefice       as string) || 0,
+    };
+    if (editingSuivi) {
+      const { error } = await supabase.from('suivi_facturation').update(payload).eq('id', editingSuivi.id);
+      if (!error) { toast.success("Modifié."); setEditingSuivi(null); fetchSuivi(); }
+      else toast.error(`Erreur: ${error.message}`);
+    } else {
+      const { error } = await supabase.from('suivi_facturation').insert(payload);
+      if (!error) { toast.success("Ajouté."); setShowSuiviForm(false); fetchSuivi(); }
+      else toast.error(`Erreur: ${error.message}`);
+    }
+    setSuiviForm(emptySuivi);
+  };
+
+  const handleDeleteSuivi = async (id: string) => {
+    if (!confirm('Supprimer ?')) return;
+    const { error } = await supabase.from('suivi_facturation').delete().eq('id', id);
+    if (!error) { setSuiviList(prev => prev.filter(s => s.id !== id)); toast.success("Supprimé."); }
+    else toast.error(`Erreur: ${error.message}`);
+  };
+
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -283,29 +291,28 @@ const handleDeleteRecord = async (id: string) => {
   };
 
   const navItems = [
-    { id: 'staff',     label: 'Staff',               icon: Users },
-    { id: 'purchases', label: 'Achats & Factures',    icon: ShoppingBag },
-    { id: 'fleetfix',  label: 'FleetFix',             icon: Wrench },
-    { id: 'suivi',     label: 'Suivi Facturation',    icon: FileText },
+    { id: 'staff',     label: 'Staff',            icon: Users },
+    { id: 'purchases', label: 'Achats & Factures', icon: ShoppingBag },
+    { id: 'fleetfix',  label: 'FleetFix',          icon: Wrench },
+    { id: 'suivi',     label: 'Suivi Facturation', icon: FileText },
   ] as const;
 
-  // Suivi form fields mapping
   const suiviFields = [
-    { label: 'Date',                key: 'date',           type: 'date'   },
-    { label: 'Matricule',           key: 'matricule',      type: 'text'   },
-    { label: 'Type',                key: 'type',           type: 'text'   },
-    { label: 'Factures',            key: 'facture',        type: 'text'   },
-    { label: 'N° Bon de Commande',  key: 'bon_commande',   type: 'text'   },
-    { label: 'OT / BL-BS-BE-Booking', key: 'ot_bl_bs_be', type: 'text'   },
-    { label: 'Clients',             key: 'client',         type: 'text'   },
-    { label: 'Départ',              key: 'depart',         type: 'text'   },
-    { label: 'Arrivée',             key: 'arrivee',        type: 'text'   },
-    { label: 'Manutention (MAD)',   key: 'manutention',    type: 'number' },
-    { label: 'Immobilisation (MAD)',key: 'immobilisation', type: 'number' },
-    { label: 'Prix HT (MAD)',       key: 'prix_ht',        type: 'number' },
-    { label: 'Prix TTC (MAD)',      key: 'prix_ttc',       type: 'number' },
-    { label: 'Coût de Revient (MAD)', key: 'cout_revient', type: 'number' },
-    { label: 'Bénéfice (MAD)',      key: 'benefice',       type: 'number' },
+    { label: 'Date',                  key: 'date',           type: 'date'   },
+    { label: 'Matricule',             key: 'matricule',      type: 'text'   },
+    { label: 'Type',                  key: 'type',           type: 'text'   },
+    { label: 'Factures',              key: 'facture',        type: 'text'   },
+    { label: 'N° Bon de Commande',    key: 'bon_commande',   type: 'text'   },
+    { label: 'OT / BL-BS-BE-Booking', key: 'ot_bl_bs_be',   type: 'text'   },
+    { label: 'Clients',               key: 'client',         type: 'text'   },
+    { label: 'Départ',                key: 'depart',         type: 'text'   },
+    { label: 'Arrivée',               key: 'arrivee',        type: 'text'   },
+    { label: 'Manutention (MAD)',      key: 'manutention',    type: 'number' },
+    { label: 'Immobilisation (MAD)',   key: 'immobilisation', type: 'number' },
+    { label: 'Prix HT (MAD)',          key: 'prix_ht',        type: 'number' },
+    { label: 'Prix TTC (MAD)',         key: 'prix_ttc',       type: 'number' },
+    { label: 'Coût de Revient (MAD)',  key: 'cout_revient',   type: 'number' },
+    { label: 'Bénéfice (MAD)',         key: 'benefice',       type: 'number' },
   ];
 
   return (
@@ -326,17 +333,14 @@ const handleDeleteRecord = async (id: string) => {
               <span className="text-xl font-bold tracking-tight text-white">LOGI-FLOW</span>
             </div>
             <div className="h-6 w-px bg-slate-800 hidden sm:block" />
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:block">
-              {activeCompany.name}
-            </span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:block">{activeCompany.name}</span>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
               <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Manager</span>
               <span className="text-sm font-bold text-white">{managerName}</span>
             </div>
-            <button
-              onClick={() => signOut().then(() => { toast.success("Déconnexion réussie"); navigate('/login'); })}
+            <button onClick={() => signOut().then(() => { toast.success("Déconnexion réussie"); navigate('/login'); })}
               className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-colors cursor-pointer border border-rose-500/10">
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Déconnexion</span>
@@ -354,8 +358,7 @@ const handleDeleteRecord = async (id: string) => {
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="fixed inset-0 bg-black/40 z-40 lg:hidden"
                 onClick={() => setSidebarOpen(false)} />
-              <motion.aside
-                initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
+              <motion.aside initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                 className="fixed left-0 top-16 bottom-0 w-64 bg-slate-900 z-50 flex flex-col border-r border-slate-800 shadow-xl">
                 <div className="p-4 border-b border-slate-800">
@@ -368,12 +371,8 @@ const handleDeleteRecord = async (id: string) => {
                     return (
                       <button key={item.id}
                         onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                          isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                        }`}>
-                        <Icon size={18} />
-                        {item.label}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                        <Icon size={18} />{item.label}
                       </button>
                     );
                   })}
@@ -386,7 +385,7 @@ const handleDeleteRecord = async (id: string) => {
           )}
         </AnimatePresence>
 
-        {/* Main Content */}
+        {/* Main */}
         <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
 
           {/* TAB: STAFF */}
@@ -400,13 +399,11 @@ const handleDeleteRecord = async (id: string) => {
                   <h1 className="text-2xl font-extrabold tracking-tight">Supervision du Staff</h1>
                   <p className="text-sm text-slate-400 mt-1">Créez et gérez les comptes du personnel logistique.</p>
                 </div>
-                <button onClick={fetchCompany} className="self-start bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer">
+                <button onClick={fetchCompany} className="self-start bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                   <RefreshCw className="w-3.5 h-3.5" /> Actualiser
                 </button>
               </div>
-              <div className="max-w-5xl mx-auto">
-                <CreateStaffForm companyId={activeCompany.id} />
-              </div>
+              <div className="max-w-5xl mx-auto"><CreateStaffForm companyId={activeCompany.id} /></div>
             </div>
           )}
 
@@ -423,7 +420,7 @@ const handleDeleteRecord = async (id: string) => {
                     <p className="text-sm text-slate-400 mt-1">{purchases.length} enregistrements</p>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={fetchPurchases} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer">
+                    <button onClick={fetchPurchases} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <RefreshCw className="w-3.5 h-3.5" /> Actualiser
                     </button>
                     <button onClick={() => exportToXLS(purchases.map(p => ({
@@ -461,15 +458,11 @@ const handleDeleteRecord = async (id: string) => {
                             <td className="px-4 py-3 font-mono text-xs text-amber-700">{p.tva_amount?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
                             <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900">{p.montant_ttc?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
                             <td className="px-4 py-3">
-  <div className="flex items-center gap-2">
-    <button onClick={() => setEditingPurchase(p)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
-      <Pencil size={13} />
-    </button>
-    <button onClick={() => handleDeletePurchase(p.id)} className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
-      <Trash2 size={13} />
-    </button>
-  </div>
-</td>
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => setEditingPurchase(p)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={13} /></button>
+                                <button onClick={() => handleDeletePurchase(p.id)} className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={13} /></button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -511,21 +504,21 @@ const handleDeleteRecord = async (id: string) => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Mechanic selector */}
                 <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Mécaniciens</p>
                   {mechanics.length === 0 ? (
                     <p className="text-sm text-slate-400 text-center py-4">Aucun mécanicien trouvé.</p>
                   ) : mechanics.map(m => (
                     <button key={m.id} onClick={() => setSelectedMechanic(m)}
-                      className={`w-full text-left px-4 py-3 rounded-lg border transition-all cursor-pointer ${
-                        selectedMechanic?.id === m.id ? 'bg-blue-600 border-blue-700 text-white' : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/40'
-                      }`}>
+                      className={`w-full text-left px-4 py-3 rounded-lg border transition-all cursor-pointer ${selectedMechanic?.id === m.id ? 'bg-blue-600 border-blue-700 text-white' : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/40'}`}>
                       <p className={`text-sm font-bold ${selectedMechanic?.id === m.id ? 'text-white' : 'text-slate-800'}`}>{m.full_name}</p>
                       <p className={`text-[10px] font-mono ${selectedMechanic?.id === m.id ? 'text-blue-200' : 'text-slate-400'}`}>{m.employee_code}</p>
                     </button>
                   ))}
                 </div>
 
+                {/* Right panel */}
                 <div className="lg:col-span-2 space-y-6">
                   {!selectedMechanic ? (
                     <div className="bg-white rounded-xl border border-slate-200 flex items-center justify-center h-48">
@@ -533,6 +526,7 @@ const handleDeleteRecord = async (id: string) => {
                     </div>
                   ) : (
                     <>
+                      {/* Balance */}
                       <div className="bg-slate-900 text-white rounded-xl p-6">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Solde — {selectedMechanic.full_name}</p>
                         <p className={`text-3xl font-black ${mechanicBalance() >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -543,6 +537,8 @@ const handleDeleteRecord = async (id: string) => {
                           Sorties: {maintenance.reduce((s,r) => s+r.total_cost,0).toLocaleString('fr-MA')} MAD
                         </p>
                       </div>
+
+                      {/* Add funds */}
                       <div className="bg-white rounded-xl border border-slate-200 p-5">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Ajouter des Fonds</p>
                         <div className="flex gap-3">
@@ -558,9 +554,60 @@ const handleDeleteRecord = async (id: string) => {
                           </button>
                         </div>
                       </div>
+
+                      {/* Fund topups history */}
                       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 bg-slate-50">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fiches d'Entretien — {maintenance.length}</p>
+                        <div className="p-4 border-b border-slate-100 bg-emerald-50">
+                          <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                            Fonds Accordés — {topups.length} versements
+                          </p>
+                        </div>
+                        {topups.length === 0 ? (
+                          <div className="py-6 text-center text-slate-400 text-sm">Aucun fonds versé.</div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                              <thead className="bg-slate-50 border-b border-slate-100">
+                                <tr>
+                                  {['Date','Montant','Note','Actions'].map(h => (
+                                    <th key={h} className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-50">
+                                {topups.map(t => (
+                                  <tr key={t.id} className="hover:bg-slate-50">
+                                    <td className="px-4 py-3 text-xs text-slate-600">{t.created_at?.split('T')[0]}</td>
+                                    <td className="px-4 py-3 font-mono text-xs font-bold text-emerald-600">
+                                      +{Number(t.amount).toLocaleString('fr-MA', { minimumFractionDigits: 2 })} MAD
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-slate-600">{t.notes || '—'}</td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-1">
+                                        <button onClick={() => { setEditingTopup(t); setTopupEditAmount(String(t.amount)); setTopupEditNotes(t.notes || ''); }}
+                                          className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
+                                          <Pencil size={13} />
+                                        </button>
+                                        <button onClick={() => handleDeleteTopup(t.id)}
+                                          className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Maintenance records */}
+                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <div className="p-4 border-b border-slate-100 bg-rose-50">
+                          <p className="text-[10px] font-black text-rose-700 uppercase tracking-widest">
+                            Fiches d'Entretien — {maintenance.length} réparations
+                          </p>
                         </div>
                         {loadingFleet ? (
                           <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 text-blue-600 animate-spin" /></div>
@@ -582,22 +629,20 @@ const handleDeleteRecord = async (id: string) => {
                                     <td className="px-4 py-3 text-xs text-slate-600">{r.type}</td>
                                     <td className="px-4 py-3 text-xs text-slate-700 font-semibold">{r.part_fixed}</td>
                                     <td className="px-4 py-3 text-xs text-slate-600">{r.garage_name}</td>
-                                    <td className="px-4 py-3 font-mono text-xs font-bold text-red-600">-{r.total_cost?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                                    <td className="px-4 py-3 font-mono text-xs font-bold text-red-600">
+                                      -{r.total_cost?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                                    </td>
                                     <td className="px-4 py-3">
                                       {r.receipt_url ? (
                                         <button onClick={() => setViewingReceipt(r.receipt_url)} className="text-blue-600"><Eye size={16} /></button>
                                       ) : <span className="text-slate-300 text-xs">—</span>}
                                     </td>
                                     <td className="px-4 py-3">
-  <div className="flex items-center gap-1">
-    <button onClick={() => setEditingRecord(r)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
-      <Pencil size={13} />
-    </button>
-    <button onClick={() => handleDeleteRecord(r.id)} className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
-      <Trash2 size={13} />
-    </button>
-  </div>
-</td>
+                                      <div className="flex items-center gap-1">
+                                        <button onClick={() => setEditingRecord(r)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={13} /></button>
+                                        <button onClick={() => handleDeleteRecord(r.id)} className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={13} /></button>
+                                      </div>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -625,8 +670,7 @@ const handleDeleteRecord = async (id: string) => {
                     <p className="text-sm text-slate-400 mt-1">{suiviList.length} enregistrements</p>
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    <button onClick={fetchSuivi}
-                      className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <button onClick={fetchSuivi} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <RefreshCw className="w-3.5 h-3.5" /> Actualiser
                     </button>
                     <button onClick={() => exportToXLS(suiviList.map(s => ({
@@ -664,7 +708,7 @@ const handleDeleteRecord = async (id: string) => {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {suiviList.length === 0 ? (
-                          <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation enregistrée. Cliquez sur "Nouveau" pour commencer.</td></tr>
+                          <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation. Cliquez sur "Nouveau".</td></tr>
                         ) : suiviList.map(s => (
                           <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.date}</td>
@@ -725,9 +769,7 @@ const handleDeleteRecord = async (id: string) => {
                   {editingSuivi ? 'Modifier la Prestation' : 'Nouvelle Prestation'}
                 </h3>
                 <button onClick={() => { setShowSuiviForm(false); setEditingSuivi(null); setSuiviForm(emptySuivi); }}
-                  className="p-1.5 rounded hover:bg-slate-100 text-slate-400">
-                  <X size={16} />
-                </button>
+                  className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {suiviFields.map(({ label, key, type }) => (
@@ -740,14 +782,11 @@ const handleDeleteRecord = async (id: string) => {
                 ))}
               </div>
               <div className="flex gap-3 pt-5">
-                <button onClick={handleSaveSuivi}
-                  className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+                <button onClick={handleSaveSuivi} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
                   {editingSuivi ? 'Enregistrer les modifications' : 'Ajouter la prestation'}
                 </button>
                 <button onClick={() => { setShowSuiviForm(false); setEditingSuivi(null); setSuiviForm(emptySuivi); }}
-                  className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
-                  Annuler
-                </button>
+                  className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
               </div>
             </motion.div>
           </div>
@@ -809,6 +848,32 @@ const handleDeleteRecord = async (id: string) => {
               <div className="flex gap-3 pt-2">
                 <button onClick={handleSaveRecord} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">Enregistrer</button>
                 <button onClick={() => setEditingRecord(null)} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Topup Modal */}
+      <AnimatePresence>
+        {editingTopup && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl space-y-4">
+              <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Modifier le Versement</h3>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant (MAD)</label>
+                <input type="number" value={topupEditAmount} onChange={e => setTopupEditAmount(e.target.value)}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note</label>
+                <input type="text" value={topupEditNotes} onChange={e => setTopupEditNotes(e.target.value)}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={handleEditTopupSave} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">Enregistrer</button>
+                <button onClick={() => setEditingTopup(null)} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
               </div>
             </motion.div>
           </div>
