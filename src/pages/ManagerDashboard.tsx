@@ -211,7 +211,14 @@ export default function ManagerDashboard() {
     if (!error) { toast.success("Modifié."); setEditingPurchase(null); fetchPurchases(); }
     else toast.error(`Erreur: ${error.message}`);
   };
-
+const handleDeletePurchase = async (id: string) => {
+  if (!confirm('Supprimer cet achat ?')) return;
+  const { error } = await supabase.from('purchases').delete().eq('id', id);
+  if (!error) {
+    setPurchases(prev => prev.filter(p => p.id !== id));
+    toast.success("Achat supprimé.");
+  } else toast.error(`Erreur: ${error.message}`);
+};
   // ── Maintenance edit/save ──────────────────────────────────────────────
   const handleSaveRecord = async () => {
     if (!editingRecord) return;
@@ -222,7 +229,14 @@ export default function ManagerDashboard() {
     if (!error) { toast.success("Modifié."); setEditingRecord(null); if (selectedMechanic) fetchMechanicData(selectedMechanic.id); }
     else toast.error(`Erreur: ${error.message}`);
   };
-
+const handleDeleteRecord = async (id: string) => {
+  if (!confirm('Supprimer cette fiche ?')) return;
+  const { error } = await supabase.from('maintenance_records').delete().eq('id', id);
+  if (!error) {
+    setMaintenance(prev => prev.filter(r => r.id !== id));
+    toast.success("Fiche supprimée.");
+  } else toast.error(`Erreur: ${error.message}`);
+};
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -439,8 +453,15 @@ export default function ManagerDashboard() {
                             <td className="px-4 py-3 font-mono text-xs text-amber-700">{p.tva_amount?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
                             <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900">{p.montant_ttc?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
                             <td className="px-4 py-3">
-                              <button onClick={() => setEditingPurchase(p)} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider">Modifier</button>
-                            </td>
+  <div className="flex items-center gap-2">
+    <button onClick={() => setEditingPurchase(p)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
+      <Pencil size={13} />
+    </button>
+    <button onClick={() => handleDeletePurchase(p.id)} className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
+      <Trash2 size={13} />
+    </button>
+  </div>
+</td>
                           </tr>
                         ))}
                       </tbody>
@@ -560,8 +581,15 @@ export default function ManagerDashboard() {
                                       ) : <span className="text-slate-300 text-xs">—</span>}
                                     </td>
                                     <td className="px-4 py-3">
-                                      <button onClick={() => setEditingRecord(r)} className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Modifier</button>
-                                    </td>
+  <div className="flex items-center gap-1">
+    <button onClick={() => setEditingRecord(r)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
+      <Pencil size={13} />
+    </button>
+    <button onClick={() => handleDeleteRecord(r.id)} className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
+      <Trash2 size={13} />
+    </button>
+  </div>
+</td>
                                   </tr>
                                 ))}
                               </tbody>
