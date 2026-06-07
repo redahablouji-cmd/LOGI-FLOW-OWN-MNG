@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
 import CreateStaffForm from '../components/manager/CreateStaffForm';
+import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -19,7 +20,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -58,6 +59,11 @@ export default function ManagerDashboard() {
   const [loadingCompany,   setLoadingCompany]   = useState(true);
   const [activeTab,        setActiveTab]        = useState<ManagerTab>('staff');
   const [sidebarOpen,      setSidebarOpen]      = useState(false);
+  const [fleetDrivers,     setFleetDrivers]     = useState<any[]>([]);
+  const [loadingDrivers,   setLoadingDrivers]   = useState(false);
+  const [editingDriver,    setEditingDriver]     = useState<any | null>(null);
+  const [driverEditForm,   setDriverEditForm]   = useState<any>({});
+  const [uploadingXLS,     setUploadingXLS]     = useState(false);
 
   // Purchases
   const [purchases,        setPurchases]        = useState<Purchase[]>([]);
@@ -252,7 +258,97 @@ export default function ManagerDashboard() {
     if (!error) { setSuiviList(prev => prev.filter(s => s.id !== id)); toast.success("Supprimé."); }
     else toast.error(`Erreur: ${error.message}`);
   };
+// ── Fleet Drivers ──────────────────────────────────────────────────────
+const fetchFleetDrivers = async () => {
+  if (!companyId) return;
+  setLoadingDrivers(true);
+  const { data } = await supabase
+    .from('fleet_drivers')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+  setFleetDrivers(data || []);
+  setLoadingDrivers(false);
+};
 
+const handleXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !companyId) return;
+  setUploadingXLS(true);
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+    const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[1]);
+
+    const records = dataRows.map((r: any[]) => ({
+      company_id:          companyId,
+      code:                String(r[0] || ''),
+      nom_prenom:          String(r[1] || ''),
+      immatriculation:     String(r[2] || ''),
+      type_vehicule:       String(r[3] || ''),
+      cin:                 String(r[4] || ''),
+      imm_cnss:            String(r[5] || ''),
+      fonction:            String(r[6] || ''),
+      date_naissance:      String(r[7] || ''),
+      situation_familiale: String(r[8] || ''),
+      nb_deduction:        parseInt(r[9]) || 0,
+      date_embauche:       String(r[10] || ''),
+      adresse:             String(r[11] || ''),
+    }));
+
+    if (records.length === 0) {
+      toast.error("Aucune donnée trouvée dans le fichier.");
+      return;
+    }
+
+    await supabase.from('fleet_drivers').delete().eq('company_id', companyId);
+    const { error } = await supabase.from('fleet_drivers').insert(records);
+
+    if (!error) {
+      toast.success(`${records.length} chauffeurs importés avec succès.`);
+      fetchFleetDrivers();
+    } else {
+      toast.error(`Erreur: ${error.message}`);
+    }
+  } catch (err: any) {
+    toast.error(`Erreur lecture fichier: ${err.message}`);
+  } finally {
+    setUploadingXLS(false);
+    e.target.value = '';
+  }
+};
+
+const handleDeleteDriver = async (id: string) => {
+  if (!confirm('Supprimer ce chauffeur ?')) return;
+  const { error } = await supabase.from('fleet_drivers').delete().eq('id', id);
+  if (!error) { setFleetDrivers(prev => prev.filter(d => d.id !== id)); toast.success("Supprimé."); }
+  else toast.error(`Erreur: ${error.message}`);
+};
+
+const handleEditDriverSave = async () => {
+  const { error } = await supabase.from('fleet_drivers').update({
+    code:                driverEditForm.code,
+    nom_prenom:          driverEditForm.nom_prenom,
+    immatriculation:     driverEditForm.immatriculation,
+    type_vehicule:       driverEditForm.type_vehicule,
+    cin:                 driverEditForm.cin,
+    imm_cnss:            driverEditForm.imm_cnss,
+    fonction:            driverEditForm.fonction,
+    date_naissance:      driverEditForm.date_naissance,
+    situation_familiale: driverEditForm.situation_familiale,
+    nb_deduction:        parseInt(driverEditForm.nb_deduction) || 0,
+    date_embauche:       driverEditForm.date_embauche,
+    adresse:             driverEditForm.adresse,
+  }).eq('id', editingDriver.id);
+  if (!error) {
+    toast.success("Chauffeur modifié.");
+    setEditingDriver(null);
+    fetchFleetDrivers();
+  } else toast.error(`Erreur: ${error.message}`);
+};
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -261,6 +357,7 @@ export default function ManagerDashboard() {
     if (activeTab === 'purchases') fetchPurchases();
     if (activeTab === 'fleetfix' && companyId) fetchMechanics();
     if (activeTab === 'suivi') fetchSuivi();
+    if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
   }, [activeTab, companyId]);
 
   useEffect(() => { if (selectedMechanic) fetchMechanicData(selectedMechanic.id); }, [selectedMechanic]);
@@ -295,6 +392,7 @@ export default function ManagerDashboard() {
     { id: 'purchases', label: 'Achats & Factures', icon: ShoppingBag },
     { id: 'fleetfix',  label: 'FleetFix',          icon: Wrench },
     { id: 'suivi',     label: 'Suivi Facturation', icon: FileText },
+    { id: 'chauffeurs', label: 'Chauffeurs', icon: Truck },
   ] as const;
 
   const suiviFields = [
@@ -754,6 +852,108 @@ export default function ManagerDashboard() {
               )}
             </div>
           )}
+          {/* TAB: CHAUFFEURS */}
+{activeTab === 'chauffeurs' && (
+  <div>
+    <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-cyan-500 text-slate-950 mb-2">
+            <Truck className="w-3.5 h-3.5" /> Flotte Chauffeurs
+          </span>
+          <h1 className="text-2xl font-extrabold tracking-tight">Gestion des Chauffeurs</h1>
+          <p className="text-sm text-slate-400 mt-1">{fleetDrivers.length} chauffeurs enregistrés</p>
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <button onClick={fetchFleetDrivers}
+            className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <RefreshCw className="w-3.5 h-3.5" /> Actualiser
+          </button>
+          <button onClick={() => exportToXLS(fleetDrivers.map(d => ({
+            'Code': d.code, 'Nom/Prénom': d.nom_prenom, 'Immatriculation': d.immatriculation,
+            'Type': d.type_vehicule, 'CIN': d.cin, 'IMM CNSS': d.imm_cnss,
+            'Fonction': d.fonction, 'Date Naissance': d.date_naissance,
+            'Situation Familiale': d.situation_familiale, 'Nb Déduction': d.nb_deduction,
+            'Date Embauche': d.date_embauche, 'Adresse': d.adresse,
+          })), 'chauffeurs_export')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <Download size={14} /> Export XLS
+          </button>
+          {/* XLS Upload */}
+          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingXLS ? 'bg-slate-600 opacity-60' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+            <Upload size={14} />
+            {uploadingXLS ? 'Importation...' : 'Importer XLS'}
+            <input type="file" accept=".xlsx,.xls" onChange={handleXLSUpload} className="hidden" disabled={uploadingXLS} />
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {/* Template download hint */}
+    <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
+      📋 Format attendu du fichier XLS — colonnes dans l'ordre :
+      <span className="font-black ml-1">Code | Nom/Prénom | Immatriculation | Type | CIN | IMM CNSS | Fonction | Date Naissance | Situation Familiale | Nb Déduction | Date Embauche | Adresse</span>
+    </div>
+
+    {loadingDrivers ? (
+      <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
+    ) : (
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[1100px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                {['Code','Nom / Prénom','Immat.','Type','CIN','IMM CNSS','Fonction','Naissance','Situation','Déductions','Embauche','Adresse','Actions'].map(h => (
+                  <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {fleetDrivers.length === 0 ? (
+                <tr>
+                  <td colSpan={13} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Truck size={32} className="text-slate-300" />
+                      <p className="text-sm text-slate-400 font-medium">Aucun chauffeur importé.</p>
+                      <p className="text-xs text-slate-400">Cliquez sur "Importer XLS" pour charger votre liste de chauffeurs.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : fleetDrivers.map(d => (
+                <tr key={d.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-3 py-3 font-mono text-xs font-bold text-blue-600">{d.code || '—'}</td>
+                  <td className="px-3 py-3 text-xs font-semibold text-slate-800">{d.nom_prenom}</td>
+                  <td className="px-3 py-3 font-mono text-xs font-bold text-slate-700">{d.immatriculation || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{d.type_vehicule || '—'}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-slate-600">{d.cin || '—'}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-slate-600">{d.imm_cnss || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{d.fonction || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-500">{d.date_naissance || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-500">{d.situation_familiale || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-center text-slate-600">{d.nb_deduction ?? '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-500">{d.date_embauche || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-500 max-w-[150px] truncate">{d.adresse || '—'}</td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setEditingDriver(d); setDriverEditForm({ ...d }); }}
+                        className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleDeleteDriver(d.id)}
+                        className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+  </div>
+)}
         </main>
       </div>
 
@@ -892,6 +1092,54 @@ export default function ManagerDashboard() {
           </div>
         )}
       </AnimatePresence>
+      {/* Edit Driver Modal */}
+<AnimatePresence>
+  {editingDriver && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Modifier le Chauffeur</h3>
+          <button onClick={() => setEditingDriver(null)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[
+            { label: 'Code',                key: 'code',                type: 'text'   },
+            { label: 'Nom / Prénom',         key: 'nom_prenom',          type: 'text'   },
+            { label: 'Immatriculation',      key: 'immatriculation',     type: 'text'   },
+            { label: 'Type Véhicule',        key: 'type_vehicule',       type: 'text'   },
+            { label: 'CIN',                  key: 'cin',                 type: 'text'   },
+            { label: 'IMM CNSS',             key: 'imm_cnss',            type: 'text'   },
+            { label: 'Fonction',             key: 'fonction',            type: 'text'   },
+            { label: 'Date de Naissance',    key: 'date_naissance',      type: 'text'   },
+            { label: 'Situation Familiale',  key: 'situation_familiale', type: 'text'   },
+            { label: 'Nombre de Déductions', key: 'nb_deduction',        type: 'number' },
+            { label: 'Date d\'Embauche',     key: 'date_embauche',       type: 'text'   },
+            { label: 'Adresse',              key: 'adresse',             type: 'text'   },
+          ].map(({ label, key, type }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type={type} value={driverEditForm[key] || ''}
+                onChange={e => setDriverEditForm((p: any) => ({ ...p, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleEditDriverSave}
+            className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+            Enregistrer
+          </button>
+          <button onClick={() => setEditingDriver(null)}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
+            Annuler
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
     </div>
   );
 }
