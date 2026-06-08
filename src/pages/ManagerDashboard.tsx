@@ -434,7 +434,14 @@ const handleEditClientSave = async () => {
 };
 // ── Suivi Facturation ──────────────────────────────────────────────────
 
-
+const calcEcartDelai = (dateFacture: string, datePaiement: string, delai: number): number => {
+  if (!dateFacture || !delai) return 0;
+  const base = new Date(dateFacture);
+  const echeance = new Date(base);
+  echeance.setDate(echeance.getDate() + delai);
+  const paiement = datePaiement ? new Date(datePaiement) : new Date();
+  return Math.round((paiement.getTime() - echeance.getTime()) / (1000 * 60 * 60 * 24));
+};
 const fetchFacturation = async () => {
   if (!companyId) return;
   setLoadingFacturation(true);
@@ -487,7 +494,8 @@ const handleSaveFacturation = async () => {
     reglement_numero:     factForm.reglement_numero        || null,
     echeances:            factForm.echeances               || null,
     mode_paiement:        factForm.mode_paiement           || null,
-    statut:               factForm.statut                  || 'impayé',
+    statut:               factForm.statut || 'impayé',
+    ecart_delai: calcEcartDelai(factForm.date, factForm.date_paiement, parseInt(factForm.delai_paiement) || 60),
   };
 
   if (editingFact) {
@@ -554,7 +562,20 @@ const filteredFacts = facturationList.filter(f => {
   if (factFilter.dateTo   && f.date > factFilter.dateTo)   return false;
   return true;
 });
-
+const today = new Date();
+const dueIn15 = facturationList.filter(f => {
+  if (f.statut === 'payé' || !f.date || !f.delai_paiement) return false;
+  const echeance = new Date(f.date);
+  echeance.setDate(echeance.getDate() + f.delai_paiement);
+  const daysLeft = Math.round((echeance.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return daysLeft >= 0 && daysLeft <= 15;
+});
+const overdue = facturationList.filter(f => {
+  if (f.statut === 'payé' || !f.date || !f.delai_paiement) return false;
+  const echeance = new Date(f.date);
+  echeance.setDate(echeance.getDate() + f.delai_paiement);
+  return echeance < today;
+});
 const handleGenerateInvoicePDF = () => {
   const selected = facturationList.filter(f => selectedFacts.includes(f.id));
   if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
@@ -1141,7 +1162,7 @@ ${pages.map((pageRows, pageIdx) => `
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {suiviList.length === 0 ? (
-                          <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation. Cliquez sur "Nouveau".</td></tr>
+                          <tr><td colSpan={20} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation. Cliquez sur "Nouveau".</td></tr>
                         ) : suiviList.map(s => (
                           <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.date}</td>
@@ -1377,6 +1398,42 @@ ${pages.map((pageRows, pageIdx) => `
 )}
 {activeTab === 'facturation' && (
   <div>
+  {/* Payment Due Notifications */}
+    {(dueIn15.length > 0 || overdue.length > 0) && (
+      <div className="mb-4 space-y-2">
+        {overdue.length > 0 && (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center gap-3">
+            <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
+              <Receipt className="w-4 h-4 text-rose-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-black text-rose-800">⚠ {overdue.length} facture(s) en retard de paiement</p>
+              <p className="text-xs text-rose-600 mt-0.5">
+                {overdue.map(f => `${f.client} — N°${f.numero_facture || '?'}`).join(' • ')}
+              </p>
+            </div>
+          </div>
+        )}
+        {dueIn15.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+            <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center shrink-0">
+              <Receipt className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-black text-amber-800">🔔 {dueIn15.length} facture(s) à échéance dans 15 jours</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                {dueIn15.map(f => {
+                  const echeance = new Date(f.date);
+                  echeance.setDate(echeance.getDate() + f.delai_paiement);
+                  const daysLeft = Math.round((echeance.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                  return `${f.client} — ${daysLeft}j restants`;
+                }).join(' • ')}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
     {/* Header */}
     <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1393,11 +1450,24 @@ ${pages.map((pageRows, pageIdx) => `
             <RefreshCw className="w-3.5 h-3.5" /> Actualiser
           </button>
           <button onClick={() => exportToXLS(filteredFacts.map(f => ({
-            'Date': f.date, 'N° Facture': f.numero_facture, 'Client': f.client,
-            'Départ': f.depart, 'Arrivée': f.arrivee, 'HT': f.montant_ht,
-            'TVA': f.tva, 'TTC': f.montant_ttc, 'BL/OT': f.bl_ot, 'BC': f.bc,
-            'Délai': f.delai_paiement, 'Date Paiement': f.date_paiement,
-            'Statut': f.statut, 'Mode': f.mode_paiement,
+            'Date': f.date,
+            'N° Facture': f.numero_facture,
+            'Client': f.client,
+            'Départ': f.depart,
+            'Arrivée': f.arrivee,
+            'Montant HT': f.montant_ht,
+            'TVA': f.tva,
+            'Montant TTC': f.montant_ttc,
+            'BL/OT': f.bl_ot,
+            'BC': f.bc,
+            'Délai Paiement (J)': f.delai_paiement,
+            'Date Paiement': f.date_paiement,
+            'Écart Délai (J)': f.ecart_delai ?? calcEcartDelai(f.date, f.date_paiement, f.delai_paiement),
+            'Règlement Banque/Type': f.reglement_banque_type,
+            'Règlement N°': f.reglement_numero,
+            'Échéances': f.echeances,
+            'Mode Paiement': f.mode_paiement,
+            'Statut': f.statut,
           })), 'suivi_facturation')}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Download size={14} /> Export XLS
@@ -1488,7 +1558,7 @@ ${pages.map((pageRows, pageIdx) => `
                       setSelectedFacts(prev => prev.length === allIds.length ? [] : allIds);
                     }} />
                 </th>
-                {['Date','N° Fact.','Client','Départ','Arrivée','HT','TVA','TTC','BL/OT','BC','Délai','Date Paie.','Statut','Mode','Actions'].map(h => (
+                {['Date','N° Fact.','Client','Départ','Arrivée','HT','TVA','TTC','BL/OT','BC','Délai','Date Paie.','Écart Délai','Règl. Banque','Règl. N°','Échéances','Mode','Statut','Actions'].map(h => (
                   <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1524,6 +1594,19 @@ ${pages.map((pageRows, pageIdx) => `
                     </span>
                   </td>
                   <td className="px-3 py-3 text-xs text-slate-600">{f.mode_paiement || '—'}</td>
+                  <td className="px-3 py-3">
+                    {(() => {
+                      const ecart = f.ecart_delai ?? calcEcartDelai(f.date, f.date_paiement, f.delai_paiement);
+                      return (
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono ${ecart > 0 ? 'bg-rose-50 text-rose-700' : ecart < 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {ecart > 0 ? `+${ecart}` : ecart} j
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.reglement_banque_type || '—'}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-slate-600">{f.reglement_numero || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.echeances || '—'}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-1">
                       <button onClick={() => {
