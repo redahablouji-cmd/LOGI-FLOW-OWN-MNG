@@ -20,7 +20,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -64,6 +64,11 @@ export default function ManagerDashboard() {
   const [editingDriver,    setEditingDriver]     = useState<any | null>(null);
   const [driverEditForm,   setDriverEditForm]   = useState<any>({});
   const [uploadingXLS,     setUploadingXLS]     = useState(false);
+  const [clientsList,      setClientsList]      = useState<any[]>([]);
+  const [loadingClients,   setLoadingClients]   = useState(false);
+  const [editingClient,    setEditingClient]    = useState<any | null>(null);
+  const [clientEditForm,   setClientEditForm]   = useState<any>({});
+  const [uploadingClients, setUploadingClients] = useState(false);
 
   // Purchases
   const [purchases,        setPurchases]        = useState<Purchase[]>([]);
@@ -349,6 +354,65 @@ const handleEditDriverSave = async () => {
     fetchFleetDrivers();
   } else toast.error(`Erreur: ${error.message}`);
 };
+const fetchClients = async () => {
+  if (!companyId) return;
+  setLoadingClients(true);
+  const { data } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+  setClientsList(data || []);
+  setLoadingClients(false);
+};
+
+const handleClientsXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !companyId) return;
+  setUploadingClients(true);
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[0]);
+    const records = dataRows.map((r: any[]) => ({
+      company_id:    companyId,
+      nom:           String(r[0] || '').trim(),
+      adresse:       String(r[1] || '').trim(),
+      ice:           String(r[2] || '').trim(),
+      delai_paiement: parseInt(r[3]) || 60,
+    }));
+    if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
+    await supabase.from('clients').delete().eq('company_id', companyId);
+    const { error } = await supabase.from('clients').insert(records);
+    if (!error) { toast.success(`${records.length} clients importés.`); fetchClients(); }
+    else toast.error(`Erreur: ${error.message}`);
+  } catch (err: any) {
+    toast.error(`Erreur: ${err.message}`);
+  } finally {
+    setUploadingClients(false);
+    e.target.value = '';
+  }
+};
+
+const handleDeleteClient = async (id: string) => {
+  if (!confirm('Supprimer ce client ?')) return;
+  const { error } = await supabase.from('clients').delete().eq('id', id);
+  if (!error) { setClientsList(prev => prev.filter(c => c.id !== id)); toast.success("Supprimé."); }
+  else toast.error(`Erreur: ${error.message}`);
+};
+
+const handleEditClientSave = async () => {
+  const { error } = await supabase.from('clients').update({
+    nom:           clientEditForm.nom,
+    adresse:       clientEditForm.adresse,
+    ice:           clientEditForm.ice,
+    delai_paiement: parseInt(clientEditForm.delai_paiement) || 60,
+  }).eq('id', editingClient.id);
+  if (!error) { toast.success("Client modifié."); setEditingClient(null); fetchClients(); }
+  else toast.error(`Erreur: ${error.message}`);
+};
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -358,6 +422,7 @@ const handleEditDriverSave = async () => {
     if (activeTab === 'fleetfix' && companyId) fetchMechanics();
     if (activeTab === 'suivi') fetchSuivi();
     if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
+    if (activeTab === 'clients' && companyId) fetchClients();
   }, [activeTab, companyId]);
 
   useEffect(() => { if (selectedMechanic) fetchMechanicData(selectedMechanic.id); }, [selectedMechanic]);
@@ -393,6 +458,7 @@ const handleEditDriverSave = async () => {
     { id: 'fleetfix',  label: 'FleetFix',          icon: Wrench },
     { id: 'suivi',     label: 'Suivi Facturation', icon: FileText },
     { id: 'chauffeurs', label: 'Chauffeurs', icon: Truck },
+    { id: 'clients', label: 'Clients', icon: Users },
   ] as const;
 
   const suiviFields = [
@@ -954,6 +1020,92 @@ const handleEditDriverSave = async () => {
     )}
   </div>
 )}
+{activeTab === 'clients' && (
+  <div>
+    <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-emerald-500 text-slate-950 mb-2">
+            <Users className="w-3.5 h-3.5" /> Base Clients
+          </span>
+          <h1 className="text-2xl font-extrabold tracking-tight">Gestion des Clients</h1>
+          <p className="text-sm text-slate-400 mt-1">{clientsList.length} clients enregistrés</p>
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <button onClick={fetchClients}
+            className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <RefreshCw className="w-3.5 h-3.5" /> Actualiser
+          </button>
+          <button onClick={() => exportToXLS(clientsList.map(c => ({
+            'Client': c.nom, 'Adresse': c.adresse, 'ICE': c.ice, 'Délai Paiement': c.delai_paiement,
+          })), 'clients_export')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <Download size={14} /> Export XLS
+          </button>
+          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingClients ? 'bg-slate-600 opacity-60' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+            <Upload size={14} />
+            {uploadingClients ? 'Importation...' : 'Importer XLS'}
+            <input type="file" accept=".xlsx,.xls" onChange={handleClientsXLSUpload} className="hidden" disabled={uploadingClients} />
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
+      📋 Format attendu : <span className="font-black">Clients | Adresse | ICE | Délai de paiement/Jour</span>
+    </div>
+
+    {loadingClients ? (
+      <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
+    ) : (
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                {['Client','Adresse','ICE','Délai (J)','Actions'].map(h => (
+                  <th key={h} className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {clientsList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Users size={32} className="text-slate-300" />
+                      <p className="text-sm text-slate-400 font-medium">Aucun client importé.</p>
+                      <p className="text-xs text-slate-400">Cliquez sur "Importer XLS" pour charger votre base clients.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : clientsList.map(c => (
+                <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-xs font-semibold text-slate-800">{c.nom}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600 max-w-[300px] truncate">{c.adresse || '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-blue-600">{c.ice || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-center font-bold text-slate-700">{c.delai_paiement} J</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setEditingClient(c); setClientEditForm({ ...c }); }}
+                        className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleDeleteClient(c.id)}
+                        className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+  </div>
+)}
         </main>
       </div>
 
@@ -1132,6 +1284,43 @@ const handleEditDriverSave = async () => {
             Enregistrer
           </button>
           <button onClick={() => setEditingDriver(null)}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
+            Annuler
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+<AnimatePresence>
+  {editingClient && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Modifier le Client</h3>
+          <button onClick={() => setEditingClient(null)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        {[
+          { label: 'Nom Client',         key: 'nom',            type: 'text'   },
+          { label: 'Adresse',            key: 'adresse',        type: 'text'   },
+          { label: 'ICE',                key: 'ice',            type: 'text'   },
+          { label: 'Délai Paiement (J)', key: 'delai_paiement', type: 'number' },
+        ].map(({ label, key, type }) => (
+          <div key={key}>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+            <input type={type} value={clientEditForm[key] || ''}
+              onChange={e => setClientEditForm((p: any) => ({ ...p, [key]: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        ))}
+        <div className="flex gap-3 pt-2">
+          <button onClick={handleEditClientSave}
+            className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+            Enregistrer
+          </button>
+          <button onClick={() => setEditingClient(null)}
             className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
             Annuler
           </button>
