@@ -40,6 +40,16 @@ interface SuiviRecord {
   cout_revient: number; benefice: number; created_at: string;
 }
 
+const emptyFactForm = {
+  date: new Date().toISOString().split('T')[0],
+  numero_facture: '', client: '', depart: '', arrivee: '',
+  montant_ht: '', tva: '', montant_ttc: '',
+  bl_ot: '', bc: '', delai_paiement: '60',
+  date_paiement: '', reglement_banque_type: '',
+  reglement_numero: '', echeances: '', mode_paiement: '',
+  statut: 'impayé',
+};
+
 const emptySuivi = {
   date: new Date().toISOString().split('T')[0],
   matricule: '', type: '', facture: '', bon_commande: '', ot_bl_bs_be: '',
@@ -103,6 +113,7 @@ const [editingFact,        setEditingFact]        = useState<any | null>(null);
 const [factForm,           setFactForm]           = useState<any>({});
 const [selectedFacts,      setSelectedFacts]      = useState<string[]>([]);
 const [factFilter,         setFactFilter]         = useState({ client: '', dateFrom: '', dateTo: '', statut: '' });
+const [uploadingFacts, setUploadingFacts] = useState(false);
 const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
@@ -422,15 +433,7 @@ const handleEditClientSave = async () => {
   else toast.error(`Erreur: ${error.message}`);
 };
 // ── Suivi Facturation ──────────────────────────────────────────────────
-const emptyFactForm = {
-  date: new Date().toISOString().split('T')[0],
-  numero_facture: '', client: '', depart: '', arrivee: '',
-  montant_ht: '', tva: '', montant_ttc: '',
-  bl_ot: '', bc: '', delai_paiement: '60',
-  date_paiement: '', reglement_banque_type: '',
-  reglement_numero: '', echeances: '', mode_paiement: '',
-  statut: 'impayé',
-};
+
 
 const fetchFacturation = async () => {
   if (!companyId) return;
@@ -505,7 +508,45 @@ const handleDeleteFact = async (id: string) => {
   if (!error) { setFacturationList(prev => prev.filter(f => f.id !== id)); toast.success("Supprimé."); }
   else toast.error(`Erreur: ${error.message}`);
 };
-
+const handleFactXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !companyId) return;
+  setUploadingFacts(true);
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[0]);
+    const records = dataRows.map((r: any[]) => ({
+      company_id:           companyId,
+      manager_id:           managerId || null,
+      date:                 r[0] ? String(r[0]) : null,
+      numero_facture:       String(r[1] || '').trim(),
+      client:               String(r[2] || '').trim(),
+      depart:               String(r[3] || '').trim(),
+      arrivee:              String(r[4] || '').trim(),
+      montant_ht:           parseFloat(r[5]) || 0,
+      tva:                  parseFloat(r[6]) || 0,
+      montant_ttc:          parseFloat(r[7]) || 0,
+      bl_ot:                String(r[8] || '').trim(),
+      bc:                   String(r[9] || '').trim(),
+      delai_paiement:       parseInt(r[10]) || 60,
+      date_paiement:        r[11] ? String(r[11]) : null,
+      statut:               String(r[12] || 'impayé').trim().toLowerCase(),
+      mode_paiement:        String(r[13] || '').trim(),
+    }));
+    if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
+    const { error } = await supabase.from('suivi_facturation').insert(records);
+    if (!error) { toast.success(`${records.length} factures importées.`); fetchFacturation(); }
+    else toast.error(`Erreur: ${error.message}`);
+  } catch (err: any) {
+    toast.error(`Erreur: ${err.message}`);
+  } finally {
+    setUploadingFacts(false);
+    e.target.value = '';
+  }
+};
 const filteredFacts = facturationList.filter(f => {
   if (factFilter.client  && !f.client?.toLowerCase().includes(factFilter.client.toLowerCase())) return false;
   if (factFilter.statut  && f.statut !== factFilter.statut) return false;
@@ -1367,6 +1408,11 @@ ${pages.map((pageRows, pageIdx) => `
               <FileText size={14} /> Générer PDF ({selectedFacts.length})
             </button>
           )}
+          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingFacts ? 'bg-slate-600 opacity-60' : 'bg-amber-600 hover:bg-amber-700'} text-white`}>
+            <Upload size={14} />
+            {uploadingFacts ? 'Importation...' : 'Importer XLS'}
+            <input type="file" accept=".xlsx,.xls" onChange={handleFactXLSUpload} className="hidden" disabled={uploadingFacts} />
+          </label>
           <button onClick={() => { setPrestationPickerOpen(true); setEditingFact(null); setFactForm(emptyFactForm); }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Plus size={14} /> Nouvelle Facture
@@ -1419,6 +1465,10 @@ ${pages.map((pageRows, pageIdx) => `
           {selectedFacts.length === filteredFacts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
         </button>
       )}
+    </div>
+    <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-medium">
+      📋 Format import XLS — colonnes dans l'ordre :
+      <span className="font-black ml-1">Date | N° Facture | Client | Départ | Arrivée | Montant HT | TVA | Montant TTC | BL/OT | BC | Délai (J) | Date Paiement | Statut | Mode Paiement</span>
     </div>
 
     {/* Table */}
