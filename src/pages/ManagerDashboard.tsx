@@ -265,11 +265,11 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       benefice:       parseFloat(suiviForm.benefice       as string) || 0,
     };
     if (editingSuivi) {
-      const { error } = await supabase.from('suivi_facturation').update(payload).eq('id', editingSuivi.id);
+      const { error } = await supabase.from('suivi_prestation').update(payload).eq('id', editingSuivi.id);
       if (!error) { toast.success("Modifié."); setEditingSuivi(null); fetchSuivi(); }
       else toast.error(`Erreur: ${error.message}`);
     } else {
-      const { error } = await supabase.from('suivi_facturation').insert(payload);
+      const { error } = await supabase.from('suivi_prestation').insert(payload);
       if (!error) { toast.success("Ajouté."); setShowSuiviForm(false); fetchSuivi(); }
       else toast.error(`Erreur: ${error.message}`);
     }
@@ -278,7 +278,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
 
   const handleDeleteSuivi = async (id: string) => {
     if (!confirm('Supprimer ?')) return;
-    const { error } = await supabase.from('suivi_facturation').delete().eq('id', id);
+    const { error } = await supabase.from('suivi_prestation').delete().eq('id', id);
     if (!error) { setSuiviList(prev => prev.filter(s => s.id !== id)); toast.success("Supprimé."); }
     else toast.error(`Erreur: ${error.message}`);
   };
