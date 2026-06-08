@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
@@ -20,7 +20,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients' | 'facturation';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -95,7 +95,15 @@ export default function ManagerDashboard() {
   const [showSuiviForm,    setShowSuiviForm]    = useState(false);
   const [suiviForm,        setSuiviForm]        = useState(emptySuivi);
   const [editingSuivi,     setEditingSuivi]     = useState<SuiviRecord | null>(null);
-
+// Suivi Facturation
+const [facturationList,    setFacturationList]    = useState<any[]>([]);
+const [loadingFacturation, setLoadingFacturation] = useState(false);
+const [showFactForm,       setShowFactForm]       = useState(false);
+const [editingFact,        setEditingFact]        = useState<any | null>(null);
+const [factForm,           setFactForm]           = useState<any>({});
+const [selectedFacts,      setSelectedFacts]      = useState<string[]>([]);
+const [factFilter,         setFactFilter]         = useState({ client: '', dateFrom: '', dateTo: '', statut: '' });
+const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -226,7 +234,7 @@ export default function ManagerDashboard() {
   // ── Suivi Facturation ──────────────────────────────────────────────────
   const fetchSuivi = async () => {
     setLoadingSuivi(true);
-    const { data } = await supabase.from('suivi_facturation').select('*').order('created_at', { ascending: false });
+    const { data } = await supabase.from('suivi_prestation').select('*').order('created_at', { ascending: false });
     setSuiviList(data || []);
     setLoadingSuivi(false);
   };
@@ -413,6 +421,224 @@ const handleEditClientSave = async () => {
   if (!error) { toast.success("Client modifié."); setEditingClient(null); fetchClients(); }
   else toast.error(`Erreur: ${error.message}`);
 };
+// ── Suivi Facturation ──────────────────────────────────────────────────
+const emptyFactForm = {
+  date: new Date().toISOString().split('T')[0],
+  numero_facture: '', client: '', depart: '', arrivee: '',
+  montant_ht: '', tva: '', montant_ttc: '',
+  bl_ot: '', bc: '', delai_paiement: '60',
+  date_paiement: '', reglement_banque_type: '',
+  reglement_numero: '', echeances: '', mode_paiement: '',
+  statut: 'impayé',
+};
+
+const fetchFacturation = async () => {
+  if (!companyId) return;
+  setLoadingFacturation(true);
+  const { data } = await supabase
+    .from('suivi_facturation')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+  setFacturationList(data || []);
+  setLoadingFacturation(false);
+};
+
+const handleAutoFillFromPrestation = (prestation: any) => {
+  const client = clientsList.find(c => c.nom === prestation.client);
+  setFactForm({
+    ...emptyFactForm,
+    client:          prestation.client       || '',
+    depart:          prestation.depart       || '',
+    arrivee:         prestation.arrivee      || '',
+    montant_ht:      String(prestation.prix_ht  || ''),
+    tva:             String((prestation.prix_ttc - prestation.prix_ht) || ''),
+    montant_ttc:     String(prestation.prix_ttc  || ''),
+    bl_ot:           prestation.ot_bl_bs_be  || '',
+    bc:              prestation.bon_commande || '',
+    delai_paiement:  String(client?.delai_paiement || 60),
+    prestation_id:   prestation.id,
+  });
+  setPrestationPickerOpen(false);
+  setShowFactForm(true);
+};
+
+const handleSaveFacturation = async () => {
+  const payload = {
+    company_id:           companyId || null,
+    manager_id:           managerId || null,
+    prestation_id:        factForm.prestation_id || null,
+    date:                 factForm.date           || null,
+    numero_facture:       factForm.numero_facture || null,
+    client:               factForm.client         || null,
+    depart:               factForm.depart         || null,
+    arrivee:              factForm.arrivee        || null,
+    montant_ht:           parseFloat(factForm.montant_ht)  || 0,
+    tva:                  parseFloat(factForm.tva)         || 0,
+    montant_ttc:          parseFloat(factForm.montant_ttc) || 0,
+    bl_ot:                factForm.bl_ot                   || null,
+    bc:                   factForm.bc                      || null,
+    delai_paiement:       parseInt(factForm.delai_paiement) || 60,
+    date_paiement:        factForm.date_paiement            || null,
+    reglement_banque_type: factForm.reglement_banque_type  || null,
+    reglement_numero:     factForm.reglement_numero        || null,
+    echeances:            factForm.echeances               || null,
+    mode_paiement:        factForm.mode_paiement           || null,
+    statut:               factForm.statut                  || 'impayé',
+  };
+
+  if (editingFact) {
+    const { error } = await supabase.from('suivi_facturation').update(payload).eq('id', editingFact.id);
+    if (!error) { toast.success("Facture modifiée."); setEditingFact(null); fetchFacturation(); }
+    else toast.error(`Erreur: ${error.message}`);
+  } else {
+    const { error } = await supabase.from('suivi_facturation').insert(payload);
+    if (!error) { toast.success("Facture ajoutée."); setShowFactForm(false); fetchFacturation(); }
+    else toast.error(`Erreur: ${error.message}`);
+  }
+  setFactForm(emptyFactForm);
+};
+
+const handleDeleteFact = async (id: string) => {
+  if (!confirm('Supprimer cette facture ?')) return;
+  const { error } = await supabase.from('suivi_facturation').delete().eq('id', id);
+  if (!error) { setFacturationList(prev => prev.filter(f => f.id !== id)); toast.success("Supprimé."); }
+  else toast.error(`Erreur: ${error.message}`);
+};
+
+const filteredFacts = facturationList.filter(f => {
+  if (factFilter.client  && !f.client?.toLowerCase().includes(factFilter.client.toLowerCase())) return false;
+  if (factFilter.statut  && f.statut !== factFilter.statut) return false;
+  if (factFilter.dateFrom && f.date < factFilter.dateFrom) return false;
+  if (factFilter.dateTo   && f.date > factFilter.dateTo)   return false;
+  return true;
+});
+
+const handleGenerateInvoicePDF = () => {
+  const selected = facturationList.filter(f => selectedFacts.includes(f.id));
+  if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
+
+  const ROWS_PER_PAGE = 15;
+  const pages = [];
+  for (let i = 0; i < selected.length; i += ROWS_PER_PAGE) {
+    pages.push(selected.slice(i, i + ROWS_PER_PAGE));
+  }
+
+  const totalHT  = selected.reduce((s, f) => s + (f.montant_ht  || 0), 0);
+  const totalTVA = selected.reduce((s, f) => s + (f.tva         || 0), 0);
+  const totalTTC = selected.reduce((s, f) => s + (f.montant_ttc || 0), 0);
+  const clientName = selected[0]?.client || '';
+
+  const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; }
+    .page { width: 210mm; min-height: 297mm; padding: 15mm; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #1e40af; padding-bottom: 12px; }
+    .logo { font-size: 22px; font-weight: 900; color: #1e40af; letter-spacing: -1px; }
+    .logo span { color: #f59e0b; }
+    .invoice-title { font-size: 18px; font-weight: 700; color: #1e293b; text-align: right; }
+    .invoice-meta { text-align: right; color: #64748b; margin-top: 4px; font-size: 10px; }
+    .client-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; }
+    .client-box strong { font-size: 13px; color: #1e293b; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th { background: #1e40af; color: white; padding: 7px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+    td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; font-size: 10px; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .totals { display: flex; justify-content: flex-end; margin-top: 8px; }
+    .totals-box { border: 2px solid #1e40af; border-radius: 6px; padding: 10px 16px; min-width: 220px; }
+    .totals-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }
+    .totals-row.total { font-weight: 700; font-size: 13px; color: #1e40af; border-top: 1px solid #e2e8f0; margin-top: 4px; padding-top: 6px; }
+    .footer { position: fixed; bottom: 10mm; left: 15mm; right: 15mm; text-align: center; color: #94a3b8; font-size: 9px; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+    .page-num { position: fixed; bottom: 10mm; right: 15mm; font-size: 9px; color: #94a3b8; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+${pages.map((pageRows, pageIdx) => `
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="logo">LOGI<span>-FLOW</span></div>
+        <div style="color:#64748b;font-size:10px;margin-top:4px;">${activeCompany?.name || ''}</div>
+      </div>
+      <div>
+        <div class="invoice-title">FACTURE</div>
+        <div class="invoice-meta">Page ${pageIdx + 1} / ${pages.length}</div>
+        <div class="invoice-meta">Généré le: ${new Date().toLocaleDateString('fr-MA')}</div>
+      </div>
+    </div>
+
+    <div class="client-box">
+      <strong>${clientName}</strong><br/>
+      <span style="color:#64748b;font-size:10px;">
+        ${selected.length} ligne(s) — Délai paiement: ${selected[0]?.delai_paiement || 60} jours
+      </span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>N° Fact.</th>
+          <th>BL/OT</th>
+          <th>BC</th>
+          <th>Départ</th>
+          <th>Arrivée</th>
+          <th>HT</th>
+          <th>TVA</th>
+          <th>TTC</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${pageRows.map(f => `
+          <tr>
+            <td>${f.date || '—'}</td>
+            <td><strong>${f.numero_facture || '—'}</strong></td>
+            <td>${f.bl_ot || '—'}</td>
+            <td>${f.bc   || '—'}</td>
+            <td>${f.depart  || '—'}</td>
+            <td>${f.arrivee || '—'}</td>
+            <td style="text-align:right">${Number(f.montant_ht).toLocaleString('fr-MA')} MAD</td>
+            <td style="text-align:right">${Number(f.tva).toLocaleString('fr-MA')} MAD</td>
+            <td style="text-align:right;font-weight:700">${Number(f.montant_ttc).toLocaleString('fr-MA')} MAD</td>
+            <td><span class="badge ${f.statut === 'payé' ? 'badge-green' : 'badge-red'}">${f.statut || 'impayé'}</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    ${pageIdx === pages.length - 1 ? `
+    <div class="totals">
+      <div class="totals-box">
+        <div class="totals-row"><span>Total HT</span><span>${totalHT.toLocaleString('fr-MA')} MAD</span></div>
+        <div class="totals-row"><span>Total TVA</span><span>${totalTVA.toLocaleString('fr-MA')} MAD</span></div>
+        <div class="totals-row total"><span>Total TTC</span><span>${totalTTC.toLocaleString('fr-MA')} MAD</span></div>
+      </div>
+    </div>
+    ` : ''}
+  </div>
+`).join('')}
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 500);
+  }
+};
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -423,6 +649,7 @@ const handleEditClientSave = async () => {
     if (activeTab === 'suivi') fetchSuivi();
     if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
     if (activeTab === 'clients' && companyId) fetchClients();
+    if (activeTab === 'facturation' && companyId) { fetchFacturation(); fetchSuivi(); fetchClients(); }
   }, [activeTab, companyId]);
 
   useEffect(() => { if (selectedMechanic) fetchMechanicData(selectedMechanic.id); }, [selectedMechanic]);
@@ -453,13 +680,14 @@ const handleEditClientSave = async () => {
   };
 
   const navItems = [
-    { id: 'staff',     label: 'Staff',            icon: Users },
-    { id: 'purchases', label: 'Achats & Factures', icon: ShoppingBag },
-    { id: 'fleetfix',  label: 'FleetFix',          icon: Wrench },
-    { id: 'suivi',     label: 'Suivi Facturation', icon: FileText },
-    { id: 'chauffeurs', label: 'Chauffeurs', icon: Truck },
-    { id: 'clients', label: 'Clients', icon: Users },
-  ] as const;
+  { id: 'staff',       label: 'Staff',               icon: Users },
+  { id: 'purchases',   label: 'Achats & Factures',    icon: ShoppingBag },
+  { id: 'fleetfix',    label: 'FleetFix',             icon: Wrench },
+  { id: 'suivi',       label: 'Suivi Prestation',     icon: FileText },
+  { id: 'chauffeurs',  label: 'Chauffeurs',           icon: Truck },
+  { id: 'clients',     label: 'Clients',              icon: Users },
+  { id: 'facturation', label: 'Suivi Facturation',    icon: Receipt },
+] as const;
 
   const suiviFields = [
     { label: 'Date',                  key: 'date',           type: 'date'   },
@@ -1106,6 +1334,180 @@ const handleEditClientSave = async () => {
     )}
   </div>
 )}
+{activeTab === 'facturation' && (
+  <div>
+    {/* Header */}
+    <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-blue-500 text-white mb-2">
+            <Receipt className="w-3.5 h-3.5" /> Suivi Facturation
+          </span>
+          <h1 className="text-2xl font-extrabold tracking-tight">Gestion des Factures</h1>
+          <p className="text-sm text-slate-400 mt-1">{facturationList.length} factures — {selectedFacts.length} sélectionnées</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={fetchFacturation}
+            className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <RefreshCw className="w-3.5 h-3.5" /> Actualiser
+          </button>
+          <button onClick={() => exportToXLS(filteredFacts.map(f => ({
+            'Date': f.date, 'N° Facture': f.numero_facture, 'Client': f.client,
+            'Départ': f.depart, 'Arrivée': f.arrivee, 'HT': f.montant_ht,
+            'TVA': f.tva, 'TTC': f.montant_ttc, 'BL/OT': f.bl_ot, 'BC': f.bc,
+            'Délai': f.delai_paiement, 'Date Paiement': f.date_paiement,
+            'Statut': f.statut, 'Mode': f.mode_paiement,
+          })), 'suivi_facturation')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <Download size={14} /> Export XLS
+          </button>
+          {selectedFacts.length > 0 && (
+            <button onClick={handleGenerateInvoicePDF}
+              className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+              <FileText size={14} /> Générer PDF ({selectedFacts.length})
+            </button>
+          )}
+          <button onClick={() => { setPrestationPickerOpen(true); setEditingFact(null); setFactForm(emptyFactForm); }}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <Plus size={14} /> Nouvelle Facture
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* Filters */}
+    <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+      <div>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+        <input type="text" placeholder="Filtrer par client..."
+          value={factFilter.client}
+          onChange={e => setFactFilter(p => ({ ...p, client: e.target.value }))}
+          className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-48" />
+      </div>
+      <div>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
+        <input type="date" value={factFilter.dateFrom}
+          onChange={e => setFactFilter(p => ({ ...p, dateFrom: e.target.value }))}
+          className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
+      </div>
+      <div>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
+        <input type="date" value={factFilter.dateTo}
+          onChange={e => setFactFilter(p => ({ ...p, dateTo: e.target.value }))}
+          className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
+      </div>
+      <div>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
+        <select value={factFilter.statut}
+          onChange={e => setFactFilter(p => ({ ...p, statut: e.target.value }))}
+          className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+          <option value="">Tous</option>
+          <option value="payé">Payé</option>
+          <option value="impayé">Impayé</option>
+        </select>
+      </div>
+      <button onClick={() => setFactFilter({ client: '', dateFrom: '', dateTo: '', statut: '' })}
+        className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
+        Réinitialiser
+      </button>
+      {filteredFacts.length > 0 && (
+        <button onClick={() => {
+          const allIds = filteredFacts.map(f => f.id);
+          setSelectedFacts(prev => prev.length === allIds.length ? [] : allIds);
+        }}
+          className="h-8 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg cursor-pointer border border-blue-200">
+          {selectedFacts.length === filteredFacts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+        </button>
+      )}
+    </div>
+
+    {/* Table */}
+    {loadingFacturation ? (
+      <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
+    ) : (
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[1400px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="px-3 py-3 w-10">
+                  <input type="checkbox"
+                    checked={selectedFacts.length === filteredFacts.length && filteredFacts.length > 0}
+                    onChange={() => {
+                      const allIds = filteredFacts.map(f => f.id);
+                      setSelectedFacts(prev => prev.length === allIds.length ? [] : allIds);
+                    }} />
+                </th>
+                {['Date','N° Fact.','Client','Départ','Arrivée','HT','TVA','TTC','BL/OT','BC','Délai','Date Paie.','Statut','Mode','Actions'].map(h => (
+                  <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredFacts.length === 0 ? (
+                <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">
+                  Aucune facture. Cliquez sur "Nouvelle Facture".
+                </td></tr>
+              ) : filteredFacts.map(f => (
+                <tr key={f.id} className={`hover:bg-slate-50 transition-colors ${selectedFacts.includes(f.id) ? 'bg-blue-50/50' : ''}`}>
+                  <td className="px-3 py-3">
+                    <input type="checkbox" checked={selectedFacts.includes(f.id)}
+                      onChange={() => setSelectedFacts(prev =>
+                        prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
+                      )} />
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{f.date}</td>
+                  <td className="px-3 py-3 font-mono text-xs font-bold text-blue-600">{f.numero_facture || '—'}</td>
+                  <td className="px-3 py-3 text-xs font-semibold text-slate-800">{f.client || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.depart || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.arrivee || '—'}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-slate-700">{Number(f.montant_ht).toLocaleString('fr-MA')}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-amber-700">{Number(f.tva).toLocaleString('fr-MA')}</td>
+                  <td className="px-3 py-3 font-mono text-xs font-bold text-slate-900">{Number(f.montant_ttc).toLocaleString('fr-MA')}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.bl_ot || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.bc || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-center text-slate-600">{f.delai_paiement} J</td>
+                  <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{f.date_paiement || '—'}</td>
+                  <td className="px-3 py-3">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${f.statut === 'payé' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                      {f.statut || 'impayé'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.mode_paiement || '—'}</td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => {
+                        setEditingFact(f);
+                        setFactForm({
+                          date: f.date, numero_facture: f.numero_facture, client: f.client,
+                          depart: f.depart, arrivee: f.arrivee,
+                          montant_ht: String(f.montant_ht), tva: String(f.tva),
+                          montant_ttc: String(f.montant_ttc), bl_ot: f.bl_ot, bc: f.bc,
+                          delai_paiement: String(f.delai_paiement), date_paiement: f.date_paiement || '',
+                          reglement_banque_type: f.reglement_banque_type || '',
+                          reglement_numero: f.reglement_numero || '',
+                          echeances: f.echeances || '', mode_paiement: f.mode_paiement || '',
+                          statut: f.statut || 'impayé',
+                        });
+                        setShowFactForm(true);
+                      }} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleDeleteFact(f.id)}
+                        className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+  </div>
+)}
         </main>
       </div>
 
@@ -1321,6 +1723,120 @@ const handleEditClientSave = async () => {
             Enregistrer
           </button>
           <button onClick={() => setEditingClient(null)}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
+            Annuler
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Prestation Picker */}
+<AnimatePresence>
+  {prestationPickerOpen && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-4xl w-full shadow-xl max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Sélectionner une Prestation</h3>
+          <button onClick={() => setPrestationPickerOpen(false)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">Cliquez sur une prestation pour auto-remplir la facture.</p>
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              {['Date','Matricule','Client','Départ','Arrivée','Prix HT','Prix TTC','BL/OT'].map(h => (
+                <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {suiviList.length === 0 ? (
+              <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-400">Aucune prestation disponible.</td></tr>
+            ) : suiviList.map(p => (
+              <tr key={p.id}
+                onClick={() => handleAutoFillFromPrestation(p)}
+                className="hover:bg-blue-50 cursor-pointer transition-colors">
+                <td className="px-3 py-2">{p.date}</td>
+                <td className="px-3 py-2 font-mono text-blue-600">{p.matricule || '—'}</td>
+                <td className="px-3 py-2 font-semibold">{p.client || '—'}</td>
+                <td className="px-3 py-2">{p.depart || '—'}</td>
+                <td className="px-3 py-2">{p.arrivee || '—'}</td>
+                <td className="px-3 py-2">{Number(p.prix_ht).toLocaleString('fr-MA')}</td>
+                <td className="px-3 py-2 font-bold">{Number(p.prix_ttc).toLocaleString('fr-MA')}</td>
+                <td className="px-3 py-2">{p.ot_bl_bs_be || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          <button onClick={() => { setShowFactForm(true); setPrestationPickerOpen(false); setFactForm(emptyFactForm); }}
+            className="text-xs text-blue-600 font-bold hover:underline cursor-pointer">
+            → Créer une facture sans prestation
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+
+{/* Facture Form Modal */}
+<AnimatePresence>
+  {showFactForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">
+            {editingFact ? 'Modifier la Facture' : 'Nouvelle Facture'}
+          </h3>
+          <button onClick={() => { setShowFactForm(false); setEditingFact(null); }}
+            className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[
+            { label: 'Date',                  key: 'date',                  type: 'date'   },
+            { label: 'N° Facture',            key: 'numero_facture',        type: 'text'   },
+            { label: 'Client',                key: 'client',                type: 'text'   },
+            { label: 'Départ',                key: 'depart',                type: 'text'   },
+            { label: 'Arrivée',               key: 'arrivee',               type: 'text'   },
+            { label: 'Montant HT (MAD)',       key: 'montant_ht',            type: 'number' },
+            { label: 'TVA (MAD)',              key: 'tva',                   type: 'number' },
+            { label: 'Montant TTC (MAD)',      key: 'montant_ttc',           type: 'number' },
+            { label: 'BL / OT',               key: 'bl_ot',                 type: 'text'   },
+            { label: 'BC',                    key: 'bc',                    type: 'text'   },
+            { label: 'Délai Paiement (J)',     key: 'delai_paiement',        type: 'number' },
+            { label: 'Date de Paiement',       key: 'date_paiement',         type: 'date'   },
+            { label: 'Règlement Banque/Type',  key: 'reglement_banque_type', type: 'text'   },
+            { label: 'Règlement N°',           key: 'reglement_numero',      type: 'text'   },
+            { label: 'Échéances',              key: 'echeances',             type: 'text'   },
+            { label: 'Mode de Paiement',       key: 'mode_paiement',         type: 'text'   },
+          ].map(({ label, key, type }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type={type} value={(factForm as any)[key] || ''}
+                onChange={e => setFactForm((p: any) => ({ ...p, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
+            <select value={factForm.statut || 'impayé'}
+              onChange={e => setFactForm((p: any) => ({ ...p, statut: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="impayé">Impayé</option>
+              <option value="payé">Payé</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveFacturation}
+            className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+            {editingFact ? 'Enregistrer les modifications' : 'Ajouter la facture'}
+          </button>
+          <button onClick={() => { setShowFactForm(false); setEditingFact(null); }}
             className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
             Annuler
           </button>
