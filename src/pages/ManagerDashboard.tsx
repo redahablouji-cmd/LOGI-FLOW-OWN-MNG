@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
@@ -20,7 +20,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients' | 'facturation';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients' | 'facturation' | 'settings';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -114,6 +114,17 @@ const [factForm,           setFactForm]           = useState<any>({});
 const [selectedFacts,      setSelectedFacts]      = useState<string[]>([]);
 const [factFilter,         setFactFilter]         = useState({ client: '', dateFrom: '', dateTo: '', statut: '' });
 const [uploadingFacts, setUploadingFacts] = useState(false);
+const [invoiceSettings,  setInvoiceSettings]  = useState<any>({
+  company_name: '', address: '', phone: '', email: '',
+  ice: '', rc: '', rib: '', bank_name: '',
+  invoice_title: 'FACTURE', primary_color: '#1e40af', accent_color: '#f59e0b',
+  footer_text: '', signature_label: 'Signature & Cachet',
+  show_bl_ot: true, show_bc: true, show_manut: false, show_immob: false, show_ecart: false,
+  logo_url: '',
+});
+const [savingSettings,   setSavingSettings]   = useState(false);
+const [settingsLoaded,   setSettingsLoaded]   = useState(false);
+const [showPreview,      setShowPreview]      = useState(false);
 const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
@@ -555,6 +566,29 @@ const handleFactXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     e.target.value = '';
   }
 };
+// ── Invoice Settings ───────────────────────────────────────────────────
+const fetchInvoiceSettings = async () => {
+  if (!companyId) return;
+  const { data } = await supabase
+    .from('invoice_settings')
+    .select('*')
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (data) setInvoiceSettings(data);
+  setSettingsLoaded(true);
+};
+
+const handleSaveInvoiceSettings = async () => {
+  if (!companyId) return;
+  setSavingSettings(true);
+  const payload = { ...invoiceSettings, company_id: companyId, updated_at: new Date().toISOString() };
+  const { error } = await supabase
+    .from('invoice_settings')
+    .upsert(payload, { onConflict: 'company_id' });
+  if (!error) toast.success("Modèle de facture sauvegardé !");
+  else toast.error(`Erreur: ${error.message}`);
+  setSavingSettings(false);
+};
 const filteredFacts = facturationList.filter(f => {
   if (factFilter.client  && !f.client?.toLowerCase().includes(factFilter.client.toLowerCase())) return false;
   if (factFilter.statut  && f.statut !== factFilter.statut) return false;
@@ -580,115 +614,166 @@ const handleGenerateInvoicePDF = () => {
   const selected = facturationList.filter(f => selectedFacts.includes(f.id));
   if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
 
+  const s = invoiceSettings;
   const ROWS_PER_PAGE = 15;
-  const pages = [];
+  const pages: any[][] = [];
   for (let i = 0; i < selected.length; i += ROWS_PER_PAGE) {
     pages.push(selected.slice(i, i + ROWS_PER_PAGE));
   }
 
-  const totalHT  = selected.reduce((s, f) => s + (f.montant_ht  || 0), 0);
-  const totalTVA = selected.reduce((s, f) => s + (f.tva         || 0), 0);
-  const totalTTC = selected.reduce((s, f) => s + (f.montant_ttc || 0), 0);
+  const totalHT  = selected.reduce((sum, f) => sum + (f.montant_ht  || 0), 0);
+  const totalTVA = selected.reduce((sum, f) => sum + (f.tva         || 0), 0);
+  const totalTTC = selected.reduce((sum, f) => sum + (f.montant_ttc || 0), 0);
   const clientName = selected[0]?.client || '';
 
-  const html = `
-<!DOCTYPE html>
+  // Build dynamic columns based on settings
+  const cols = [
+    { label: 'Date',      key: 'date',          always: true  },
+    { label: 'N° Fact.',  key: 'numero_facture', always: true  },
+    { label: 'BL/OT',    key: 'bl_ot',          show: s.show_bl_ot },
+    { label: 'BC',        key: 'bc',             show: s.show_bc    },
+    { label: 'Départ',   key: 'depart',          always: true  },
+    { label: 'Arrivée',  key: 'arrivee',         always: true  },
+    { label: 'Manut.',   key: 'manutention',     show: s.show_manut },
+    { label: 'Immob.',   key: 'immobilisation',  show: s.show_immob },
+    { label: 'HT (MAD)', key: 'montant_ht',      always: true  },
+    { label: 'TVA (MAD)',key: 'tva',             always: true  },
+    { label: 'TTC (MAD)',key: 'montant_ttc',     always: true  },
+    { label: 'Écart',    key: 'ecart_delai',     show: s.show_ecart },
+  ].filter(c => c.always || c.show);
+
+  const primary = s.primary_color || '#1e40af';
+  const accent  = s.accent_color  || '#f59e0b';
+
+  const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; }
-    .page { width: 210mm; min-height: 297mm; padding: 15mm; page-break-after: always; }
-    .page:last-child { page-break-after: auto; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #1e40af; padding-bottom: 12px; }
-    .logo { font-size: 22px; font-weight: 900; color: #1e40af; letter-spacing: -1px; }
-    .logo span { color: #f59e0b; }
-    .invoice-title { font-size: 18px; font-weight: 700; color: #1e293b; text-align: right; }
-    .invoice-meta { text-align: right; color: #64748b; margin-top: 4px; font-size: 10px; }
-    .client-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; }
-    .client-box strong { font-size: 13px; color: #1e293b; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-    th { background: #1e40af; color: white; padding: 7px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
-    td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; font-size: 10px; }
-    tr:nth-child(even) td { background: #f8fafc; }
-    .totals { display: flex; justify-content: flex-end; margin-top: 8px; }
-    .totals-box { border: 2px solid #1e40af; border-radius: 6px; padding: 10px 16px; min-width: 220px; }
-    .totals-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }
-    .totals-row.total { font-weight: 700; font-size: 13px; color: #1e40af; border-top: 1px solid #e2e8f0; margin-top: 4px; padding-top: 6px; }
-    .footer { position: fixed; bottom: 10mm; left: 15mm; right: 15mm; text-align: center; color: #94a3b8; font-size: 9px; border-top: 1px solid #e2e8f0; padding-top: 6px; }
-    .page-num { position: fixed; bottom: 10mm; right: 15mm; font-size: 9px; color: #94a3b8; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
-    .badge-green { background: #dcfce7; color: #166534; }
-    .badge-red { background: #fee2e2; color: #991b1b; }
-    @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; font-size:11px; color:#1e293b; }
+    .page { width:210mm; min-height:297mm; padding:12mm 15mm; page-break-after:always; position:relative; }
+    .page:last-child { page-break-after:auto; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; padding-bottom:12px; border-bottom:3px solid ${primary}; }
+    .logo-area { display:flex; align-items:center; gap:10px; }
+    .logo-img { max-height:50px; max-width:120px; object-fit:contain; }
+    .company-name { font-size:18px; font-weight:900; color:${primary}; }
+    .company-sub { font-size:9px; color:#64748b; margin-top:3px; line-height:1.6; }
+    .invoice-box { text-align:right; }
+    .invoice-title { font-size:22px; font-weight:900; color:${primary}; letter-spacing:2px; }
+    .invoice-meta { font-size:9px; color:#64748b; margin-top:4px; line-height:1.6; }
+    .invoice-num { font-size:13px; font-weight:700; color:${accent}; margin-top:4px; }
+    .client-box { background:#f8fafc; border-left:4px solid ${accent}; padding:8px 12px; margin-bottom:14px; border-radius:0 6px 6px 0; }
+    .client-box strong { font-size:12px; color:#1e293b; }
+    .client-sub { font-size:9px; color:#64748b; margin-top:2px; }
+    table { width:100%; border-collapse:collapse; margin-bottom:12px; font-size:9.5px; }
+    th { background:${primary}; color:white; padding:6px 7px; text-align:left; font-size:8px; text-transform:uppercase; letter-spacing:0.4px; }
+    td { padding:5px 7px; border-bottom:1px solid #f1f5f9; }
+    tr:nth-child(even) td { background:#f8fafc; }
+    .num { text-align:right; }
+    .totals-row { display:flex; justify-content:flex-end; margin-top:6px; }
+    .totals-box { border:2px solid ${primary}; border-radius:6px; padding:8px 14px; min-width:200px; }
+    .t-row { display:flex; justify-content:space-between; padding:2px 0; font-size:10px; }
+    .t-total { font-weight:700; font-size:13px; color:${primary}; border-top:1px solid #e2e8f0; margin-top:4px; padding-top:5px; }
+    .payment-box { margin-top:12px; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:9px; }
+    .payment-box strong { color:${primary}; font-size:10px; }
+    .footer-area { position:absolute; bottom:10mm; left:15mm; right:15mm; }
+    .footer-text { font-size:8px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:5px; text-align:center; }
+    .signature-block { display:flex; justify-content:flex-end; margin-top:16px; }
+    .signature-box { border:1px solid #e2e8f0; border-radius:6px; padding:8px 16px; min-width:160px; text-align:center; }
+    .signature-label { font-size:8px; font-weight:700; color:#64748b; text-transform:uppercase; }
+    .signature-space { height:40px; }
+    .page-num { text-align:right; font-size:8px; color:#94a3b8; margin-top:4px; }
+    .badge { display:inline-block; padding:1px 6px; border-radius:3px; font-size:8px; font-weight:700; text-transform:uppercase; }
+    .badge-green { background:#dcfce7; color:#166534; }
+    .badge-red { background:#fee2e2; color:#991b1b; }
+    @media print { body { print-color-adjust:exact; -webkit-print-color-adjust:exact; } }
   </style>
 </head>
 <body>
 ${pages.map((pageRows, pageIdx) => `
-  <div class="page">
-    <div class="header">
+<div class="page">
+  <div class="header">
+    <div class="logo-area">
+      ${s.logo_url ? `<img src="${s.logo_url}" class="logo-img" />` : ''}
       <div>
-        <div class="logo">LOGI<span>-FLOW</span></div>
-        <div style="color:#64748b;font-size:10px;margin-top:4px;">${activeCompany?.name || ''}</div>
-      </div>
-      <div>
-        <div class="invoice-title">FACTURE</div>
-        <div class="invoice-meta">Page ${pageIdx + 1} / ${pages.length}</div>
-        <div class="invoice-meta">Généré le: ${new Date().toLocaleDateString('fr-MA')}</div>
-      </div>
-    </div>
-
-    <div class="client-box">
-      <strong>${clientName}</strong><br/>
-      <span style="color:#64748b;font-size:10px;">
-        ${selected.length} ligne(s) — Délai paiement: ${selected[0]?.delai_paiement || 60} jours
-      </span>
-    </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>N° Fact.</th>
-          <th>BL/OT</th>
-          <th>BC</th>
-          <th>Départ</th>
-          <th>Arrivée</th>
-          <th>HT</th>
-          <th>TVA</th>
-          <th>TTC</th>
-          <th>Statut</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${pageRows.map(f => `
-          <tr>
-            <td>${f.date || '—'}</td>
-            <td><strong>${f.numero_facture || '—'}</strong></td>
-            <td>${f.bl_ot || '—'}</td>
-            <td>${f.bc   || '—'}</td>
-            <td>${f.depart  || '—'}</td>
-            <td>${f.arrivee || '—'}</td>
-            <td style="text-align:right">${Number(f.montant_ht).toLocaleString('fr-MA')} MAD</td>
-            <td style="text-align:right">${Number(f.tva).toLocaleString('fr-MA')} MAD</td>
-            <td style="text-align:right;font-weight:700">${Number(f.montant_ttc).toLocaleString('fr-MA')} MAD</td>
-            <td><span class="badge ${f.statut === 'payé' ? 'badge-green' : 'badge-red'}">${f.statut || 'impayé'}</span></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-
-    ${pageIdx === pages.length - 1 ? `
-    <div class="totals">
-      <div class="totals-box">
-        <div class="totals-row"><span>Total HT</span><span>${totalHT.toLocaleString('fr-MA')} MAD</span></div>
-        <div class="totals-row"><span>Total TVA</span><span>${totalTVA.toLocaleString('fr-MA')} MAD</span></div>
-        <div class="totals-row total"><span>Total TTC</span><span>${totalTTC.toLocaleString('fr-MA')} MAD</span></div>
+        <div class="company-name">${s.company_name || activeCompany?.name || 'LOGI-FLOW'}</div>
+        <div class="company-sub">
+          ${s.address ? s.address + '<br/>' : ''}
+          ${s.phone ? 'Tél: ' + s.phone + '  ' : ''}${s.email ? s.email + '<br/>' : ''}
+          ${s.ice ? 'ICE: ' + s.ice + '  ' : ''}${s.rc ? 'RC: ' + s.rc : ''}
+        </div>
       </div>
     </div>
-    ` : ''}
+    <div class="invoice-box">
+      <div class="invoice-title">${s.invoice_title || 'FACTURE'}</div>
+      <div class="invoice-num">${selected[0]?.numero_facture ? 'N° ' + selected[0].numero_facture : ''}</div>
+      <div class="invoice-meta">
+        Date: ${new Date().toLocaleDateString('fr-MA')}<br/>
+        Page ${pageIdx + 1} / ${pages.length}
+      </div>
+    </div>
   </div>
+
+  <div class="client-box">
+    <strong>${clientName}</strong>
+    <div class="client-sub">
+      ${selected.length} prestation(s) — Délai paiement: ${selected[0]?.delai_paiement || 60} jours
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr>
+    </thead>
+    <tbody>
+      ${pageRows.map(f => `
+        <tr>
+          ${cols.map(c => {
+            const v = f[c.key];
+            if (['montant_ht','tva','montant_ttc','manutention','immobilisation'].includes(c.key)) {
+              return `<td class="num">${Number(v || 0).toLocaleString('fr-MA')} MAD</td>`;
+            }
+            if (c.key === 'ecart_delai') {
+              const e = v ?? 0;
+              return `<td class="num"><span class="badge ${e > 0 ? 'badge-red' : 'badge-green'}">${e > 0 ? '+' : ''}${e}j</span></td>`;
+            }
+            return `<td>${v || '—'}</td>`;
+          }).join('')}
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  ${pageIdx === pages.length - 1 ? `
+  <div class="totals-row">
+    <div class="totals-box">
+      <div class="t-row"><span>Total HT</span><span>${totalHT.toLocaleString('fr-MA')} MAD</span></div>
+      <div class="t-row"><span>Total TVA</span><span>${totalTVA.toLocaleString('fr-MA')} MAD</span></div>
+      <div class="t-row t-total"><span>Total TTC</span><span>${totalTTC.toLocaleString('fr-MA')} MAD</span></div>
+    </div>
+  </div>
+
+  ${(s.rib || s.bank_name) ? `
+  <div class="payment-box">
+    <strong>Coordonnées Bancaires</strong><br/>
+    ${s.bank_name ? 'Banque: ' + s.bank_name + '  ' : ''}
+    ${s.rib ? 'RIB: ' + s.rib : ''}
+  </div>` : ''}
+
+  <div class="signature-block">
+    <div class="signature-box">
+      <div class="signature-label">${s.signature_label || 'Signature & Cachet'}</div>
+      <div class="signature-space"></div>
+    </div>
+  </div>
+  ` : ''}
+
+  <div class="footer-area">
+    ${s.footer_text ? `<div class="footer-text">${s.footer_text}</div>` : ''}
+    <div class="page-num">Page ${pageIdx + 1} / ${pages.length}</div>
+  </div>
+</div>
 `).join('')}
 </body>
 </html>`;
@@ -698,7 +783,7 @@ ${pages.map((pageRows, pageIdx) => `
     win.document.write(html);
     win.document.close();
     win.focus();
-    setTimeout(() => win.print(), 500);
+    setTimeout(() => win.print(), 600);
   }
 };
   useEffect(() => {
@@ -712,6 +797,7 @@ ${pages.map((pageRows, pageIdx) => `
     if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
     if (activeTab === 'clients' && companyId) fetchClients();
     if (activeTab === 'facturation' && companyId) { fetchFacturation(); fetchSuivi(); fetchClients(); }
+    if (activeTab === 'settings' && companyId) fetchInvoiceSettings();
   }, [activeTab, companyId]);
 
   useEffect(() => { if (selectedMechanic) fetchMechanicData(selectedMechanic.id); }, [selectedMechanic]);
@@ -749,6 +835,7 @@ ${pages.map((pageRows, pageIdx) => `
   { id: 'chauffeurs',  label: 'Chauffeurs',           icon: Truck },
   { id: 'clients',     label: 'Clients',              icon: Users },
   { id: 'facturation', label: 'Suivi Facturation',    icon: Receipt },
+  { id: 'settings', label: 'Paramètres Facture', icon: Settings },
 ] as const;
 
   const suiviFields = [
@@ -1641,6 +1728,172 @@ ${pages.map((pageRows, pageIdx) => `
     )}
   </div>
 )}
+{activeTab === 'settings' && (
+  <div>
+    <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-slate-500 text-white mb-2">
+            <Settings className="w-3.5 h-3.5" /> Paramètres
+          </span>
+          <h1 className="text-2xl font-extrabold tracking-tight">Modèle de Facture</h1>
+          <p className="text-sm text-slate-400 mt-1">Configurez votre facture une fois — utilisée automatiquement à chaque génération PDF.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowPreview(true)}
+            className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <Eye size={14} /> Aperçu PDF
+          </button>
+          <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            {savingSettings ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {savingSettings ? 'Sauvegarde...' : 'Sauvegarder'}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      {/* BLOCK 1: Company Header */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-black text-blue-700">1</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">En-tête Entreprise</span>
+        </div>
+        <div className="p-5 grid grid-cols-2 gap-4">
+          {[
+            { label: 'Nom de l\'entreprise', key: 'company_name' },
+            { label: 'Adresse',              key: 'address'      },
+            { label: 'Téléphone',            key: 'phone'        },
+            { label: 'Email',                key: 'email'        },
+            { label: 'ICE',                  key: 'ice'          },
+            { label: 'RC',                   key: 'rc'           },
+          ].map(({ label, key }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type="text" value={invoiceSettings[key] || ''}
+                onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+          <div className="col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logo URL (optionnel)</label>
+            <input type="text" placeholder="https://... ou laisser vide"
+              value={invoiceSettings.logo_url || ''}
+              onChange={e => setInvoiceSettings((p: any) => ({ ...p, logo_url: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* BLOCK 2: Invoice Style */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center text-[10px] font-black text-violet-700">2</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Style & Titre</span>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Titre du document</label>
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              {['FACTURE', 'AVOIR', 'DEVIS'].map(t => (
+                <button key={t} onClick={() => setInvoiceSettings((p: any) => ({ ...p, invoice_title: t }))}
+                  className={`h-9 rounded-lg text-xs font-black uppercase border-2 transition-all cursor-pointer ${invoiceSettings.invoice_title === t ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Couleur principale</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="color" value={invoiceSettings.primary_color || '#1e40af'}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, primary_color: e.target.value }))}
+                  className="h-9 w-12 rounded cursor-pointer border-2 border-slate-200" />
+                <span className="text-xs font-mono text-slate-500">{invoiceSettings.primary_color}</span>
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Couleur accent</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="color" value={invoiceSettings.accent_color || '#f59e0b'}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, accent_color: e.target.value }))}
+                  className="h-9 w-12 rounded cursor-pointer border-2 border-slate-200" />
+                <span className="text-xs font-mono text-slate-500">{invoiceSettings.accent_color}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BLOCK 3: Columns */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] font-black text-emerald-700">3</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Colonnes à afficher</span>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-[10px] text-slate-400">Date, N° Facture, Client, Départ, Arrivée, HT, TVA, TTC sont toujours inclus.</p>
+          {[
+            { label: 'BL / OT',            key: 'show_bl_ot' },
+            { label: 'Bon de Commande',    key: 'show_bc'    },
+            { label: 'Manutention',        key: 'show_manut' },
+            { label: 'Immobilisation',     key: 'show_immob' },
+            { label: 'Écart de délai',     key: 'show_ecart' },
+          ].map(({ label, key }) => (
+            <label key={key} className="flex items-center gap-3 cursor-pointer group">
+              <div onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
+                className={`w-10 h-6 rounded-full transition-all cursor-pointer flex items-center ${invoiceSettings[key] ? 'bg-blue-600' : 'bg-slate-200'}`}>
+                <div className={`w-4 h-4 bg-white rounded-full shadow transition-all mx-1 ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
+              </div>
+              <span className={`text-sm font-medium ${invoiceSettings[key] ? 'text-slate-800' : 'text-slate-400'}`}>{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* BLOCK 4: Payment & Footer */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-black text-amber-700">4</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Paiement & Pied de page</span>
+        </div>
+        <div className="p-5 space-y-4">
+          {[
+            { label: 'RIB',             key: 'rib'             },
+            { label: 'Banque',          key: 'bank_name'       },
+            { label: 'Label Signature', key: 'signature_label' },
+          ].map(({ label, key }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type="text" value={invoiceSettings[key] || ''}
+                onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentions légales / Note de bas de page</label>
+            <textarea value={invoiceSettings.footer_text || ''}
+              onChange={e => setInvoiceSettings((p: any) => ({ ...p, footer_text: e.target.value }))}
+              rows={3} placeholder="Ex: Règlement par virement bancaire. Tout retard de paiement..."
+              className="w-full mt-1 rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Save button bottom */}
+    <div className="mt-6 flex justify-end">
+      <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
+        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-3 rounded-xl text-sm font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg">
+        {savingSettings ? <Loader2 size={16} className="animate-spin" /> : null}
+        {savingSettings ? 'Sauvegarde en cours...' : '✓ Sauvegarder le modèle'}
+      </button>
+    </div>
+  </div>
+)}
         </main>
       </div>
 
@@ -1973,6 +2226,93 @@ ${pages.map((pageRows, pageIdx) => `
             className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
             Annuler
           </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Invoice Preview Modal */}
+<AnimatePresence>
+  {showPreview && (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Aperçu du Modèle</h3>
+          <button onClick={() => setShowPreview(false)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="p-6">
+          {/* Mini preview */}
+          <div className="border-2 rounded-xl overflow-hidden" style={{ borderColor: invoiceSettings.primary_color }}>
+            {/* Header preview */}
+            <div className="p-4 flex justify-between items-start" style={{ backgroundColor: invoiceSettings.primary_color + '15' }}>
+              <div>
+                <p className="font-black text-sm" style={{ color: invoiceSettings.primary_color }}>
+                  {invoiceSettings.company_name || activeCompany?.name || 'Nom de l\'entreprise'}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">{invoiceSettings.address || 'Adresse...'}</p>
+                <p className="text-[10px] text-slate-500">{invoiceSettings.phone} {invoiceSettings.email}</p>
+                {invoiceSettings.ice && <p className="text-[10px] text-slate-500">ICE: {invoiceSettings.ice}</p>}
+              </div>
+              <div className="text-right">
+                <p className="text-xl font-black" style={{ color: invoiceSettings.primary_color }}>
+                  {invoiceSettings.invoice_title || 'FACTURE'}
+                </p>
+                <p className="text-[10px] text-slate-500">{new Date().toLocaleDateString('fr-MA')}</p>
+              </div>
+            </div>
+            {/* Client box preview */}
+            <div className="mx-4 my-3 p-3 bg-slate-50 rounded-lg" style={{ borderLeft: `4px solid ${invoiceSettings.accent_color}` }}>
+              <p className="text-xs font-bold text-slate-700">NOM DU CLIENT</p>
+              <p className="text-[10px] text-slate-500">X prestation(s) — Délai: {invoiceSettings.delai_paiement || 60}j</p>
+            </div>
+            {/* Table preview */}
+            <div className="mx-4 mb-3">
+              <div className="rounded-lg overflow-hidden border border-slate-200">
+                <div className="grid text-[9px] font-black text-white uppercase px-2 py-1.5"
+                  style={{ backgroundColor: invoiceSettings.primary_color,
+                    gridTemplateColumns: `repeat(${4 + (invoiceSettings.show_bl_ot ? 1:0) + (invoiceSettings.show_bc ? 1:0)}, 1fr)` }}>
+                  <span>Date</span><span>N° Fact.</span>
+                  {invoiceSettings.show_bl_ot && <span>BL/OT</span>}
+                  {invoiceSettings.show_bc    && <span>BC</span>}
+                  <span>HT</span><span>TTC</span>
+                </div>
+                <div className="px-2 py-1.5 text-[9px] text-slate-400 bg-slate-50">
+                  Lignes de facturation...
+                </div>
+              </div>
+            </div>
+            {/* Totals preview */}
+            <div className="flex justify-end mx-4 mb-3">
+              <div className="border-2 rounded-lg p-3 min-w-[160px]" style={{ borderColor: invoiceSettings.primary_color }}>
+                <div className="flex justify-between text-[10px] text-slate-600 mb-1"><span>Total HT</span><span>X MAD</span></div>
+                <div className="flex justify-between text-[10px] text-slate-600 mb-1"><span>TVA</span><span>X MAD</span></div>
+                <div className="flex justify-between text-xs font-black" style={{ color: invoiceSettings.primary_color }}>
+                  <span>Total TTC</span><span>X MAD</span>
+                </div>
+              </div>
+            </div>
+            {/* Footer preview */}
+            {(invoiceSettings.rib || invoiceSettings.bank_name) && (
+              <div className="mx-4 mb-3 p-2 bg-slate-50 rounded text-[9px] text-slate-500 border border-slate-200">
+                {invoiceSettings.bank_name && <span>Banque: {invoiceSettings.bank_name} </span>}
+                {invoiceSettings.rib && <span>RIB: {invoiceSettings.rib}</span>}
+              </div>
+            )}
+            {invoiceSettings.footer_text && (
+              <div className="mx-4 mb-3 text-[9px] text-slate-400 border-t border-slate-200 pt-2 text-center">
+                {invoiceSettings.footer_text}
+              </div>
+            )}
+            <div className="flex justify-end mx-4 mb-4">
+              <div className="border border-slate-200 rounded p-2 text-center min-w-[120px]">
+                <p className="text-[9px] text-slate-400 uppercase font-bold">{invoiceSettings.signature_label || 'Signature & Cachet'}</p>
+                <div className="h-8" />
+              </div>
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400 text-center mt-3">Ceci est un aperçu — le PDF final contiendra vos vraies données de facturation.</p>
         </div>
       </motion.div>
     </div>
