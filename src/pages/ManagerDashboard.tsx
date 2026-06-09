@@ -668,27 +668,86 @@ const handleGenerateInvoicePDF = () => {
   const accent  = s.accent_color  || '#f59e0b';
   const fs      = s.font_size     || 11;
 
-  const cols = [
-    { label: 'Date',      key: 'date',          w: s.col_width_date    || 10, always: true  },
-    { label: 'N° Fact.',  key: 'numero_facture', w: s.col_width_fact    || 10, always: true  },
-    { label: 'Client',    key: 'client',         w: s.col_width_client  || 15, always: true  },
-    { label: 'BL/OT',    key: 'bl_ot',          w: 8,  show: s.show_bl_ot },
-    { label: 'BC',        key: 'bc',             w: 8,  show: s.show_bc    },
-    { label: 'Départ',   key: 'depart',          w: s.col_width_route   || 12, always: true  },
-    { label: 'Arrivée',  key: 'arrivee',         w: s.col_width_route   || 12, always: true  },
-    { label: 'Manut.',   key: 'manutention',     w: 8,  show: s.show_manut },
-    { label: 'Immob.',   key: 'immobilisation',  w: 8,  show: s.show_immob },
-    { label: 'HT (MAD)', key: 'montant_ht',      w: s.col_width_amounts || 12, always: true  },
-    { label: 'TVA (MAD)',key: 'tva',             w: s.col_width_amounts || 12, always: true  },
-    { label: 'TTC (MAD)',key: 'montant_ttc',     w: s.col_width_amounts || 12, always: true  },
-    { label: 'Écart',    key: 'ecart_delai',     w: 7,  show: s.show_ecart },
-  ].filter(c => c.always || c.show);
+  // All 18 columns — filtered by user selection
+  const allCols = [
+    { label: 'Date',            key: 'date',                  show: s.col_show_date,             num: false },
+    { label: 'N° Fact.',        key: 'numero_facture',        show: s.col_show_fact,             num: false },
+    { label: 'Client',          key: 'client',                show: s.col_show_client,           num: false },
+    { label: 'Départ',          key: 'depart',                show: s.col_show_depart,           num: false },
+    { label: 'Arrivée',         key: 'arrivee',               show: s.col_show_arrivee,          num: false },
+    { label: 'HT (MAD)',        key: 'montant_ht',            show: s.col_show_ht,               num: true  },
+    { label: 'TVA (MAD)',       key: 'tva',                   show: s.col_show_tva,              num: true  },
+    { label: 'TTC (MAD)',       key: 'montant_ttc',           show: s.col_show_ttc,              num: true  },
+    { label: 'BL/OT',          key: 'bl_ot',                 show: s.col_show_bl_ot,            num: false },
+    { label: 'BC',              key: 'bc',                    show: s.col_show_bc,               num: false },
+    { label: 'Délai (J)',       key: 'delai_paiement',        show: s.col_show_delai,            num: false },
+    { label: 'Date Paiement',   key: 'date_paiement',         show: s.col_show_date_paiement,    num: false },
+    { label: 'Écart Délai',     key: 'ecart_delai',           show: s.col_show_ecart,            num: false, ecart: true },
+    { label: 'Règl. Banque',    key: 'reglement_banque_type', show: s.col_show_reglement_banque, num: false },
+    { label: 'Règl. N°',        key: 'reglement_numero',      show: s.col_show_reglement_num,    num: false },
+    { label: 'Échéances',       key: 'echeances',             show: s.col_show_echeances,        num: false },
+    { label: 'Mode Paiement',   key: 'mode_paiement',         show: s.col_show_mode,             num: false },
+    { label: 'Statut',          key: 'statut',                show: s.col_show_statut,           num: false, statut: true },
+  ].filter(c => c.show !== false);
 
   const mt = s.margin_top    || 12;
   const mb = s.margin_bottom || 12;
   const ml = s.margin_left   || 15;
   const mr = s.margin_right  || 15;
+  const colW = Math.floor(100 / allCols.length);
 
+  // If HTML template exists use it, otherwise generate
+  if (s.invoice_template_html) {
+    // Build rows table from selected cols
+    const tableHTML = `
+      <table>
+        <thead><tr>${allCols.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${selected.map(f => `
+            <tr>${allCols.map(c => {
+              if (c.num) return `<td style="text-align:right">${Number(f[c.key]||0).toLocaleString('fr-MA')} MAD</td>`;
+              if (c.ecart) { const e = f[c.key]??0; return `<td>${e>0?'+':''}${e}j</td>`; }
+              if (c.statut) return `<td>${f[c.key]||'—'}</td>`;
+              return `<td>${f[c.key]||'—'}</td>`;
+            }).join('')}</tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+
+    let finalHtml = s.invoice_template_html
+      .replace('{{company_name}}',    s.company_name    || activeCompany?.name || '')
+      .replace('{{company_address}}', s.address         || '')
+      .replace('{{company_phone}}',   s.phone           || '')
+      .replace('{{company_email}}',   s.email           || '')
+      .replace('{{company_ice}}',     s.ice             || '')
+      .replace('{{company_rc}}',      s.rc              || '')
+      .replace('{{company_logo}}',    s.logo_url ? `<img src="${s.logo_url}" style="max-height:60px;max-width:150px;object-fit:contain"/>` : '')
+      .replace('{{invoice_title}}',   s.invoice_title   || 'FACTURE')
+      .replace('{{numero_facture}}',  selected[0]?.numero_facture || '')
+      .replace('{{date}}',            new Date().toLocaleDateString('fr-MA'))
+      .replace('{{client}}',          clientName)
+      .replace('{{delai_paiement}}',  String(selected[0]?.delai_paiement || 60))
+      .replace('{{date_paiement}}',   selected[0]?.date_paiement || '')
+      .replace('{{montant_ht}}',      totalHT.toLocaleString('fr-MA'))
+      .replace('{{tva}}',             totalTVA.toLocaleString('fr-MA'))
+      .replace('{{montant_ttc}}',     totalTTC.toLocaleString('fr-MA'))
+      .replace('{{total_ht}}',        totalHT.toLocaleString('fr-MA'))
+      .replace('{{total_tva}}',       totalTVA.toLocaleString('fr-MA'))
+      .replace('{{total_ttc}}',       totalTTC.toLocaleString('fr-MA'))
+      .replace('{{bl_ot}}',           selected[0]?.bl_ot        || '')
+      .replace('{{bc}}',              selected[0]?.bc            || '')
+      .replace('{{rib}}',             s.rib             || '')
+      .replace('{{bank_name}}',       s.bank_name       || '')
+      .replace('{{footer_text}}',     s.footer_text     || '')
+      .replace('{{signature_label}}', s.signature_label || 'Signature & Cachet')
+      .replace('{{rows}}',            tableHTML);
+
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+    return;
+  }
+
+  // Generated template
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -700,42 +759,43 @@ const handleGenerateInvoicePDF = () => {
   .page:last-child { page-break-after:auto; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; padding-bottom:10px; border-bottom:3px solid ${primary}; }
   .logo-img { max-height:55px; max-width:130px; object-fit:contain; }
-  .company-name { font-size:${fs + 7}px; font-weight:900; color:${primary}; }
-  .company-sub { font-size:${fs - 2}px; color:#64748b; margin-top:3px; line-height:1.6; }
-  .invoice-title { font-size:${fs + 11}px; font-weight:900; color:${primary}; letter-spacing:2px; }
-  .invoice-num { font-size:${fs + 2}px; font-weight:700; color:${accent}; margin-top:3px; }
-  .invoice-meta { font-size:${fs - 2}px; color:#64748b; margin-top:3px; line-height:1.6; }
+  .company-name { font-size:${fs+7}px; font-weight:900; color:${primary}; }
+  .company-sub { font-size:${fs-2}px; color:#64748b; margin-top:3px; line-height:1.6; }
+  .invoice-title { font-size:${fs+11}px; font-weight:900; color:${primary}; letter-spacing:2px; }
+  .invoice-num { font-size:${fs+2}px; font-weight:700; color:${accent}; margin-top:3px; }
+  .invoice-meta { font-size:${fs-2}px; color:#64748b; margin-top:3px; line-height:1.6; }
   .client-box { background:#f8fafc; border-left:4px solid ${accent}; padding:7px 12px; margin-bottom:12px; border-radius:0 6px 6px 0; }
-  .client-name { font-size:${fs + 1}px; font-weight:700; color:#1e293b; }
-  .client-sub { font-size:${fs - 2}px; color:#64748b; margin-top:2px; }
+  .client-name { font-size:${fs+1}px; font-weight:700; color:#1e293b; }
+  .client-sub { font-size:${fs-2}px; color:#64748b; margin-top:2px; }
   table { width:100%; border-collapse:collapse; margin-bottom:10px; }
-  th { background:${primary}; color:white; padding:5px 6px; text-align:left; font-size:${fs - 3}px; text-transform:uppercase; letter-spacing:0.3px; }
-  td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:${fs - 1}px; }
+  th { background:${primary}; color:white; padding:5px 6px; text-align:left; font-size:${fs-3}px; text-transform:uppercase; letter-spacing:0.3px; }
+  td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:${fs-1}px; }
   tr:nth-child(even) td { background:#f8fafc; }
   .num { text-align:right; }
   .totals-wrap { display:flex; justify-content:flex-end; margin-top:8px; }
   .totals-box { border:2px solid ${primary}; border-radius:6px; padding:8px 14px; min-width:200px; }
   .t-row { display:flex; justify-content:space-between; padding:2px 0; font-size:${fs}px; }
-  .t-total { font-weight:700; font-size:${fs + 2}px; color:${primary}; border-top:1px solid #e2e8f0; margin-top:4px; padding-top:5px; }
-  .payment-box { margin-top:10px; padding:7px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:${fs - 2}px; }
-  .payment-title { font-weight:700; color:${primary}; font-size:${fs - 1}px; margin-bottom:3px; }
+  .t-total { font-weight:700; font-size:${fs+2}px; color:${primary}; border-top:1px solid #e2e8f0; margin-top:4px; padding-top:5px; }
+  .payment-box { margin-top:10px; padding:7px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:${fs-2}px; }
+  .payment-title { font-weight:700; color:${primary}; font-size:${fs-1}px; margin-bottom:3px; }
   .sig-wrap { display:flex; justify-content:flex-end; margin-top:14px; }
   .sig-box { border:1px solid #cbd5e1; border-radius:6px; padding:8px 16px; min-width:160px; text-align:center; }
-  .sig-label { font-size:${fs - 3}px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; }
+  .sig-label { font-size:${fs-3}px; font-weight:700; color:#64748b; text-transform:uppercase; }
   .sig-space { height:38px; }
   .footer-area { margin-top:14px; border-top:1px solid #e2e8f0; padding-top:5px; }
-  .footer-text { font-size:${fs - 3}px; color:#94a3b8; text-align:center; }
-  .page-num { font-size:${fs - 3}px; color:#94a3b8; text-align:right; margin-top:3px; }
-  .badge { display:inline-block; padding:1px 5px; border-radius:3px; font-size:${fs - 3}px; font-weight:700; }
+  .footer-text { font-size:${fs-3}px; color:#94a3b8; text-align:center; }
+  .page-num { font-size:${fs-3}px; color:#94a3b8; text-align:right; margin-top:3px; }
+  .badge { display:inline-block; padding:1px 5px; border-radius:3px; font-size:${fs-3}px; font-weight:700; }
   .badge-red { background:#fee2e2; color:#991b1b; }
   .badge-green { background:#dcfce7; color:#166534; }
+  .statut-paye { background:#dcfce7; color:#166534; padding:1px 6px; border-radius:3px; font-size:${fs-3}px; font-weight:700; text-transform:uppercase; }
+  .statut-impaye { background:#fee2e2; color:#991b1b; padding:1px 6px; border-radius:3px; font-size:${fs-3}px; font-weight:700; text-transform:uppercase; }
   @media print { body { print-color-adjust:exact; -webkit-print-color-adjust:exact; } }
 </style>
 </head>
 <body>
 ${pages.map((pageRows, pageIdx) => `
 <div class="page">
-
   ${!s.skip_header ? `
   <div class="header">
     <div style="display:flex;align-items:center;gap:10px">
@@ -743,47 +803,38 @@ ${pages.map((pageRows, pageIdx) => `
       <div>
         <div class="company-name">${s.company_name || activeCompany?.name || ''}</div>
         <div class="company-sub">
-          ${s.address  ? s.address  + '<br/>' : ''}
-          ${s.phone    ? 'Tél: '  + s.phone    + (s.email ? ' — ' : '<br/>') : ''}
-          ${s.email    ? s.email   + '<br/>' : ''}
-          ${s.ice      ? 'ICE: '  + s.ice   + (s.rc ? ' — RC: ' + s.rc : '') : ''}
+          ${s.address ? s.address + '<br/>' : ''}
+          ${s.phone   ? 'Tél: ' + s.phone + (s.email ? ' — ' : '<br/>') : ''}
+          ${s.email   ? s.email + '<br/>' : ''}
+          ${s.ice     ? 'ICE: ' + s.ice + (s.rc ? ' — RC: ' + s.rc : '') : ''}
         </div>
       </div>
     </div>
     <div style="text-align:right">
       <div class="invoice-title">${s.invoice_title || 'FACTURE'}</div>
       ${selected[0]?.numero_facture ? `<div class="invoice-num">N° ${selected[0].numero_facture}</div>` : ''}
-      <div class="invoice-meta">
-        Date: ${new Date().toLocaleDateString('fr-MA')}<br/>
-        Page ${pageIdx + 1} / ${pages.length}
-      </div>
+      <div class="invoice-meta">Date: ${new Date().toLocaleDateString('fr-MA')}<br/>Page ${pageIdx+1} / ${pages.length}</div>
     </div>
   </div>
-
   <div class="client-box">
     <div class="client-name">${clientName}</div>
     <div class="client-sub">${selected.length} prestation(s) — Délai: ${selected[0]?.delai_paiement || 60}j</div>
   </div>
-  ` : `<div style="text-align:right;font-size:${fs - 2}px;color:#64748b;margin-bottom:8px;">Page ${pageIdx + 1} / ${pages.length}</div>`}
+  ` : `<div style="text-align:right;font-size:${fs-2}px;color:#64748b;margin-bottom:8px;">Page ${pageIdx+1} / ${pages.length}</div>`}
 
   <table>
     <thead>
-      <tr>
-        ${cols.map(c => `<th style="width:${c.w}%">${c.label}</th>`).join('')}
-      </tr>
+      <tr>${allCols.map(c => `<th style="width:${colW}%">${c.label}</th>`).join('')}</tr>
     </thead>
     <tbody>
       ${pageRows.map(f => `
         <tr>
-          ${cols.map(c => {
+          ${allCols.map(c => {
             const v = f[c.key];
-            if (['montant_ht','tva','montant_ttc','manutention','immobilisation'].includes(c.key))
-              return `<td class="num">${Number(v||0).toLocaleString('fr-MA')} MAD</td>`;
-            if (c.key === 'ecart_delai') {
-              const e = v ?? 0;
-              return `<td class="num"><span class="badge ${e > 0 ? 'badge-red' : 'badge-green'}">${e > 0 ? '+' : ''}${e}j</span></td>`;
-            }
-            return `<td>${v || '—'}</td>`;
+            if (c.num)    return `<td class="num">${Number(v||0).toLocaleString('fr-MA')} MAD</td>`;
+            if (c.ecart)  { const e = v??0; return `<td class="num"><span class="badge ${e>0?'badge-red':'badge-green'}">${e>0?'+':''}${e}j</span></td>`; }
+            if (c.statut) return `<td><span class="${v==='payé'?'statut-paye':'statut-impaye'}">${v||'impayé'}</span></td>`;
+            return `<td>${v||'—'}</td>`;
           }).join('')}
         </tr>
       `).join('')}
@@ -798,17 +849,15 @@ ${pages.map((pageRows, pageIdx) => `
       <div class="t-row t-total"><span>Total TTC</span><span>${totalTTC.toLocaleString('fr-MA')} MAD</span></div>
     </div>
   </div>
-
-  ${(s.rib || s.bank_name) ? `
+  ${(s.rib||s.bank_name) ? `
   <div class="payment-box">
     <div class="payment-title">Coordonnées Bancaires</div>
-    ${s.bank_name ? 'Banque: <strong>' + s.bank_name + '</strong>  ' : ''}
-    ${s.rib       ? 'RIB: <strong>'   + s.rib       + '</strong>'   : ''}
+    ${s.bank_name ? 'Banque: <strong>'+s.bank_name+'</strong>  ' : ''}
+    ${s.rib       ? 'RIB: <strong>'+s.rib+'</strong>' : ''}
   </div>` : ''}
-
   <div class="sig-wrap">
     <div class="sig-box">
-      <div class="sig-label">${s.signature_label || 'Signature & Cachet'}</div>
+      <div class="sig-label">${s.signature_label||'Signature & Cachet'}</div>
       <div class="sig-space"></div>
     </div>
   </div>
@@ -817,22 +866,15 @@ ${pages.map((pageRows, pageIdx) => `
   ${!s.skip_footer ? `
   <div class="footer-area">
     ${s.footer_text ? `<div class="footer-text">${s.footer_text}</div>` : ''}
-    <div class="page-num">Page ${pageIdx + 1} / ${pages.length}</div>
-  </div>
-  ` : ''}
-
+    <div class="page-num">Page ${pageIdx+1} / ${pages.length}</div>
+  </div>` : ''}
 </div>
 `).join('')}
 </body>
 </html>`;
 
   const win = window.open('', '_blank');
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 600);
-  }
+  if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
 };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
@@ -1800,10 +1842,7 @@ ${pages.map((pageRows, pageIdx) => `
     {/* MODE SELECTION */}
     {!invoiceSettings.setup_mode && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto mt-8">
-
-        {/* Option 1: Import */}
-        <div
-          onClick={() => setInvoiceSettings((p: any) => ({ ...p, setup_mode: 'import' }))}
+        <div onClick={() => setInvoiceSettings((p: any) => ({ ...p, setup_mode: 'import' }))}
           className="bg-white border-2 border-slate-200 hover:border-blue-500 hover:shadow-lg rounded-2xl p-8 cursor-pointer transition-all group flex flex-col items-center text-center gap-4">
           <div className="w-16 h-16 bg-blue-50 group-hover:bg-blue-600 rounded-2xl flex items-center justify-center transition-colors">
             <Upload size={28} className="text-blue-600 group-hover:text-white transition-colors" />
@@ -1811,17 +1850,14 @@ ${pages.map((pageRows, pageIdx) => `
           <div>
             <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Importer ma facture</h2>
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Vous avez déjà une facture Word, PDF ou image. Importez-la comme référence visuelle et configurez votre logo et les paramètres d'impression.
+              Uploadez votre template HTML existant. Le système injecte automatiquement vos données dedans à chaque génération PDF.
             </p>
           </div>
           <div className="mt-2 px-4 py-2 bg-blue-50 group-hover:bg-blue-600 text-blue-600 group-hover:text-white rounded-lg text-xs font-black uppercase tracking-wider transition-colors">
             Choisir ce mode →
           </div>
         </div>
-
-        {/* Option 2: Create */}
-        <div
-          onClick={() => setInvoiceSettings((p: any) => ({ ...p, setup_mode: 'create' }))}
+        <div onClick={() => setInvoiceSettings((p: any) => ({ ...p, setup_mode: 'create' }))}
           className="bg-white border-2 border-slate-200 hover:border-violet-500 hover:shadow-lg rounded-2xl p-8 cursor-pointer transition-all group flex flex-col items-center text-center gap-4">
           <div className="w-16 h-16 bg-violet-50 group-hover:bg-violet-600 rounded-2xl flex items-center justify-center transition-colors">
             <FileText size={28} className="text-violet-600 group-hover:text-white transition-colors" />
@@ -1829,71 +1865,271 @@ ${pages.map((pageRows, pageIdx) => `
           <div>
             <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Créer mon modèle</h2>
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Créez votre facture from scratch. Remplissez vos informations, choisissez vos couleurs, colonnes et mise en page — aperçu en temps réel.
+              Créez votre facture depuis zéro. Remplissez vos informations, couleurs, colonnes — aperçu en temps réel.
             </p>
           </div>
           <div className="mt-2 px-4 py-2 bg-violet-50 group-hover:bg-violet-600 text-violet-600 group-hover:text-white rounded-lg text-xs font-black uppercase tracking-wider transition-colors">
             Choisir ce mode →
           </div>
         </div>
-
       </div>
     )}
 
+    {/* ── SHARED COLUMN SELECTOR (used in both modes) ── */}
+    {invoiceSettings.setup_mode && (() => {
+      const allCols = [
+        { label: 'Date',            key: 'col_show_date',             default: true  },
+        { label: 'N° Facture',      key: 'col_show_fact',             default: true  },
+        { label: 'Client',          key: 'col_show_client',           default: true  },
+        { label: 'Départ',          key: 'col_show_depart',           default: true  },
+        { label: 'Arrivée',         key: 'col_show_arrivee',          default: true  },
+        { label: 'Montant HT',      key: 'col_show_ht',               default: true  },
+        { label: 'TVA',             key: 'col_show_tva',              default: true  },
+        { label: 'Montant TTC',     key: 'col_show_ttc',              default: true  },
+        { label: 'BL / OT',         key: 'col_show_bl_ot',            default: true  },
+        { label: 'BC',              key: 'col_show_bc',               default: true  },
+        { label: 'Délai Paiement',  key: 'col_show_delai',            default: false },
+        { label: 'Date Paiement',   key: 'col_show_date_paiement',    default: false },
+        { label: 'Écart Délai',     key: 'col_show_ecart',            default: false },
+        { label: 'Règl. Banque',    key: 'col_show_reglement_banque', default: false },
+        { label: 'Règl. N°',        key: 'col_show_reglement_num',    default: false },
+        { label: 'Échéances',       key: 'col_show_echeances',        default: false },
+        { label: 'Mode Paiement',   key: 'col_show_mode',             default: false },
+        { label: 'Statut',          key: 'col_show_statut',           default: true  },
+      ];
+      return (
+        <div className="mb-6 bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
+                <span className="text-[10px] font-black text-white">✓</span>
+              </div>
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Colonnes à inclure dans le PDF</span>
+              <span className="text-[10px] text-slate-400 ml-1">— s'applique aux deux modes</span>
+            </div>
+            <span className="text-[10px] text-slate-400">
+              {allCols.filter(c => invoiceSettings[c.key] !== false && (invoiceSettings[c.key] === true || c.default)).length} / {allCols.length} sélectionnées
+            </span>
+          </div>
+          <div className="p-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+              {allCols.map(({ label, key, default: def }) => {
+                const isOn = invoiceSettings[key] !== undefined ? invoiceSettings[key] : def;
+                return (
+                  <div key={key}
+                    onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !isOn }))}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${isOn ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+                    <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border-2 transition-all ${isOn ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                      {isOn && <span className="text-white text-[9px] font-black">✓</span>}
+                    </div>
+                    <span className={`text-[10px] font-bold leading-tight ${isOn ? 'text-blue-800' : 'text-slate-400'}`}>{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-3">
+              💡 Ces colonnes seront extraites de vos données de facturation et insérées dans le PDF généré.
+            </p>
+          </div>
+        </div>
+      );
+    })()}
+
     {/* MODE: IMPORT */}
     {invoiceSettings.setup_mode === 'import' && (
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-3xl mx-auto space-y-6">
 
-        {/* Step 1: Upload invoice */}
+        {/* Step 1: Download starter template */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-[10px] font-black text-white">0</div>
+            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Télécharger le modèle de départ (optionnel)</span>
+          </div>
+          <div className="p-5 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs text-slate-600 font-bold">Vous n'avez pas de template HTML ?</p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Téléchargez notre modèle de base, modifiez-le dans Notepad ou Word, puis re-uploadez-le.
+                Les balises <code className="bg-slate-100 px-1 rounded text-blue-600">{`{{placeholders}}`}</code> seront remplacées par vos vraies données.
+              </p>
+            </div>
+            <button onClick={() => {
+              const starter = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 0; padding: 0; }
+  .page { width: 210mm; min-height: 297mm; padding: 15mm; box-sizing: border-box; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 3px solid #1e40af; }
+  .company-name { font-size: 20px; font-weight: 900; color: #1e40af; }
+  .company-info { font-size: 9px; color: #64748b; margin-top: 4px; line-height: 1.6; }
+  .invoice-title { font-size: 24px; font-weight: 900; color: #1e40af; text-align: right; }
+  .invoice-num { font-size: 13px; font-weight: 700; color: #f59e0b; text-align: right; }
+  .invoice-meta { font-size: 9px; color: #64748b; text-align: right; }
+  .client-box { background: #f8fafc; border-left: 4px solid #f59e0b; padding: 8px 14px; margin-bottom: 16px; border-radius: 0 6px 6px 0; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  th { background: #1e40af; color: white; padding: 6px 8px; font-size: 8px; text-transform: uppercase; text-align: left; }
+  td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; font-size: 10px; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .totals { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .totals-box { border: 2px solid #1e40af; border-radius: 6px; padding: 10px 16px; min-width: 220px; }
+  .t-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; }
+  .t-total { font-weight: 900; font-size: 14px; color: #1e40af; border-top: 1px solid #e2e8f0; margin-top: 4px; padding-top: 5px; }
+  .bank-box { margin-top: 12px; padding: 8px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 9px; }
+  .sig { display: flex; justify-content: flex-end; margin-top: 16px; }
+  .sig-box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 16px; min-width: 160px; text-align: center; }
+  .sig-label { font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+  .sig-space { height: 40px; }
+  .footer { margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 6px; font-size: 8px; color: #94a3b8; text-align: center; }
+  @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      {{company_logo}}
+      <div class="company-name">{{company_name}}</div>
+      <div class="company-info">
+        {{company_address}}<br/>
+        Tél: {{company_phone}} — {{company_email}}<br/>
+        ICE: {{company_ice}} — RC: {{company_rc}}
+      </div>
+    </div>
+    <div>
+      <div class="invoice-title">{{invoice_title}}</div>
+      <div class="invoice-num">N° {{numero_facture}}</div>
+      <div class="invoice-meta">Date: {{date}}<br/>Délai: {{delai_paiement}} jours</div>
+    </div>
+  </div>
+
+  <div class="client-box">
+    <strong style="font-size:13px">{{client}}</strong>
+  </div>
+
+  {{rows}}
+
+  <div class="totals">
+    <div class="totals-box">
+      <div class="t-row"><span>Total HT</span><span>{{total_ht}} MAD</span></div>
+      <div class="t-row"><span>TVA</span><span>{{total_tva}} MAD</span></div>
+      <div class="t-row t-total"><span>Total TTC</span><span>{{total_ttc}} MAD</span></div>
+    </div>
+  </div>
+
+  <div class="bank-box">
+    <strong>Coordonnées Bancaires</strong><br/>
+    Banque: {{bank_name}} — RIB: {{rib}}
+  </div>
+
+  <div class="sig">
+    <div class="sig-box">
+      <div class="sig-label">{{signature_label}}</div>
+      <div class="sig-space"></div>
+    </div>
+  </div>
+
+  <div class="footer">{{footer_text}}</div>
+</div>
+</body>
+</html>`;
+              const blob = new Blob([starter], { type: 'text/html' });
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = 'modele_facture_logi-flow.html';
+              a.click();
+              toast.success("Modèle téléchargé !");
+            }}
+              className="shrink-0 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer whitespace-nowrap">
+              <Download size={14} /> Télécharger le modèle
+            </button>
+          </div>
+        </div>
+
+        {/* Step 1: Upload HTML template */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-black text-white">1</div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Photo / Image de votre facture actuelle</span>
+            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Uploader votre template HTML</span>
           </div>
           <div className="p-5">
             <p className="text-xs text-slate-500 mb-4">
-              Prenez une photo de votre facture ou faites une capture d'écran.
-              Format <strong>JPG ou PNG</strong> — le plus simple à utiliser.
+              Uploadez votre fichier <strong>.html</strong>. Le système remplacera automatiquement les balises
+              <code className="bg-slate-100 px-1 mx-1 rounded text-blue-600 text-[10px]">{`{{placeholder}}`}</code>
+              par vos vraies données à chaque génération PDF.
             </p>
-            <label className={`flex flex-col items-center justify-center h-48 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${invoiceSettings.imported_invoice_url ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'}`}>
-              {invoiceSettings.imported_invoice_url ? (
-                <div className="relative w-full h-full p-2">
-                  <img src={invoiceSettings.imported_invoice_url} alt="Facture importée"
-                    className="w-full h-full object-contain rounded-lg" />
-                  <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="text-white text-xs font-black bg-blue-600 px-3 py-1.5 rounded-lg">Changer l'image</span>
+
+            {/* Placeholder reference */}
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+              <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-2">Balises disponibles dans votre HTML :</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                {[
+                  '{{company_name}}', '{{company_address}}', '{{company_phone}}',
+                  '{{company_email}}', '{{company_ice}}', '{{company_rc}}',
+                  '{{company_logo}}', '{{invoice_title}}', '{{numero_facture}}',
+                  '{{date}}', '{{client}}', '{{delai_paiement}}',
+                  '{{date_paiement}}', '{{montant_ht}}', '{{tva}}',
+                  '{{montant_ttc}}', '{{total_ht}}', '{{total_tva}}',
+                  '{{total_ttc}}', '{{bl_ot}}', '{{bc}}',
+                  '{{rib}}', '{{bank_name}}', '{{footer_text}}',
+                  '{{signature_label}}', '{{rows}}',
+                ].map(tag => (
+                  <code key={tag} className="text-[9px] bg-white border border-blue-200 text-blue-600 px-1.5 py-0.5 rounded font-mono">{tag}</code>
+                ))}
+              </div>
+              <p className="text-[10px] text-blue-500 mt-2">
+                ⚡ <strong>{'{{rows}}'}</strong> = le tableau complet avec les colonnes sélectionnées ci-dessus.
+              </p>
+            </div>
+
+            <label className={`flex items-center justify-center h-24 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${invoiceSettings.invoice_template_html ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'}`}>
+              {invoiceSettings.invoice_template_html ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                    <FileText size={20} className="text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-emerald-700">Template HTML chargé ✓</p>
+                    <p className="text-[10px] text-emerald-500">Cliquer pour remplacer</p>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3 text-center p-6">
-                  <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                    <Upload size={24} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
-                  </div>
-                  <span className="text-sm font-black text-slate-600">Cliquer pour importer</span>
-                  <span className="text-xs text-slate-400">JPG ou PNG recommandé</span>
+                <div className="flex flex-col items-center gap-2">
+                  <Upload size={20} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                  <span className="text-sm font-black text-slate-600">Cliquer pour uploader le fichier .html</span>
                 </div>
               )}
-              <input type="file" accept="image/png,image/jpeg,image/jpg"
+              <input type="file" accept=".html,.htm"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
-                  if (!file || !companyId) return;
-                  try {
-                    const ext = file.name.split('.').pop();
-                    const path = `${companyId}/invoice_ref.${ext}`;
-                    const { error } = await supabase.storage.from('logos').upload(path, file, { upsert: true });
-                    if (error) throw error;
-                    const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path);
-                    setInvoiceSettings((p: any) => ({ ...p, imported_invoice_url: urlData.publicUrl }));
-                    toast.success("Facture importée !");
-                  } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                  if (!file) return;
+                  const text = await file.text();
+                  setInvoiceSettings((p: any) => ({ ...p, invoice_template_html: text }));
+                  toast.success("Template HTML chargé !");
+                  e.target.value = '';
                 }}
                 className="hidden" />
             </label>
-            {invoiceSettings.imported_invoice_url && (
-              <button onClick={() => setInvoiceSettings((p: any) => ({ ...p, imported_invoice_url: '' }))}
-                className="mt-2 text-[10px] text-rose-500 font-bold hover:underline cursor-pointer w-full text-center">
-                × Supprimer
-              </button>
+
+            {invoiceSettings.invoice_template_html && (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Aperçu du code HTML</p>
+                  <button onClick={() => setInvoiceSettings((p: any) => ({ ...p, invoice_template_html: '' }))}
+                    className="text-[10px] text-rose-500 font-bold hover:underline cursor-pointer">
+                    × Supprimer le template
+                  </button>
+                </div>
+                <textarea
+                  value={invoiceSettings.invoice_template_html}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, invoice_template_html: e.target.value }))}
+                  rows={10}
+                  className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 text-[10px] font-mono focus:outline-none focus:border-blue-500 resize-y bg-slate-50"
+                  placeholder="Votre code HTML ici..."
+                />
+                <p className="text-[10px] text-slate-400">Vous pouvez modifier directement le HTML ici.</p>
+              </div>
             )}
           </div>
         </div>
@@ -1905,25 +2141,21 @@ ${pages.map((pageRows, pageIdx) => `
             <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Logo de l'entreprise</span>
           </div>
           <div className="p-5">
-            <p className="text-xs text-slate-500 mb-4">
-              Format <strong>PNG fond transparent</strong> recommandé pour un meilleur rendu sur la facture.
-            </p>
+            <p className="text-xs text-slate-500 mb-4">Format <strong>PNG fond transparent</strong> recommandé. Utilisez la balise <code className="bg-slate-100 px-1 rounded text-blue-600 text-[10px]">{'{{company_logo}}'}</code> dans votre HTML.</p>
             <label className={`flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${logoPreviewUrl ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-emerald-50'}`}>
               {logoPreviewUrl ? (
                 <div className="relative w-full h-full p-2">
                   <img src={logoPreviewUrl} alt="Logo" className="w-full h-full object-contain" />
                   <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="text-white text-xs font-black bg-emerald-600 px-3 py-1.5 rounded-lg">Changer</span>
+                    <span className="text-white text-xs font-black bg-emerald-600 px-3 py-1 rounded-lg">Changer</span>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 text-center p-4">
-                  {uploadingLogo
-                    ? <Loader2 size={24} className="text-emerald-500 animate-spin" />
+                  {uploadingLogo ? <Loader2 size={24} className="text-emerald-500 animate-spin" />
                     : <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
                         <Upload size={20} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                      </div>
-                  }
+                      </div>}
                   <span className="text-sm font-black text-slate-600">{uploadingLogo ? 'Upload...' : 'Uploader le logo'}</span>
                   <span className="text-xs text-slate-400">PNG, JPG, SVG</span>
                 </div>
@@ -1932,9 +2164,7 @@ ${pages.map((pageRows, pageIdx) => `
             </label>
             {logoPreviewUrl && (
               <button onClick={() => { setLogoPreviewUrl(''); setInvoiceSettings((p: any) => ({ ...p, logo_url: '', logo_storage_path: '' })); }}
-                className="mt-2 text-[10px] text-rose-500 font-bold hover:underline cursor-pointer w-full text-center">
-                × Supprimer le logo
-              </button>
+                className="mt-2 text-[10px] text-rose-500 font-bold hover:underline cursor-pointer w-full text-center">× Supprimer</button>
             )}
           </div>
         </div>
@@ -1943,18 +2173,15 @@ ${pages.map((pageRows, pageIdx) => `
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-[10px] font-black text-white">3</div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Votre papier est-il déjà imprimé ?</span>
+            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Papier pré-imprimé ?</span>
           </div>
           <div className="p-5 space-y-3">
-            <p className="text-xs text-slate-500">
-              Si vous imprimez sur du papier qui a déjà votre logo/adresse ou vos mentions légales, activez les options ci-dessous pour éviter les doublons.
-            </p>
+            <p className="text-xs text-slate-500">Si votre papier a déjà un en-tête ou pied de page imprimé, activez ci-dessous pour éviter les doublons.</p>
             {[
-              { label: 'En-tête déjà imprimé',      sub: 'Logo, nom, adresse déjà sur le papier en haut',       key: 'skip_header' },
+              { label: 'En-tête déjà imprimé',      sub: 'Logo, nom, adresse déjà sur le papier en haut',        key: 'skip_header' },
               { label: 'Pied de page déjà imprimé', sub: 'Mentions légales, signature déjà sur le papier en bas', key: 'skip_footer' },
             ].map(({ label, sub, key }) => (
-              <div key={key}
-                onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
+              <div key={key} onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
                 className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-amber-300'}`}>
                 <div>
                   <p className={`text-sm font-black ${invoiceSettings[key] ? 'text-amber-800' : 'text-slate-700'}`}>{label}</p>
@@ -1967,6 +2194,67 @@ ${pages.map((pageRows, pageIdx) => `
             ))}
           </div>
         </div>
+
+        {/* Test PDF button */}
+        {invoiceSettings.invoice_template_html && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-black text-blue-800">Tester le template</p>
+              <p className="text-[10px] text-blue-500 mt-0.5">Génère un PDF de test avec des données fictives pour vérifier le rendu.</p>
+            </div>
+            <button onClick={() => {
+              const testData = {
+                company_name: invoiceSettings.company_name || 'VOTRE ENTREPRISE',
+                company_address: invoiceSettings.address || 'Rue X, Casablanca',
+                company_phone: invoiceSettings.phone || '+212 6 00 00 00 00',
+                company_email: invoiceSettings.email || 'contact@entreprise.ma',
+                company_ice: invoiceSettings.ice || '001234567000000',
+                company_rc: invoiceSettings.rc || '123456',
+                company_logo: invoiceSettings.logo_url ? `<img src="${invoiceSettings.logo_url}" style="max-height:60px;max-width:150px;object-fit:contain"/>` : '',
+                invoice_title: invoiceSettings.invoice_title || 'FACTURE',
+                numero_facture: 'TEST-001',
+                date: new Date().toLocaleDateString('fr-MA'),
+                client: 'CLIENT TEST SARL',
+                delai_paiement: '60',
+                date_paiement: '',
+                montant_ht: '10,000',
+                tva: '1,000',
+                montant_ttc: '11,000',
+                total_ht: '10,000',
+                total_tva: '1,000',
+                total_ttc: '11,000',
+                bl_ot: 'BL-001',
+                bc: 'BC-123',
+                rib: invoiceSettings.rib || 'XXX XXX XXXXXXXXXXXXXXX XX',
+                bank_name: invoiceSettings.bank_name || 'Attijariwafa Bank',
+                footer_text: invoiceSettings.footer_text || 'Merci de votre confiance.',
+                signature_label: invoiceSettings.signature_label || 'Signature & Cachet',
+                rows: `<table style="width:100%;border-collapse:collapse">
+                  <thead><tr style="background:#1e40af;color:white">
+                    <th style="padding:6px;font-size:9px;text-align:left">Date</th>
+                    <th style="padding:6px;font-size:9px;text-align:left">N° Fact</th>
+                    <th style="padding:6px;font-size:9px;text-align:left">Client</th>
+                    <th style="padding:6px;font-size:9px;text-align:right">HT (MAD)</th>
+                    <th style="padding:6px;font-size:9px;text-align:right">TTC (MAD)</th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px">01/06/2026</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px">F-001</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px">CLIENT TEST</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px;text-align:right">5,000 MAD</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px;text-align:right">5,500 MAD</td></tr>
+                    <tr style="background:#f8fafc"><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px">02/06/2026</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px">F-002</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px">CLIENT TEST</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px;text-align:right">5,000 MAD</td><td style="padding:5px 6px;border-bottom:1px solid #f1f5f9;font-size:10px;text-align:right">5,500 MAD</td></tr>
+                  </tbody>
+                </table>`,
+              };
+              let html = invoiceSettings.invoice_template_html;
+              Object.entries(testData).forEach(([k, v]) => {
+                html = html.replaceAll(`{{${k}}}`, v as string);
+              });
+              const win = window.open('', '_blank');
+              if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 500); }
+            }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-black uppercase cursor-pointer flex items-center gap-2">
+              <Eye size={14} /> Tester le PDF
+            </button>
+          </div>
+        )}
 
         {/* Save */}
         <div className="flex justify-end pb-6">
@@ -1982,8 +2270,6 @@ ${pages.map((pageRows, pageIdx) => `
     {/* MODE: CREATE */}
     {invoiceSettings.setup_mode === 'create' && (
       <div className="flex gap-6">
-
-        {/* LEFT: Settings Blocks */}
         <div className="flex-1 min-w-0 space-y-5">
 
           {/* BLOCK 1: Company Identity */}
@@ -1995,12 +2281,12 @@ ${pages.map((pageRows, pageIdx) => `
             <div className="p-5">
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Raison sociale', key: 'company_name', placeholder: 'FOTRAL SARL'         },
-                  { label: 'Adresse',        key: 'address',      placeholder: 'Rue X, Casablanca'   },
-                  { label: 'Téléphone',      key: 'phone',        placeholder: '+212 6...'            },
-                  { label: 'Email',          key: 'email',        placeholder: 'contact@...'          },
-                  { label: 'ICE',            key: 'ice',          placeholder: '001234567000000'      },
-                  { label: 'RC',             key: 'rc',           placeholder: '123456'               },
+                  { label: 'Raison sociale', key: 'company_name', placeholder: 'FOTRAL SARL'       },
+                  { label: 'Adresse',        key: 'address',      placeholder: 'Rue X, Casablanca' },
+                  { label: 'Téléphone',      key: 'phone',        placeholder: '+212 6...'          },
+                  { label: 'Email',          key: 'email',        placeholder: 'contact@...'        },
+                  { label: 'ICE',            key: 'ice',          placeholder: '001234567000000'    },
+                  { label: 'RC',             key: 'rc',           placeholder: '123456'             },
                 ].map(({ label, key, placeholder }) => (
                   <div key={key}>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
@@ -2010,7 +2296,6 @@ ${pages.map((pageRows, pageIdx) => `
                   </div>
                 ))}
               </div>
-              {/* Logo */}
               <div className="mt-4 p-3 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex items-center gap-4">
                 {logoPreviewUrl ? (
                   <div className="relative shrink-0">
@@ -2096,8 +2381,7 @@ ${pages.map((pageRows, pageIdx) => `
                 { label: 'En-tête déjà imprimé',      sub: 'PDF sans logo/nom/adresse en haut',          key: 'skip_header' },
                 { label: 'Pied de page déjà imprimé', sub: 'PDF sans mentions légales/signature en bas', key: 'skip_footer' },
               ].map(({ label, sub, key }) => (
-                <div key={key}
-                  onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
+                <div key={key} onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
                   className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-amber-300'}`}>
                   <div>
                     <p className={`text-xs font-black ${invoiceSettings[key] ? 'text-amber-800' : 'text-slate-700'}`}>{label}</p>
@@ -2166,39 +2450,10 @@ ${pages.map((pageRows, pageIdx) => `
             </div>
           </div>
 
-          {/* BLOCK 5: Columns */}
+          {/* BLOCK 5: Payment & Footer */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-black text-white">5</div>
-              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Colonnes optionnelles</span>
-            </div>
-            <div className="p-5">
-              <p className="text-[10px] text-slate-400 mb-3">Date, N° Fact, Client, Départ, Arrivée, HT, TVA, TTC — toujours inclus.</p>
-              <div className="space-y-2">
-                {[
-                  { label: 'BL / OT',         key: 'show_bl_ot' },
-                  { label: 'Bon de Commande', key: 'show_bc'    },
-                  { label: 'Manutention',     key: 'show_manut' },
-                  { label: 'Immobilisation',  key: 'show_immob' },
-                  { label: 'Écart de délai',  key: 'show_ecart' },
-                ].map(({ label, key }) => (
-                  <div key={key}
-                    onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
-                    className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
-                    <span className={`text-xs font-bold ${invoiceSettings[key] ? 'text-blue-800' : 'text-slate-500'}`}>{label}</span>
-                    <div className={`w-10 h-6 rounded-full flex items-center ${invoiceSettings[key] ? 'bg-blue-600' : 'bg-slate-300'}`}>
-                      <div className={`w-4 h-4 bg-white rounded-full shadow mx-1 transition-all ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* BLOCK 6: Payment & Footer */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-rose-500 flex items-center justify-center text-[10px] font-black text-white">6</div>
+              <div className="w-6 h-6 rounded-full bg-rose-500 flex items-center justify-center text-[10px] font-black text-white">5</div>
               <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Paiement & Pied de page</span>
             </div>
             <div className="p-5 space-y-3">
@@ -2268,7 +2523,7 @@ ${pages.map((pageRows, pageIdx) => `
               )}
               {invoiceSettings.skip_header && (
                 <div className="p-2 text-center text-[9px] text-amber-600 bg-amber-50 font-bold border-b border-amber-200">
-                  ↑ EN-TÊTE NON IMPRIMÉ (papier pré-imprimé)
+                  ↑ EN-TÊTE NON IMPRIMÉ
                 </div>
               )}
               <div className="mx-3 my-2 p-2 bg-slate-50 rounded text-xs"
@@ -2277,14 +2532,26 @@ ${pages.map((pageRows, pageIdx) => `
                 <p className="text-[9px] text-slate-400">X prestation(s)</p>
               </div>
               <div className="mx-3 mb-2 rounded-lg overflow-hidden border border-slate-200">
-                <div className="grid text-[8px] font-black text-white px-2 py-1"
-                  style={{ backgroundColor: invoiceSettings.primary_color, gridTemplateColumns: 'repeat(5,1fr)' }}>
-                  <span>Date</span><span>N° Fact</span><span>Départ</span><span>HT</span><span>TTC</span>
+                <div className="flex text-[8px] font-black text-white px-2 py-1 gap-1"
+                  style={{ backgroundColor: invoiceSettings.primary_color }}>
+                  {[
+                    { label: 'Date',    key: 'col_show_date',   def: true  },
+                    { label: 'N° Fact', key: 'col_show_fact',   def: true  },
+                    { label: 'Client',  key: 'col_show_client', def: true  },
+                    { label: 'HT',      key: 'col_show_ht',     def: true  },
+                    { label: 'TTC',     key: 'col_show_ttc',    def: true  },
+                    { label: 'Statut',  key: 'col_show_statut', def: true  },
+                  ].filter(c => invoiceSettings[c.key] !== false && (invoiceSettings[c.key] === true || c.def))
+                   .map(c => <span key={c.key} className="flex-1">{c.label}</span>)}
                 </div>
                 {[1,2,3].map(i => (
-                  <div key={i} className={`grid text-[8px] text-slate-400 px-2 py-1 ${i%2===0?'bg-slate-50':'bg-white'}`}
-                    style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
-                    <span>01/06/26</span><span>F-00{i}</span><span>Casa→Rabat</span><span>4,400</span><span>4,840</span>
+                  <div key={i} className={`flex text-[8px] text-slate-400 px-2 py-1 gap-1 ${i%2===0?'bg-slate-50':'bg-white'}`}>
+                    <span className="flex-1">01/06</span>
+                    <span className="flex-1">F-00{i}</span>
+                    <span className="flex-1">Client</span>
+                    <span className="flex-1">4,400</span>
+                    <span className="flex-1">4,840</span>
+                    <span className="flex-1">✓</span>
                   </div>
                 ))}
               </div>
@@ -2316,7 +2583,7 @@ ${pages.map((pageRows, pageIdx) => `
               )}
               {invoiceSettings.skip_footer && (
                 <div className="p-2 text-center text-[9px] text-amber-600 bg-amber-50 font-bold border-t border-amber-200">
-                  ↓ PIED DE PAGE NON IMPRIMÉ (papier pré-imprimé)
+                  ↓ PIED DE PAGE NON IMPRIMÉ
                 </div>
               )}
             </div>
