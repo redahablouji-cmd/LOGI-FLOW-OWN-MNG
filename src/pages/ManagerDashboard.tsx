@@ -1786,174 +1786,426 @@ ${pages.map((pageRows, pageIdx) => `
             <Settings className="w-3.5 h-3.5" /> Paramètres
           </span>
           <h1 className="text-2xl font-extrabold tracking-tight">Modèle de Facture</h1>
-          <p className="text-sm text-slate-400 mt-1">Configurez une fois — utilisé automatiquement à chaque génération PDF.</p>
+          <p className="text-sm text-slate-400 mt-1">Choisissez comment configurer votre modèle de facture.</p>
         </div>
-        <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer">
-          {savingSettings ? <Loader2 size={14} className="animate-spin" /> : null}
-          {savingSettings ? 'Sauvegarde...' : '✓ Sauvegarder'}
-        </button>
-      </div>
-    </div>
-
-    {/* IMPORT EXISTING INVOICE */}
-<div className="mb-6 bg-white rounded-xl border-2 border-slate-200 overflow-hidden">
-  <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-    <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
-      <Upload size={12} className="text-white" />
-    </div>
-    <span className="text-xs font-black text-blue-800 uppercase tracking-widest">Importer votre facture actuelle</span>
-    <span className="text-[10px] text-slate-400 ml-1">— pour reproduire votre modèle existant</span>
-  </div>
-  <div className="p-5">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-      {/* Import invoice image */}
-      <div>
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-          📄 Photo de votre facture
-        </p>
-        <p className="text-[10px] text-slate-400 mb-3">
-          Prenez une photo de votre facture Word/PDF avec votre téléphone, ou faites une capture d'écran — format <strong>JPG ou PNG</strong> uniquement (le plus simple).
-        </p>
-        <label className={`flex flex-col items-center justify-center h-36 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${invoiceSettings.imported_invoice_url ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'}`}>
-          {invoiceSettings.imported_invoice_url ? (
-            <div className="relative w-full h-full p-1">
-              <img src={invoiceSettings.imported_invoice_url} alt="Facture importée"
-                className="w-full h-full object-contain rounded-lg" />
-              <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <span className="text-white text-[10px] font-black bg-blue-600 px-2 py-1 rounded">Changer</span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2 p-4 text-center">
-              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                <FileText size={20} className="text-slate-400 group-hover:text-blue-500" />
-              </div>
-              <span className="text-[10px] font-black text-slate-500 uppercase">Cliquer pour importer</span>
-              <span className="text-[9px] text-slate-400">JPG ou PNG recommandé</span>
-            </div>
-          )}
-          <input type="file" accept="image/png,image/jpeg,image/jpg"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file || !companyId) return;
-              try {
-                const ext = file.name.split('.').pop();
-                const path = `${companyId}/invoice_ref.${ext}`;
-                const { error } = await supabase.storage.from('logos').upload(path, file, { upsert: true });
-                if (error) throw error;
-                const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path);
-                setInvoiceSettings((p: any) => ({ ...p, imported_invoice_url: urlData.publicUrl }));
-                toast.success("Facture de référence importée !");
-              } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
-            }}
-            className="hidden" />
-        </label>
-        {invoiceSettings.imported_invoice_url && (
-          <button onClick={() => setInvoiceSettings((p: any) => ({ ...p, imported_invoice_url: '' }))}
-            className="mt-2 text-[10px] text-rose-500 font-bold hover:underline cursor-pointer w-full text-center">
-            × Supprimer la référence
+        {invoiceSettings.setup_mode && (
+          <button onClick={() => setInvoiceSettings((p: any) => ({ ...p, setup_mode: '' }))}
+            className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer">
+            <X size={14} /> Changer de mode
           </button>
         )}
       </div>
-
-      {/* Pre-printed detection */}
-      <div>
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-          🖨 Votre papier est-il déjà imprimé ?
-        </p>
-        <p className="text-[10px] text-slate-400 mb-3">
-          Si vous imprimez sur du papier qui a déjà votre logo/adresse ou vos mentions légales — activez les options ci-dessous pour éviter les doublons.
-        </p>
-        <div className="space-y-3">
-          {[
-            { label: 'En-tête déjà imprimé',      sub: 'Logo, nom, adresse en haut',           key: 'skip_header' },
-            { label: 'Pied de page déjà imprimé', sub: 'Mentions légales, signature en bas',   key: 'skip_footer' },
-          ].map(({ label, sub, key }) => (
-            <div key={key}
-              onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
-              className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-amber-300'}`}>
-              <div>
-                <p className={`text-xs font-black ${invoiceSettings[key] ? 'text-amber-800' : 'text-slate-700'}`}>{label}</p>
-                <p className="text-[10px] text-slate-400">{sub}</p>
-              </div>
-              <div className={`w-10 h-6 rounded-full flex items-center shrink-0 ml-2 transition-all ${invoiceSettings[key] ? 'bg-amber-500' : 'bg-slate-300'}`}>
-                <div className={`w-4 h-4 bg-white rounded-full shadow mx-1 transition-all ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Logo upload */}
-      <div>
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-          🖼 Logo de l'entreprise
-        </p>
-        <p className="text-[10px] text-slate-400 mb-3">
-          Uploadez votre logo — il apparaîtra en haut à gauche de chaque facture. Format <strong>PNG avec fond transparent</strong> recommandé pour un meilleur rendu.
-        </p>
-        <label className={`flex flex-col items-center justify-center h-36 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${logoPreviewUrl ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-emerald-50'}`}>
-          {logoPreviewUrl ? (
-            <div className="relative w-full h-full p-2">
-              <img src={logoPreviewUrl} alt="Logo"
-                className="w-full h-full object-contain" />
-              <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <span className="text-white text-[10px] font-black bg-emerald-600 px-2 py-1 rounded">Changer</span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2 p-4 text-center">
-              {uploadingLogo ? (
-                <Loader2 size={24} className="text-emerald-500 animate-spin" />
-              ) : (
-                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
-                  <Upload size={20} className="text-slate-400 group-hover:text-emerald-500" />
-                </div>
-              )}
-              <span className="text-[10px] font-black text-slate-500 uppercase">
-                {uploadingLogo ? 'Upload en cours...' : 'Cliquer pour uploader'}
-              </span>
-              <span className="text-[9px] text-slate-400">PNG transparent recommandé</span>
-            </div>
-          )}
-          <input type="file" accept="image/png,image/jpeg,image/jpg,image/svg+xml"
-            onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
-        </label>
-        {logoPreviewUrl && (
-          <button onClick={() => { setLogoPreviewUrl(''); setInvoiceSettings((p: any) => ({ ...p, logo_url: '', logo_storage_path: '' })); }}
-            className="mt-2 text-[10px] text-rose-500 font-bold hover:underline cursor-pointer w-full text-center">
-            × Supprimer le logo
-          </button>
-        )}
-      </div>
-
     </div>
-  </div>
-</div>
 
-    {/* SIDE BY SIDE LAYOUT */}
-    <div className="flex gap-6">
+    {/* MODE SELECTION */}
+    {!invoiceSettings.setup_mode && (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto mt-8">
 
-      {/* LEFT: Settings Blocks */}
-      <div className="flex-1 min-w-0 space-y-5">
+        {/* Option 1: Import */}
+        <div
+          onClick={() => setInvoiceSettings((p: any) => ({ ...p, setup_mode: 'import' }))}
+          className="bg-white border-2 border-slate-200 hover:border-blue-500 hover:shadow-lg rounded-2xl p-8 cursor-pointer transition-all group flex flex-col items-center text-center gap-4">
+          <div className="w-16 h-16 bg-blue-50 group-hover:bg-blue-600 rounded-2xl flex items-center justify-center transition-colors">
+            <Upload size={28} className="text-blue-600 group-hover:text-white transition-colors" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Importer ma facture</h2>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Vous avez déjà une facture Word, PDF ou image. Importez-la comme référence visuelle et configurez votre logo et les paramètres d'impression.
+            </p>
+          </div>
+          <div className="mt-2 px-4 py-2 bg-blue-50 group-hover:bg-blue-600 text-blue-600 group-hover:text-white rounded-lg text-xs font-black uppercase tracking-wider transition-colors">
+            Choisir ce mode →
+          </div>
+        </div>
 
-        {/* BLOCK 1: Company Identity */}
+        {/* Option 2: Create */}
+        <div
+          onClick={() => setInvoiceSettings((p: any) => ({ ...p, setup_mode: 'create' }))}
+          className="bg-white border-2 border-slate-200 hover:border-violet-500 hover:shadow-lg rounded-2xl p-8 cursor-pointer transition-all group flex flex-col items-center text-center gap-4">
+          <div className="w-16 h-16 bg-violet-50 group-hover:bg-violet-600 rounded-2xl flex items-center justify-center transition-colors">
+            <FileText size={28} className="text-violet-600 group-hover:text-white transition-colors" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Créer mon modèle</h2>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Créez votre facture from scratch. Remplissez vos informations, choisissez vos couleurs, colonnes et mise en page — aperçu en temps réel.
+            </p>
+          </div>
+          <div className="mt-2 px-4 py-2 bg-violet-50 group-hover:bg-violet-600 text-violet-600 group-hover:text-white rounded-lg text-xs font-black uppercase tracking-wider transition-colors">
+            Choisir ce mode →
+          </div>
+        </div>
+
+      </div>
+    )}
+
+    {/* MODE: IMPORT */}
+    {invoiceSettings.setup_mode === 'import' && (
+      <div className="max-w-2xl mx-auto space-y-6">
+
+        {/* Step 1: Upload invoice */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-black text-white">1</div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Identité de l'entreprise</span>
+            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Photo / Image de votre facture actuelle</span>
           </div>
           <div className="p-5">
-            <div className="grid grid-cols-2 gap-3">
+            <p className="text-xs text-slate-500 mb-4">
+              Prenez une photo de votre facture ou faites une capture d'écran.
+              Format <strong>JPG ou PNG</strong> — le plus simple à utiliser.
+            </p>
+            <label className={`flex flex-col items-center justify-center h-48 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${invoiceSettings.imported_invoice_url ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'}`}>
+              {invoiceSettings.imported_invoice_url ? (
+                <div className="relative w-full h-full p-2">
+                  <img src={invoiceSettings.imported_invoice_url} alt="Facture importée"
+                    className="w-full h-full object-contain rounded-lg" />
+                  <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-white text-xs font-black bg-blue-600 px-3 py-1.5 rounded-lg">Changer l'image</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-center p-6">
+                  <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                    <Upload size={24} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                  </div>
+                  <span className="text-sm font-black text-slate-600">Cliquer pour importer</span>
+                  <span className="text-xs text-slate-400">JPG ou PNG recommandé</span>
+                </div>
+              )}
+              <input type="file" accept="image/png,image/jpeg,image/jpg"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !companyId) return;
+                  try {
+                    const ext = file.name.split('.').pop();
+                    const path = `${companyId}/invoice_ref.${ext}`;
+                    const { error } = await supabase.storage.from('logos').upload(path, file, { upsert: true });
+                    if (error) throw error;
+                    const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path);
+                    setInvoiceSettings((p: any) => ({ ...p, imported_invoice_url: urlData.publicUrl }));
+                    toast.success("Facture importée !");
+                  } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                }}
+                className="hidden" />
+            </label>
+            {invoiceSettings.imported_invoice_url && (
+              <button onClick={() => setInvoiceSettings((p: any) => ({ ...p, imported_invoice_url: '' }))}
+                className="mt-2 text-[10px] text-rose-500 font-bold hover:underline cursor-pointer w-full text-center">
+                × Supprimer
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Step 2: Logo */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-black text-white">2</div>
+            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Logo de l'entreprise</span>
+          </div>
+          <div className="p-5">
+            <p className="text-xs text-slate-500 mb-4">
+              Format <strong>PNG fond transparent</strong> recommandé pour un meilleur rendu sur la facture.
+            </p>
+            <label className={`flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${logoPreviewUrl ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-emerald-50'}`}>
+              {logoPreviewUrl ? (
+                <div className="relative w-full h-full p-2">
+                  <img src={logoPreviewUrl} alt="Logo" className="w-full h-full object-contain" />
+                  <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-white text-xs font-black bg-emerald-600 px-3 py-1.5 rounded-lg">Changer</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-center p-4">
+                  {uploadingLogo
+                    ? <Loader2 size={24} className="text-emerald-500 animate-spin" />
+                    : <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
+                        <Upload size={20} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                      </div>
+                  }
+                  <span className="text-sm font-black text-slate-600">{uploadingLogo ? 'Upload...' : 'Uploader le logo'}</span>
+                  <span className="text-xs text-slate-400">PNG, JPG, SVG</span>
+                </div>
+              )}
+              <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
+            </label>
+            {logoPreviewUrl && (
+              <button onClick={() => { setLogoPreviewUrl(''); setInvoiceSettings((p: any) => ({ ...p, logo_url: '', logo_storage_path: '' })); }}
+                className="mt-2 text-[10px] text-rose-500 font-bold hover:underline cursor-pointer w-full text-center">
+                × Supprimer le logo
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Step 3: Pre-printed */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-[10px] font-black text-white">3</div>
+            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Votre papier est-il déjà imprimé ?</span>
+          </div>
+          <div className="p-5 space-y-3">
+            <p className="text-xs text-slate-500">
+              Si vous imprimez sur du papier qui a déjà votre logo/adresse ou vos mentions légales, activez les options ci-dessous pour éviter les doublons.
+            </p>
+            {[
+              { label: 'En-tête déjà imprimé',      sub: 'Logo, nom, adresse déjà sur le papier en haut',       key: 'skip_header' },
+              { label: 'Pied de page déjà imprimé', sub: 'Mentions légales, signature déjà sur le papier en bas', key: 'skip_footer' },
+            ].map(({ label, sub, key }) => (
+              <div key={key}
+                onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
+                className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-amber-300'}`}>
+                <div>
+                  <p className={`text-sm font-black ${invoiceSettings[key] ? 'text-amber-800' : 'text-slate-700'}`}>{label}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
+                </div>
+                <div className={`w-12 h-7 rounded-full flex items-center shrink-0 ml-4 transition-all ${invoiceSettings[key] ? 'bg-amber-500' : 'bg-slate-300'}`}>
+                  <div className={`w-5 h-5 bg-white rounded-full shadow mx-1 transition-all ${invoiceSettings[key] ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Save */}
+        <div className="flex justify-end pb-6">
+          <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-3 rounded-xl text-sm font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg">
+            {savingSettings ? <Loader2 size={16} className="animate-spin" /> : null}
+            {savingSettings ? 'Sauvegarde...' : '✓ Sauvegarder'}
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* MODE: CREATE */}
+    {invoiceSettings.setup_mode === 'create' && (
+      <div className="flex gap-6">
+
+        {/* LEFT: Settings Blocks */}
+        <div className="flex-1 min-w-0 space-y-5">
+
+          {/* BLOCK 1: Company Identity */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-black text-white">1</div>
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Identité de l'entreprise</span>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Raison sociale', key: 'company_name', placeholder: 'FOTRAL SARL'         },
+                  { label: 'Adresse',        key: 'address',      placeholder: 'Rue X, Casablanca'   },
+                  { label: 'Téléphone',      key: 'phone',        placeholder: '+212 6...'            },
+                  { label: 'Email',          key: 'email',        placeholder: 'contact@...'          },
+                  { label: 'ICE',            key: 'ice',          placeholder: '001234567000000'      },
+                  { label: 'RC',             key: 'rc',           placeholder: '123456'               },
+                ].map(({ label, key, placeholder }) => (
+                  <div key={key}>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+                    <input type="text" placeholder={placeholder} value={invoiceSettings[key] || ''}
+                      onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
+                      className="w-full mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
+                  </div>
+                ))}
+              </div>
+              {/* Logo */}
+              <div className="mt-4 p-3 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex items-center gap-4">
+                {logoPreviewUrl ? (
+                  <div className="relative shrink-0">
+                    <img src={logoPreviewUrl} alt="Logo" className="h-12 w-auto object-contain rounded border border-slate-200 bg-white p-1" />
+                    <button onClick={() => { setLogoPreviewUrl(''); setInvoiceSettings((p: any) => ({ ...p, logo_url: '', logo_storage_path: '' })); }}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center cursor-pointer">
+                      <X size={8} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-[9px] font-bold shrink-0">LOGO</div>
+                )}
+                <div>
+                  <p className="text-xs font-black text-slate-700">Logo</p>
+                  <p className="text-[10px] text-slate-400">PNG fond transparent recommandé</p>
+                  <label className={`mt-1 inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase cursor-pointer ${uploadingLogo ? 'bg-slate-200 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                    {uploadingLogo ? <Loader2 size={9} className="animate-spin" /> : <Upload size={9} />}
+                    {uploadingLogo ? 'Upload...' : 'Choisir'}
+                    <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BLOCK 2: Style */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-[10px] font-black text-white">2</div>
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Style</span>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Titre</label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  {['FACTURE', 'AVOIR', 'DEVIS'].map(t => (
+                    <button key={t} onClick={() => setInvoiceSettings((p: any) => ({ ...p, invoice_title: t }))}
+                      className={`h-8 rounded-lg text-xs font-black uppercase border-2 transition-all cursor-pointer ${invoiceSettings.invoice_title === t ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Couleur principale</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={invoiceSettings.primary_color || '#1e40af'}
+                      onChange={e => setInvoiceSettings((p: any) => ({ ...p, primary_color: e.target.value }))}
+                      className="h-8 w-10 rounded cursor-pointer border-2 border-slate-200" />
+                    <span className="text-[10px] font-mono text-slate-500">{invoiceSettings.primary_color}</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Couleur accent</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={invoiceSettings.accent_color || '#f59e0b'}
+                      onChange={e => setInvoiceSettings((p: any) => ({ ...p, accent_color: e.target.value }))}
+                      className="h-8 w-10 rounded cursor-pointer border-2 border-slate-200" />
+                    <span className="text-[10px] font-mono text-slate-500">{invoiceSettings.accent_color}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Taille police — <span className="text-slate-600">{invoiceSettings.font_size || 11}px</span>
+                </label>
+                <input type="range" min="8" max="14" value={invoiceSettings.font_size || 11}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, font_size: parseInt(e.target.value) }))}
+                  className="w-full mt-1 accent-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          {/* BLOCK 3: Pre-printed */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-[10px] font-black text-white">3</div>
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Papier pré-imprimé</span>
+            </div>
+            <div className="p-5 space-y-3">
               {[
-                { label: 'Raison sociale', key: 'company_name', placeholder: 'FOTRAL SARL' },
-                { label: 'Adresse',        key: 'address',      placeholder: 'Rue X, Casablanca' },
-                { label: 'Téléphone',      key: 'phone',        placeholder: '+212 6...' },
-                { label: 'Email',          key: 'email',        placeholder: 'contact@...' },
-                { label: 'ICE',            key: 'ice',          placeholder: '001234567000000' },
-                { label: 'RC',             key: 'rc',           placeholder: '123456' },
+                { label: 'En-tête déjà imprimé',      sub: 'PDF sans logo/nom/adresse en haut',          key: 'skip_header' },
+                { label: 'Pied de page déjà imprimé', sub: 'PDF sans mentions légales/signature en bas', key: 'skip_footer' },
+              ].map(({ label, sub, key }) => (
+                <div key={key}
+                  onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
+                  className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-amber-300'}`}>
+                  <div>
+                    <p className={`text-xs font-black ${invoiceSettings[key] ? 'text-amber-800' : 'text-slate-700'}`}>{label}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>
+                  </div>
+                  <div className={`w-10 h-6 rounded-full flex items-center shrink-0 ml-3 transition-all ${invoiceSettings[key] ? 'bg-amber-500' : 'bg-slate-300'}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full shadow mx-1 transition-all ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* BLOCK 4: Margins */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-black text-white">4</div>
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Marges & Mise en page</span>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Marge Haut',   key: 'margin_top'    },
+                  { label: 'Marge Bas',    key: 'margin_bottom' },
+                  { label: 'Marge Gauche', key: 'margin_left'   },
+                  { label: 'Marge Droite', key: 'margin_right'  },
+                ].map(({ label, key }) => (
+                  <div key={key}>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {label} — <span className="text-slate-600">{invoiceSettings[key] || 15}mm</span>
+                    </label>
+                    <input type="range" min="5" max="40" value={invoiceSettings[key] || 15}
+                      onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: parseInt(e.target.value) }))}
+                      className="w-full mt-1 accent-emerald-600" />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Lignes par page — <span className="text-slate-600">{invoiceSettings.rows_per_page || 15}</span>
+                </label>
+                <input type="range" min="5" max="30" value={invoiceSettings.rows_per_page || 15}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, rows_per_page: parseInt(e.target.value) }))}
+                  className="w-full mt-1 accent-emerald-600" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Largeur colonnes (%)</label>
+                <div className="space-y-2">
+                  {[
+                    { label: 'Date',     key: 'col_width_date'    },
+                    { label: 'N° Fact',  key: 'col_width_fact'    },
+                    { label: 'Client',   key: 'col_width_client'  },
+                    { label: 'Route',    key: 'col_width_route'   },
+                    { label: 'Montants', key: 'col_width_amounts' },
+                  ].map(({ label, key }) => (
+                    <div key={key} className="flex items-center gap-3">
+                      <span className="text-[10px] text-slate-500 w-16 shrink-0">{label}</span>
+                      <input type="range" min="5" max="30" value={invoiceSettings[key] || 12}
+                        onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: parseInt(e.target.value) }))}
+                        className="flex-1 accent-blue-500" />
+                      <span className="text-[10px] font-black text-slate-600 w-7 text-right">{invoiceSettings[key] || 12}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BLOCK 5: Columns */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-black text-white">5</div>
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Colonnes optionnelles</span>
+            </div>
+            <div className="p-5">
+              <p className="text-[10px] text-slate-400 mb-3">Date, N° Fact, Client, Départ, Arrivée, HT, TVA, TTC — toujours inclus.</p>
+              <div className="space-y-2">
+                {[
+                  { label: 'BL / OT',         key: 'show_bl_ot' },
+                  { label: 'Bon de Commande', key: 'show_bc'    },
+                  { label: 'Manutention',     key: 'show_manut' },
+                  { label: 'Immobilisation',  key: 'show_immob' },
+                  { label: 'Écart de délai',  key: 'show_ecart' },
+                ].map(({ label, key }) => (
+                  <div key={key}
+                    onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
+                    className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <span className={`text-xs font-bold ${invoiceSettings[key] ? 'text-blue-800' : 'text-slate-500'}`}>{label}</span>
+                    <div className={`w-10 h-6 rounded-full flex items-center ${invoiceSettings[key] ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                      <div className={`w-4 h-4 bg-white rounded-full shadow mx-1 transition-all ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* BLOCK 6: Payment & Footer */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-rose-500 flex items-center justify-center text-[10px] font-black text-white">6</div>
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Paiement & Pied de page</span>
+            </div>
+            <div className="p-5 space-y-3">
+              {[
+                { label: 'RIB',             key: 'rib',             placeholder: '123 456 789...'    },
+                { label: 'Banque',          key: 'bank_name',       placeholder: 'Attijariwafa Bank' },
+                { label: 'Label Signature', key: 'signature_label', placeholder: 'Signature & Cachet'},
               ].map(({ label, key, placeholder }) => (
                 <div key={key}>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
@@ -1962,346 +2214,117 @@ ${pages.map((pageRows, pageIdx) => `
                     className="w-full mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
                 </div>
               ))}
-            </div>
-            {/* Logo */}
-            <div className="mt-4 p-3 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex items-center gap-4">
-              {logoPreviewUrl ? (
-                <div className="relative shrink-0">
-                  <img src={logoPreviewUrl} alt="Logo" className="h-12 w-auto object-contain rounded border border-slate-200 bg-white p-1" />
-                  <button onClick={() => { setLogoPreviewUrl(''); setInvoiceSettings((p: any) => ({ ...p, logo_url: '', logo_storage_path: '' })); }}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center cursor-pointer">
-                    <X size={8} />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-[9px] font-bold shrink-0">LOGO</div>
-              )}
               <div>
-                <p className="text-xs font-black text-slate-700">Logo</p>
-                <p className="text-[10px] text-slate-400">PNG, JPG, SVG</p>
-                <label className={`mt-1 inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase cursor-pointer ${uploadingLogo ? 'bg-slate-200 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                  {uploadingLogo ? <Loader2 size={9} className="animate-spin" /> : <Upload size={9} />}
-                  {uploadingLogo ? 'Upload...' : 'Choisir'}
-                  <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
-                </label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentions légales</label>
+                <textarea value={invoiceSettings.footer_text || ''}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, footer_text: e.target.value }))}
+                  rows={3} placeholder="Ex: Tout retard de paiement entraîne des pénalités..."
+                  className="w-full mt-1 rounded-lg border-2 border-slate-200 px-3 py-2 text-xs focus:outline-none focus:border-blue-500 resize-none" />
               </div>
             </div>
+          </div>
+
+          {/* Save */}
+          <div className="flex justify-end pb-6">
+            <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
+              className="bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-8 py-3 rounded-xl text-sm font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg">
+              {savingSettings ? <Loader2 size={16} className="animate-spin" /> : null}
+              {savingSettings ? 'Sauvegarde...' : '✓ Sauvegarder le modèle'}
+            </button>
           </div>
         </div>
 
-        {/* BLOCK 2: Style */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-[10px] font-black text-white">2</div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Style</span>
-          </div>
-          <div className="p-5 space-y-4">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Titre</label>
-              <div className="grid grid-cols-3 gap-2 mt-1">
-                {['FACTURE', 'AVOIR', 'DEVIS'].map(t => (
-                  <button key={t} onClick={() => setInvoiceSettings((p: any) => ({ ...p, invoice_title: t }))}
-                    className={`h-8 rounded-lg text-xs font-black uppercase border-2 transition-all cursor-pointer ${invoiceSettings.invoice_title === t ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
+        {/* RIGHT: Live Preview */}
+        <div className="w-[400px] shrink-0">
+          <div className="sticky top-20">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Aperçu en direct</span>
+              <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Temps réel</span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Couleur principale</label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input type="color" value={invoiceSettings.primary_color || '#1e40af'}
-                    onChange={e => setInvoiceSettings((p: any) => ({ ...p, primary_color: e.target.value }))}
-                    className="h-8 w-10 rounded cursor-pointer border-2 border-slate-200" />
-                  <span className="text-[10px] font-mono text-slate-500">{invoiceSettings.primary_color}</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Couleur accent</label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input type="color" value={invoiceSettings.accent_color || '#f59e0b'}
-                    onChange={e => setInvoiceSettings((p: any) => ({ ...p, accent_color: e.target.value }))}
-                    className="h-8 w-10 rounded cursor-pointer border-2 border-slate-200" />
-                  <span className="text-[10px] font-mono text-slate-500">{invoiceSettings.accent_color}</span>
-                </div>
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Taille police — <span className="text-slate-600">{invoiceSettings.font_size || 11}px</span>
-              </label>
-              <input type="range" min="8" max="14" value={invoiceSettings.font_size || 11}
-                onChange={e => setInvoiceSettings((p: any) => ({ ...p, font_size: parseInt(e.target.value) }))}
-                className="w-full mt-1 accent-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        
-
-        {/* BLOCK 4: Margins */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-black text-white">4</div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Marges & Mise en page</span>
-          </div>
-          <div className="p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Marge Haut',   key: 'margin_top'    },
-                { label: 'Marge Bas',    key: 'margin_bottom' },
-                { label: 'Marge Gauche', key: 'margin_left'   },
-                { label: 'Marge Droite', key: 'margin_right'  },
-              ].map(({ label, key }) => (
-                <div key={key}>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {label} — <span className="text-slate-600">{invoiceSettings[key] || 15}mm</span>
-                  </label>
-                  <input type="range" min="5" max="40" value={invoiceSettings[key] || 15}
-                    onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: parseInt(e.target.value) }))}
-                    className="w-full mt-1 accent-emerald-600" />
-                </div>
-              ))}
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Lignes par page — <span className="text-slate-600">{invoiceSettings.rows_per_page || 15}</span>
-              </label>
-              <input type="range" min="5" max="30" value={invoiceSettings.rows_per_page || 15}
-                onChange={e => setInvoiceSettings((p: any) => ({ ...p, rows_per_page: parseInt(e.target.value) }))}
-                className="w-full mt-1 accent-emerald-600" />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Largeur colonnes (%)</label>
-              <div className="space-y-2">
-                {[
-                  { label: 'Date',      key: 'col_width_date'    },
-                  { label: 'N° Fact',   key: 'col_width_fact'    },
-                  { label: 'Client',    key: 'col_width_client'  },
-                  { label: 'Route',     key: 'col_width_route'   },
-                  { label: 'Montants',  key: 'col_width_amounts' },
-                ].map(({ label, key }) => (
-                  <div key={key} className="flex items-center gap-3">
-                    <span className="text-[10px] text-slate-500 w-16 shrink-0">{label}</span>
-                    <input type="range" min="5" max="30" value={invoiceSettings[key] || 12}
-                      onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: parseInt(e.target.value) }))}
-                      className="flex-1 accent-blue-500" />
-                    <span className="text-[10px] font-black text-slate-600 w-7 text-right">{invoiceSettings[key] || 12}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* BLOCK 5: Columns */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-black text-white">5</div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Colonnes optionnelles</span>
-          </div>
-          <div className="p-5">
-            <p className="text-[10px] text-slate-400 mb-3">Date, N° Fact, Client, Départ, Arrivée, HT, TVA, TTC — toujours inclus.</p>
-            <div className="space-y-2">
-              {[
-                { label: 'BL / OT',         key: 'show_bl_ot' },
-                { label: 'Bon de Commande', key: 'show_bc'    },
-                { label: 'Manutention',     key: 'show_manut' },
-                { label: 'Immobilisation',  key: 'show_immob' },
-                { label: 'Écart de délai',  key: 'show_ecart' },
-              ].map(({ label, key }) => (
-                <div key={key}
-                  onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
-                  className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
-                  <span className={`text-xs font-bold ${invoiceSettings[key] ? 'text-blue-800' : 'text-slate-500'}`}>{label}</span>
-                  <div className={`w-10 h-6 rounded-full flex items-center ${invoiceSettings[key] ? 'bg-blue-600' : 'bg-slate-300'}`}>
-                    <div className={`w-4 h-4 bg-white rounded-full shadow mx-1 transition-all ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* BLOCK 6: Payment & Footer */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-rose-500 flex items-center justify-center text-[10px] font-black text-white">6</div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Paiement & Pied de page</span>
-          </div>
-          <div className="p-5 space-y-3">
-            {[
-              { label: 'RIB',             key: 'rib',             placeholder: '123 456 789...' },
-              { label: 'Banque',          key: 'bank_name',       placeholder: 'Attijariwafa Bank' },
-              { label: 'Label Signature', key: 'signature_label', placeholder: 'Signature & Cachet' },
-            ].map(({ label, key, placeholder }) => (
-              <div key={key}>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
-                <input type="text" placeholder={placeholder} value={invoiceSettings[key] || ''}
-                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
-                  className="w-full mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
-              </div>
-            ))}
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentions légales</label>
-              <textarea value={invoiceSettings.footer_text || ''}
-                onChange={e => setInvoiceSettings((p: any) => ({ ...p, footer_text: e.target.value }))}
-                rows={3} placeholder="Ex: Tout retard de paiement entraîne des pénalités..."
-                className="w-full mt-1 rounded-lg border-2 border-slate-200 px-3 py-2 text-xs focus:outline-none focus:border-blue-500 resize-none" />
-            </div>
-          </div>
-        </div>
-
-        {/* Save bottom */}
-        <div className="flex justify-end pb-6">
-          <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-3 rounded-xl text-sm font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg">
-            {savingSettings ? <Loader2 size={16} className="animate-spin" /> : null}
-            {savingSettings ? 'Sauvegarde...' : '✓ Sauvegarder le modèle'}
-          </button>
-        </div>
-      </div>
-
-      {/* RIGHT: Live Preview */}
-      <div className="w-[420px] shrink-0">
-        <div className="sticky top-20">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Aperçu en direct</span>
-            <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded font-medium">Mis à jour en temps réel</span>
-          </div>
-
-          {/* Reference invoice if imported */}
-          {invoiceSettings.imported_invoice_url && (
-            <div className="mb-4">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Votre facture de référence</p>
-              <div className="rounded-xl overflow-hidden border-2 border-blue-200 shadow-sm">
-                <img src={invoiceSettings.imported_invoice_url} alt="Référence"
-                  className="w-full object-contain max-h-64" />
-              </div>
-            </div>
-          )}
-
-          {/* Live preview panel */}
-          <div className="rounded-xl overflow-hidden border-2 shadow-lg"
-            style={{ borderColor: invoiceSettings.primary_color || '#1e40af' }}>
-
-            {/* Header preview */}
-            {!invoiceSettings.skip_header && (
-              <div className="p-4 border-b-2" style={{ borderColor: invoiceSettings.primary_color, backgroundColor: (invoiceSettings.primary_color || '#1e40af') + '12' }}>
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-3">
-                    {logoPreviewUrl && (
-                      <img src={logoPreviewUrl} alt="Logo" className="h-10 w-auto object-contain" />
-                    )}
-                    <div>
+            <div className="rounded-xl overflow-hidden border-2 shadow-lg"
+              style={{ borderColor: invoiceSettings.primary_color || '#1e40af' }}>
+              {!invoiceSettings.skip_header && (
+                <div className="p-3 border-b-2" style={{ borderColor: invoiceSettings.primary_color, backgroundColor: (invoiceSettings.primary_color || '#1e40af') + '12' }}>
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                      {logoPreviewUrl && <img src={logoPreviewUrl} alt="Logo" className="h-8 w-auto object-contain" />}
+                      <div>
+                        <p className="font-black text-xs" style={{ color: invoiceSettings.primary_color }}>
+                          {invoiceSettings.company_name || 'Nom entreprise'}
+                        </p>
+                        {invoiceSettings.address && <p className="text-[9px] text-slate-500">{invoiceSettings.address}</p>}
+                        {invoiceSettings.ice     && <p className="text-[9px] text-slate-500">ICE: {invoiceSettings.ice}</p>}
+                      </div>
+                    </div>
+                    <div className="text-right">
                       <p className="font-black text-sm" style={{ color: invoiceSettings.primary_color }}>
-                        {invoiceSettings.company_name || 'Nom de l\'entreprise'}
+                        {invoiceSettings.invoice_title || 'FACTURE'}
                       </p>
-                      {invoiceSettings.address && <p className="text-[10px] text-slate-500">{invoiceSettings.address}</p>}
-                      {invoiceSettings.phone   && <p className="text-[10px] text-slate-500">{invoiceSettings.phone}</p>}
-                      {invoiceSettings.ice     && <p className="text-[10px] text-slate-500">ICE: {invoiceSettings.ice}</p>}
+                      <p className="text-[9px]" style={{ color: invoiceSettings.accent_color }}>N° 00001</p>
+                      <p className="text-[9px] text-slate-400">{new Date().toLocaleDateString('fr-MA')}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-lg font-black" style={{ color: invoiceSettings.primary_color }}>
-                      {invoiceSettings.invoice_title || 'FACTURE'}
-                    </p>
-                    <p className="text-[10px]" style={{ color: invoiceSettings.accent_color }}>N° 00001</p>
-                    <p className="text-[10px] text-slate-400">{new Date().toLocaleDateString('fr-MA')}</p>
+                </div>
+              )}
+              {invoiceSettings.skip_header && (
+                <div className="p-2 text-center text-[9px] text-amber-600 bg-amber-50 font-bold border-b border-amber-200">
+                  ↑ EN-TÊTE NON IMPRIMÉ (papier pré-imprimé)
+                </div>
+              )}
+              <div className="mx-3 my-2 p-2 bg-slate-50 rounded text-xs"
+                style={{ borderLeft: `3px solid ${invoiceSettings.accent_color || '#f59e0b'}` }}>
+                <p className="font-bold text-slate-700 text-[10px]">NOM DU CLIENT</p>
+                <p className="text-[9px] text-slate-400">X prestation(s)</p>
+              </div>
+              <div className="mx-3 mb-2 rounded-lg overflow-hidden border border-slate-200">
+                <div className="grid text-[8px] font-black text-white px-2 py-1"
+                  style={{ backgroundColor: invoiceSettings.primary_color, gridTemplateColumns: 'repeat(5,1fr)' }}>
+                  <span>Date</span><span>N° Fact</span><span>Départ</span><span>HT</span><span>TTC</span>
+                </div>
+                {[1,2,3].map(i => (
+                  <div key={i} className={`grid text-[8px] text-slate-400 px-2 py-1 ${i%2===0?'bg-slate-50':'bg-white'}`}
+                    style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
+                    <span>01/06/26</span><span>F-00{i}</span><span>Casa→Rabat</span><span>4,400</span><span>4,840</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end mx-3 mb-2">
+                <div className="border-2 rounded-lg p-2 min-w-[120px]" style={{ borderColor: invoiceSettings.primary_color }}>
+                  <div className="flex justify-between text-[8px] text-slate-400 mb-0.5"><span>Total HT</span><span>X MAD</span></div>
+                  <div className="flex justify-between text-[8px] text-slate-400 mb-0.5"><span>TVA</span><span>X MAD</span></div>
+                  <div className="flex justify-between text-[9px] font-black border-t pt-0.5" style={{ color: invoiceSettings.primary_color }}>
+                    <span>TTC</span><span>X MAD</span>
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* Client box */}
-            <div className="mx-3 my-2 p-2 bg-slate-50 rounded-lg text-xs"
-              style={{ borderLeft: `3px solid ${invoiceSettings.accent_color || '#f59e0b'}` }}>
-              <p className="font-bold text-slate-700">NOM DU CLIENT</p>
-              <p className="text-[10px] text-slate-400">X prestation(s) — Délai: {invoiceSettings.delai_paiement || 60}j</p>
-            </div>
-
-            {/* Table preview */}
-            <div className="mx-3 mb-2 rounded-lg overflow-hidden border border-slate-200">
-              <div className="grid text-[8px] font-black text-white px-2 py-1"
-                style={{ backgroundColor: invoiceSettings.primary_color, gridTemplateColumns: 'repeat(5, 1fr)' }}>
-                <span>Date</span>
-                <span>N° Fact</span>
-                <span>Départ→Arr.</span>
-                <span>HT</span>
-                <span>TTC</span>
-              </div>
-              {[1,2,3].map(i => (
-                <div key={i} className={`grid text-[8px] text-slate-500 px-2 py-1 ${i % 2 === 0 ? 'bg-slate-50' : 'bg-white'}`}
-                  style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
-                  <span>01/06/26</span>
-                  <span>F-00{i}</span>
-                  <span>Casa→Rabat</span>
-                  <span>4,400</span>
-                  <span>4,840</span>
+              {(invoiceSettings.rib || invoiceSettings.bank_name) && (
+                <div className="mx-3 mb-2 p-1.5 bg-slate-50 rounded text-[8px] text-slate-500 border border-slate-200">
+                  {invoiceSettings.bank_name && <span className="font-bold">{invoiceSettings.bank_name} </span>}
+                  {invoiceSettings.rib && <span>RIB: {invoiceSettings.rib}</span>}
                 </div>
-              ))}
-            </div>
-
-            {/* Totals */}
-            <div className="flex justify-end mx-3 mb-2">
-              <div className="border-2 rounded-lg p-2 min-w-[130px]"
-                style={{ borderColor: invoiceSettings.primary_color }}>
-                <div className="flex justify-between text-[9px] text-slate-500 mb-0.5"><span>Total HT</span><span>X MAD</span></div>
-                <div className="flex justify-between text-[9px] text-slate-500 mb-0.5"><span>TVA</span><span>X MAD</span></div>
-                <div className="flex justify-between text-[10px] font-black border-t border-slate-200 pt-0.5"
-                  style={{ color: invoiceSettings.primary_color }}>
-                  <span>Total TTC</span><span>X MAD</span>
+              )}
+              <div className="flex justify-end mx-3 mb-2">
+                <div className="border border-slate-200 rounded p-1.5 text-center min-w-[90px]">
+                  <p className="text-[8px] text-slate-400 uppercase font-bold">{invoiceSettings.signature_label || 'Signature'}</p>
+                  <div className="h-5" />
                 </div>
               </div>
+              {!invoiceSettings.skip_footer && invoiceSettings.footer_text && (
+                <div className="mx-3 mb-2 text-[8px] text-slate-400 border-t border-slate-200 pt-1.5 text-center">
+                  {invoiceSettings.footer_text}
+                </div>
+              )}
+              {invoiceSettings.skip_footer && (
+                <div className="p-2 text-center text-[9px] text-amber-600 bg-amber-50 font-bold border-t border-amber-200">
+                  ↓ PIED DE PAGE NON IMPRIMÉ (papier pré-imprimé)
+                </div>
+              )}
             </div>
-
-            {/* Bank info */}
-            {(invoiceSettings.rib || invoiceSettings.bank_name) && (
-              <div className="mx-3 mb-2 p-2 bg-slate-50 rounded text-[9px] text-slate-500 border border-slate-200">
-                {invoiceSettings.bank_name && <span className="font-bold">{invoiceSettings.bank_name} </span>}
-                {invoiceSettings.rib && <span>RIB: {invoiceSettings.rib}</span>}
-              </div>
-            )}
-
-            {/* Signature */}
-            <div className="flex justify-end mx-3 mb-2">
-              <div className="border border-slate-200 rounded p-2 text-center min-w-[100px]">
-                <p className="text-[8px] text-slate-400 uppercase font-bold">{invoiceSettings.signature_label || 'Signature & Cachet'}</p>
-                <div className="h-6" />
-              </div>
-            </div>
-
-            {/* Footer */}
-            {!invoiceSettings.skip_footer && invoiceSettings.footer_text && (
-              <div className="mx-3 mb-3 text-[8px] text-slate-400 border-t border-slate-200 pt-2 text-center">
-                {invoiceSettings.footer_text}
-              </div>
-            )}
-
-            {/* Pre-printed indicators */}
-            {(invoiceSettings.skip_header || invoiceSettings.skip_footer) && (
-              <div className="mx-3 mb-3 space-y-1">
-                {invoiceSettings.skip_header && (
-                  <div className="text-[9px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 text-center font-bold">
-                    ↑ EN-TÊTE NON IMPRIMÉ (papier pré-imprimé)
-                  </div>
-                )}
-                {invoiceSettings.skip_footer && (
-                  <div className="text-[9px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 text-center font-bold">
-                    ↓ PIED DE PAGE NON IMPRIMÉ (papier pré-imprimé)
-                  </div>
-                )}
-              </div>
-            )}
+            <p className="text-[10px] text-slate-400 text-center mt-2">Aperçu mis à jour en temps réel</p>
           </div>
-
-          <p className="text-[10px] text-slate-400 text-center mt-2">
-            L'aperçu se met à jour à chaque modification
-          </p>
         </div>
       </div>
-    </div>
+    )}
   </div>
 )}
         </main>
