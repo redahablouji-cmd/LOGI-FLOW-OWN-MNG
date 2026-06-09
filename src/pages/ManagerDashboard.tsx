@@ -117,14 +117,26 @@ const [uploadingFacts, setUploadingFacts] = useState(false);
 const [invoiceSettings,  setInvoiceSettings]  = useState<any>({
   company_name: '', address: '', phone: '', email: '',
   ice: '', rc: '', rib: '', bank_name: '',
-  invoice_title: 'FACTURE', primary_color: '#1e40af', accent_color: '#f59e0b',
+  invoice_title: 'FACTURE',
+  primary_color: '#1e40af', accent_color: '#f59e0b',
   footer_text: '', signature_label: 'Signature & Cachet',
-  show_bl_ot: true, show_bc: true, show_manut: false, show_immob: false, show_ecart: false,
-  logo_url: '',
+  show_bl_ot: true, show_bc: true, show_manut: false,
+  show_immob: false, show_ecart: false,
+  logo_url: '', logo_storage_path: '',
+  skip_header: false, skip_footer: false,
+  margin_top: 12, margin_bottom: 12,
+  margin_left: 15, margin_right: 15,
+  font_size: 11,
+  col_width_date: 10, col_width_fact: 10,
+  col_width_client: 15, col_width_route: 15,
+  col_width_amounts: 12,
+  rows_per_page: 15,
 });
 const [savingSettings,   setSavingSettings]   = useState(false);
 const [settingsLoaded,   setSettingsLoaded]   = useState(false);
 const [showPreview,      setShowPreview]      = useState(false);
+const [uploadingLogo,    setUploadingLogo]    = useState(false);
+const [logoPreviewUrl,   setLogoPreviewUrl]   = useState('');
 const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
@@ -574,8 +586,35 @@ const fetchInvoiceSettings = async () => {
     .select('*')
     .eq('company_id', companyId)
     .maybeSingle();
-  if (data) setInvoiceSettings(data);
+  if (data) {
+    setInvoiceSettings(data);
+    if (data.logo_url) setLogoPreviewUrl(data.logo_url);
+  }
   setSettingsLoaded(true);
+};
+
+const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !companyId) return;
+  setUploadingLogo(true);
+  try {
+    const ext = file.name.split('.').pop();
+    const path = `${companyId}/logo.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('logos')
+      .upload(path, file, { upsert: true });
+    if (upErr) throw upErr;
+    const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path);
+    const url = urlData.publicUrl;
+    setLogoPreviewUrl(url);
+    setInvoiceSettings((p: any) => ({ ...p, logo_url: url, logo_storage_path: path }));
+    toast.success("Logo uploadé !");
+  } catch (err: any) {
+    toast.error(`Erreur logo: ${err.message}`);
+  } finally {
+    setUploadingLogo(false);
+    e.target.value = '';
+  }
 };
 
 const handleSaveInvoiceSettings = async () => {
@@ -585,7 +624,7 @@ const handleSaveInvoiceSettings = async () => {
   const { error } = await supabase
     .from('invoice_settings')
     .upsert(payload, { onConflict: 'company_id' });
-  if (!error) toast.success("Modèle de facture sauvegardé !");
+  if (!error) toast.success("Modèle sauvegardé !");
   else toast.error(`Erreur: ${error.message}`);
   setSavingSettings(false);
 };
@@ -615,7 +654,7 @@ const handleGenerateInvoicePDF = () => {
   if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
 
   const s = invoiceSettings;
-  const ROWS_PER_PAGE = 15;
+  const ROWS_PER_PAGE = s.rows_per_page || 15;
   const pages: any[][] = [];
   for (let i = 0; i < selected.length; i += ROWS_PER_PAGE) {
     pages.push(selected.slice(i, i + ROWS_PER_PAGE));
@@ -625,89 +664,95 @@ const handleGenerateInvoicePDF = () => {
   const totalTVA = selected.reduce((sum, f) => sum + (f.tva         || 0), 0);
   const totalTTC = selected.reduce((sum, f) => sum + (f.montant_ttc || 0), 0);
   const clientName = selected[0]?.client || '';
-
-  // Build dynamic columns based on settings
-  const cols = [
-    { label: 'Date',      key: 'date',          always: true  },
-    { label: 'N° Fact.',  key: 'numero_facture', always: true  },
-    { label: 'BL/OT',    key: 'bl_ot',          show: s.show_bl_ot },
-    { label: 'BC',        key: 'bc',             show: s.show_bc    },
-    { label: 'Départ',   key: 'depart',          always: true  },
-    { label: 'Arrivée',  key: 'arrivee',         always: true  },
-    { label: 'Manut.',   key: 'manutention',     show: s.show_manut },
-    { label: 'Immob.',   key: 'immobilisation',  show: s.show_immob },
-    { label: 'HT (MAD)', key: 'montant_ht',      always: true  },
-    { label: 'TVA (MAD)',key: 'tva',             always: true  },
-    { label: 'TTC (MAD)',key: 'montant_ttc',     always: true  },
-    { label: 'Écart',    key: 'ecart_delai',     show: s.show_ecart },
-  ].filter(c => c.always || c.show);
-
   const primary = s.primary_color || '#1e40af';
   const accent  = s.accent_color  || '#f59e0b';
+  const fs      = s.font_size     || 11;
+
+  const cols = [
+    { label: 'Date',      key: 'date',          w: s.col_width_date    || 10, always: true  },
+    { label: 'N° Fact.',  key: 'numero_facture', w: s.col_width_fact    || 10, always: true  },
+    { label: 'Client',    key: 'client',         w: s.col_width_client  || 15, always: true  },
+    { label: 'BL/OT',    key: 'bl_ot',          w: 8,  show: s.show_bl_ot },
+    { label: 'BC',        key: 'bc',             w: 8,  show: s.show_bc    },
+    { label: 'Départ',   key: 'depart',          w: s.col_width_route   || 12, always: true  },
+    { label: 'Arrivée',  key: 'arrivee',         w: s.col_width_route   || 12, always: true  },
+    { label: 'Manut.',   key: 'manutention',     w: 8,  show: s.show_manut },
+    { label: 'Immob.',   key: 'immobilisation',  w: 8,  show: s.show_immob },
+    { label: 'HT (MAD)', key: 'montant_ht',      w: s.col_width_amounts || 12, always: true  },
+    { label: 'TVA (MAD)',key: 'tva',             w: s.col_width_amounts || 12, always: true  },
+    { label: 'TTC (MAD)',key: 'montant_ttc',     w: s.col_width_amounts || 12, always: true  },
+    { label: 'Écart',    key: 'ecart_delai',     w: 7,  show: s.show_ecart },
+  ].filter(c => c.always || c.show);
+
+  const mt = s.margin_top    || 12;
+  const mb = s.margin_bottom || 12;
+  const ml = s.margin_left   || 15;
+  const mr = s.margin_right  || 15;
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8"/>
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Arial, sans-serif; font-size:11px; color:#1e293b; }
-    .page { width:210mm; min-height:297mm; padding:12mm 15mm; page-break-after:always; position:relative; }
-    .page:last-child { page-break-after:auto; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; padding-bottom:12px; border-bottom:3px solid ${primary}; }
-    .logo-area { display:flex; align-items:center; gap:10px; }
-    .logo-img { max-height:50px; max-width:120px; object-fit:contain; }
-    .company-name { font-size:18px; font-weight:900; color:${primary}; }
-    .company-sub { font-size:9px; color:#64748b; margin-top:3px; line-height:1.6; }
-    .invoice-box { text-align:right; }
-    .invoice-title { font-size:22px; font-weight:900; color:${primary}; letter-spacing:2px; }
-    .invoice-meta { font-size:9px; color:#64748b; margin-top:4px; line-height:1.6; }
-    .invoice-num { font-size:13px; font-weight:700; color:${accent}; margin-top:4px; }
-    .client-box { background:#f8fafc; border-left:4px solid ${accent}; padding:8px 12px; margin-bottom:14px; border-radius:0 6px 6px 0; }
-    .client-box strong { font-size:12px; color:#1e293b; }
-    .client-sub { font-size:9px; color:#64748b; margin-top:2px; }
-    table { width:100%; border-collapse:collapse; margin-bottom:12px; font-size:9.5px; }
-    th { background:${primary}; color:white; padding:6px 7px; text-align:left; font-size:8px; text-transform:uppercase; letter-spacing:0.4px; }
-    td { padding:5px 7px; border-bottom:1px solid #f1f5f9; }
-    tr:nth-child(even) td { background:#f8fafc; }
-    .num { text-align:right; }
-    .totals-row { display:flex; justify-content:flex-end; margin-top:6px; }
-    .totals-box { border:2px solid ${primary}; border-radius:6px; padding:8px 14px; min-width:200px; }
-    .t-row { display:flex; justify-content:space-between; padding:2px 0; font-size:10px; }
-    .t-total { font-weight:700; font-size:13px; color:${primary}; border-top:1px solid #e2e8f0; margin-top:4px; padding-top:5px; }
-    .payment-box { margin-top:12px; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:9px; }
-    .payment-box strong { color:${primary}; font-size:10px; }
-    .footer-area { position:absolute; bottom:10mm; left:15mm; right:15mm; }
-    .footer-text { font-size:8px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:5px; text-align:center; }
-    .signature-block { display:flex; justify-content:flex-end; margin-top:16px; }
-    .signature-box { border:1px solid #e2e8f0; border-radius:6px; padding:8px 16px; min-width:160px; text-align:center; }
-    .signature-label { font-size:8px; font-weight:700; color:#64748b; text-transform:uppercase; }
-    .signature-space { height:40px; }
-    .page-num { text-align:right; font-size:8px; color:#94a3b8; margin-top:4px; }
-    .badge { display:inline-block; padding:1px 6px; border-radius:3px; font-size:8px; font-weight:700; text-transform:uppercase; }
-    .badge-green { background:#dcfce7; color:#166534; }
-    .badge-red { background:#fee2e2; color:#991b1b; }
-    @media print { body { print-color-adjust:exact; -webkit-print-color-adjust:exact; } }
-  </style>
+<meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:Arial,sans-serif; font-size:${fs}px; color:#1e293b; }
+  .page { width:210mm; min-height:297mm; padding:${mt}mm ${mr}mm ${mb}mm ${ml}mm; page-break-after:always; position:relative; }
+  .page:last-child { page-break-after:auto; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; padding-bottom:10px; border-bottom:3px solid ${primary}; }
+  .logo-img { max-height:55px; max-width:130px; object-fit:contain; }
+  .company-name { font-size:${fs + 7}px; font-weight:900; color:${primary}; }
+  .company-sub { font-size:${fs - 2}px; color:#64748b; margin-top:3px; line-height:1.6; }
+  .invoice-title { font-size:${fs + 11}px; font-weight:900; color:${primary}; letter-spacing:2px; }
+  .invoice-num { font-size:${fs + 2}px; font-weight:700; color:${accent}; margin-top:3px; }
+  .invoice-meta { font-size:${fs - 2}px; color:#64748b; margin-top:3px; line-height:1.6; }
+  .client-box { background:#f8fafc; border-left:4px solid ${accent}; padding:7px 12px; margin-bottom:12px; border-radius:0 6px 6px 0; }
+  .client-name { font-size:${fs + 1}px; font-weight:700; color:#1e293b; }
+  .client-sub { font-size:${fs - 2}px; color:#64748b; margin-top:2px; }
+  table { width:100%; border-collapse:collapse; margin-bottom:10px; }
+  th { background:${primary}; color:white; padding:5px 6px; text-align:left; font-size:${fs - 3}px; text-transform:uppercase; letter-spacing:0.3px; }
+  td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:${fs - 1}px; }
+  tr:nth-child(even) td { background:#f8fafc; }
+  .num { text-align:right; }
+  .totals-wrap { display:flex; justify-content:flex-end; margin-top:8px; }
+  .totals-box { border:2px solid ${primary}; border-radius:6px; padding:8px 14px; min-width:200px; }
+  .t-row { display:flex; justify-content:space-between; padding:2px 0; font-size:${fs}px; }
+  .t-total { font-weight:700; font-size:${fs + 2}px; color:${primary}; border-top:1px solid #e2e8f0; margin-top:4px; padding-top:5px; }
+  .payment-box { margin-top:10px; padding:7px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:${fs - 2}px; }
+  .payment-title { font-weight:700; color:${primary}; font-size:${fs - 1}px; margin-bottom:3px; }
+  .sig-wrap { display:flex; justify-content:flex-end; margin-top:14px; }
+  .sig-box { border:1px solid #cbd5e1; border-radius:6px; padding:8px 16px; min-width:160px; text-align:center; }
+  .sig-label { font-size:${fs - 3}px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; }
+  .sig-space { height:38px; }
+  .footer-area { margin-top:14px; border-top:1px solid #e2e8f0; padding-top:5px; }
+  .footer-text { font-size:${fs - 3}px; color:#94a3b8; text-align:center; }
+  .page-num { font-size:${fs - 3}px; color:#94a3b8; text-align:right; margin-top:3px; }
+  .badge { display:inline-block; padding:1px 5px; border-radius:3px; font-size:${fs - 3}px; font-weight:700; }
+  .badge-red { background:#fee2e2; color:#991b1b; }
+  .badge-green { background:#dcfce7; color:#166534; }
+  @media print { body { print-color-adjust:exact; -webkit-print-color-adjust:exact; } }
+</style>
 </head>
 <body>
 ${pages.map((pageRows, pageIdx) => `
 <div class="page">
+
+  ${!s.skip_header ? `
   <div class="header">
-    <div class="logo-area">
-      ${s.logo_url ? `<img src="${s.logo_url}" class="logo-img" />` : ''}
+    <div style="display:flex;align-items:center;gap:10px">
+      ${s.logo_url ? `<img src="${s.logo_url}" class="logo-img"/>` : ''}
       <div>
-        <div class="company-name">${s.company_name || activeCompany?.name || 'LOGI-FLOW'}</div>
+        <div class="company-name">${s.company_name || activeCompany?.name || ''}</div>
         <div class="company-sub">
-          ${s.address ? s.address + '<br/>' : ''}
-          ${s.phone ? 'Tél: ' + s.phone + '  ' : ''}${s.email ? s.email + '<br/>' : ''}
-          ${s.ice ? 'ICE: ' + s.ice + '  ' : ''}${s.rc ? 'RC: ' + s.rc : ''}
+          ${s.address  ? s.address  + '<br/>' : ''}
+          ${s.phone    ? 'Tél: '  + s.phone    + (s.email ? ' — ' : '<br/>') : ''}
+          ${s.email    ? s.email   + '<br/>' : ''}
+          ${s.ice      ? 'ICE: '  + s.ice   + (s.rc ? ' — RC: ' + s.rc : '') : ''}
         </div>
       </div>
     </div>
-    <div class="invoice-box">
+    <div style="text-align:right">
       <div class="invoice-title">${s.invoice_title || 'FACTURE'}</div>
-      <div class="invoice-num">${selected[0]?.numero_facture ? 'N° ' + selected[0].numero_facture : ''}</div>
+      ${selected[0]?.numero_facture ? `<div class="invoice-num">N° ${selected[0].numero_facture}</div>` : ''}
       <div class="invoice-meta">
         Date: ${new Date().toLocaleDateString('fr-MA')}<br/>
         Page ${pageIdx + 1} / ${pages.length}
@@ -716,24 +761,24 @@ ${pages.map((pageRows, pageIdx) => `
   </div>
 
   <div class="client-box">
-    <strong>${clientName}</strong>
-    <div class="client-sub">
-      ${selected.length} prestation(s) — Délai paiement: ${selected[0]?.delai_paiement || 60} jours
-    </div>
+    <div class="client-name">${clientName}</div>
+    <div class="client-sub">${selected.length} prestation(s) — Délai: ${selected[0]?.delai_paiement || 60}j</div>
   </div>
+  ` : `<div style="text-align:right;font-size:${fs - 2}px;color:#64748b;margin-bottom:8px;">Page ${pageIdx + 1} / ${pages.length}</div>`}
 
   <table>
     <thead>
-      <tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr>
+      <tr>
+        ${cols.map(c => `<th style="width:${c.w}%">${c.label}</th>`).join('')}
+      </tr>
     </thead>
     <tbody>
       ${pageRows.map(f => `
         <tr>
           ${cols.map(c => {
             const v = f[c.key];
-            if (['montant_ht','tva','montant_ttc','manutention','immobilisation'].includes(c.key)) {
-              return `<td class="num">${Number(v || 0).toLocaleString('fr-MA')} MAD</td>`;
-            }
+            if (['montant_ht','tva','montant_ttc','manutention','immobilisation'].includes(c.key))
+              return `<td class="num">${Number(v||0).toLocaleString('fr-MA')} MAD</td>`;
             if (c.key === 'ecart_delai') {
               const e = v ?? 0;
               return `<td class="num"><span class="badge ${e > 0 ? 'badge-red' : 'badge-green'}">${e > 0 ? '+' : ''}${e}j</span></td>`;
@@ -746,7 +791,7 @@ ${pages.map((pageRows, pageIdx) => `
   </table>
 
   ${pageIdx === pages.length - 1 ? `
-  <div class="totals-row">
+  <div class="totals-wrap">
     <div class="totals-box">
       <div class="t-row"><span>Total HT</span><span>${totalHT.toLocaleString('fr-MA')} MAD</span></div>
       <div class="t-row"><span>Total TVA</span><span>${totalTVA.toLocaleString('fr-MA')} MAD</span></div>
@@ -756,23 +801,26 @@ ${pages.map((pageRows, pageIdx) => `
 
   ${(s.rib || s.bank_name) ? `
   <div class="payment-box">
-    <strong>Coordonnées Bancaires</strong><br/>
-    ${s.bank_name ? 'Banque: ' + s.bank_name + '  ' : ''}
-    ${s.rib ? 'RIB: ' + s.rib : ''}
+    <div class="payment-title">Coordonnées Bancaires</div>
+    ${s.bank_name ? 'Banque: <strong>' + s.bank_name + '</strong>  ' : ''}
+    ${s.rib       ? 'RIB: <strong>'   + s.rib       + '</strong>'   : ''}
   </div>` : ''}
 
-  <div class="signature-block">
-    <div class="signature-box">
-      <div class="signature-label">${s.signature_label || 'Signature & Cachet'}</div>
-      <div class="signature-space"></div>
+  <div class="sig-wrap">
+    <div class="sig-box">
+      <div class="sig-label">${s.signature_label || 'Signature & Cachet'}</div>
+      <div class="sig-space"></div>
     </div>
   </div>
   ` : ''}
 
+  ${!s.skip_footer ? `
   <div class="footer-area">
     ${s.footer_text ? `<div class="footer-text">${s.footer_text}</div>` : ''}
     <div class="page-num">Page ${pageIdx + 1} / ${pages.length}</div>
   </div>
+  ` : ''}
+
 </div>
 `).join('')}
 </body>
@@ -1730,6 +1778,7 @@ ${pages.map((pageRows, pageIdx) => `
 )}
 {activeTab === 'settings' && (
   <div>
+    {/* Header */}
     <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -1737,63 +1786,88 @@ ${pages.map((pageRows, pageIdx) => `
             <Settings className="w-3.5 h-3.5" /> Paramètres
           </span>
           <h1 className="text-2xl font-extrabold tracking-tight">Modèle de Facture</h1>
-          <p className="text-sm text-slate-400 mt-1">Configurez votre facture une fois — utilisée automatiquement à chaque génération PDF.</p>
+          <p className="text-sm text-slate-400 mt-1">Configurez une fois — utilisé automatiquement à chaque génération PDF.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowPreview(true)}
             className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
-            <Eye size={14} /> Aperçu PDF
+            <Eye size={14} /> Aperçu
           </button>
           <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
-            {savingSettings ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {savingSettings ? <Loader2 size={14} className="animate-spin" /> : null}
             {savingSettings ? 'Sauvegarde...' : 'Sauvegarder'}
           </button>
         </div>
       </div>
     </div>
 
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="space-y-6">
 
-      {/* BLOCK 1: Company Header */}
+      {/* BLOCK 1: Company Identity */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-black text-blue-700">1</div>
-          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">En-tête Entreprise</span>
+          <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-black text-white">1</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Identité de l'entreprise</span>
         </div>
-        <div className="p-5 grid grid-cols-2 gap-4">
-          {[
-            { label: 'Nom de l\'entreprise', key: 'company_name' },
-            { label: 'Adresse',              key: 'address'      },
-            { label: 'Téléphone',            key: 'phone'        },
-            { label: 'Email',                key: 'email'        },
-            { label: 'ICE',                  key: 'ice'          },
-            { label: 'RC',                   key: 'rc'           },
-          ].map(({ label, key }) => (
-            <div key={key}>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
-              <input type="text" value={invoiceSettings[key] || ''}
-                onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
-                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+        <div className="p-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { label: 'Raison sociale',  key: 'company_name', placeholder: 'FOTRAL SARL' },
+              { label: 'Adresse',         key: 'address',      placeholder: 'Rue X, Casablanca' },
+              { label: 'Téléphone',       key: 'phone',        placeholder: '+212 6...' },
+              { label: 'Email',           key: 'email',        placeholder: 'contact@...' },
+              { label: 'ICE',             key: 'ice',          placeholder: '001234567000000' },
+              { label: 'RC',              key: 'rc',           placeholder: '123456' },
+            ].map(({ label, key, placeholder }) => (
+              <div key={key}>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+                <input type="text" placeholder={placeholder} value={invoiceSettings[key] || ''}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            ))}
+          </div>
+
+          {/* Logo Upload */}
+          <div className="mt-4 p-4 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300">
+            <div className="flex items-center gap-4">
+              {logoPreviewUrl ? (
+                <div className="relative">
+                  <img src={logoPreviewUrl} alt="Logo" className="h-14 w-auto object-contain rounded border border-slate-200 bg-white p-1" />
+                  <button onClick={() => { setLogoPreviewUrl(''); setInvoiceSettings((p: any) => ({ ...p, logo_url: '', logo_storage_path: '' })); }}
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center cursor-pointer">
+                    <X size={10} />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-14 h-14 bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-[10px] font-bold text-center">
+                  LOGO
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-black text-slate-700">Logo de l'entreprise</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">PNG, JPG — apparaît en haut à gauche de la facture</p>
+                <label className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingLogo ? 'bg-slate-300 text-slate-500' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                  {uploadingLogo ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                  {uploadingLogo ? 'Upload...' : 'Choisir un fichier'}
+                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                    onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
+                </label>
+              </div>
             </div>
-          ))}
-          <div className="col-span-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logo URL (optionnel)</label>
-            <input type="text" placeholder="https://... ou laisser vide"
-              value={invoiceSettings.logo_url || ''}
-              onChange={e => setInvoiceSettings((p: any) => ({ ...p, logo_url: e.target.value }))}
-              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
           </div>
         </div>
       </div>
 
-      {/* BLOCK 2: Invoice Style */}
+      {/* BLOCK 2: Document Style */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center text-[10px] font-black text-violet-700">2</div>
-          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Style & Titre</span>
+          <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-[10px] font-black text-white">2</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Style du document</span>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-5">
+          {/* Title */}
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Titre du document</label>
             <div className="grid grid-cols-3 gap-2 mt-2">
@@ -1805,7 +1879,8 @@ ${pages.map((pageRows, pageIdx) => `
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          {/* Colors + Font */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Couleur principale</label>
               <div className="flex items-center gap-2 mt-1">
@@ -1824,72 +1899,181 @@ ${pages.map((pageRows, pageIdx) => `
                 <span className="text-xs font-mono text-slate-500">{invoiceSettings.accent_color}</span>
               </div>
             </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taille de police (px)</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="range" min="8" max="14" value={invoiceSettings.font_size || 11}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, font_size: parseInt(e.target.value) }))}
+                  className="flex-1 accent-blue-600" />
+                <span className="text-xs font-black text-slate-700 w-6">{invoiceSettings.font_size || 11}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* BLOCK 3: Columns */}
+      {/* BLOCK 3: Pre-printed Paper */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] font-black text-emerald-700">3</div>
-          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Colonnes à afficher</span>
+          <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-[10px] font-black text-white">3</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Papier pré-imprimé</span>
+          <span className="ml-2 text-[10px] text-slate-400">— si votre papier a déjà un en-tête ou pied de page imprimé</span>
         </div>
-        <div className="p-5 space-y-3">
-          <p className="text-[10px] text-slate-400">Date, N° Facture, Client, Départ, Arrivée, HT, TVA, TTC sont toujours inclus.</p>
-          {[
-            { label: 'BL / OT',            key: 'show_bl_ot' },
-            { label: 'Bon de Commande',    key: 'show_bc'    },
-            { label: 'Manutention',        key: 'show_manut' },
-            { label: 'Immobilisation',     key: 'show_immob' },
-            { label: 'Écart de délai',     key: 'show_ecart' },
-          ].map(({ label, key }) => (
-            <label key={key} className="flex items-center gap-3 cursor-pointer group">
-              <div onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
-                className={`w-10 h-6 rounded-full transition-all cursor-pointer flex items-center ${invoiceSettings[key] ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                <div className={`w-4 h-4 bg-white rounded-full shadow transition-all mx-1 ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
+        <div className="p-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              { label: 'En-tête déjà imprimé', sub: 'Le PDF ne génère pas d\'en-tête (logo, nom, adresse)', key: 'skip_header', color: 'amber' },
+              { label: 'Pied de page déjà imprimé', sub: 'Le PDF ne génère pas de pied de page (mentions légales, signature)', key: 'skip_footer', color: 'amber' },
+            ].map(({ label, sub, key, color }) => (
+              <div key={key} className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${invoiceSettings[key] ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}
+                onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-sm font-black ${invoiceSettings[key] ? 'text-amber-800' : 'text-slate-700'}`}>{label}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{sub}</p>
+                  </div>
+                  <div className={`w-10 h-6 rounded-full transition-all flex items-center ${invoiceSettings[key] ? 'bg-amber-500' : 'bg-slate-300'}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-all mx-1 ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </div>
+                </div>
               </div>
-              <span className={`text-sm font-medium ${invoiceSettings[key] ? 'text-slate-800' : 'text-slate-400'}`}>{label}</span>
-            </label>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* BLOCK 4: Payment & Footer */}
+      {/* BLOCK 4: Margins & Layout */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-black text-amber-700">4</div>
+          <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-black text-white">4</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Marges & Mise en page (mm)</span>
+        </div>
+        <div className="p-5 space-y-5">
+          {/* Margins */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: 'Marge Haut',    key: 'margin_top'    },
+              { label: 'Marge Bas',     key: 'margin_bottom' },
+              { label: 'Marge Gauche',  key: 'margin_left'   },
+              { label: 'Marge Droite',  key: 'margin_right'  },
+            ].map(({ label, key }) => (
+              <div key={key}>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input type="range" min="5" max="40" value={invoiceSettings[key] || 15}
+                    onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: parseInt(e.target.value) }))}
+                    className="flex-1 accent-emerald-600" />
+                  <span className="text-xs font-black text-slate-700 w-8">{invoiceSettings[key] || 15}mm</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Rows per page */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Lignes par page — <span className="text-slate-600">{invoiceSettings.rows_per_page || 15} lignes</span>
+            </label>
+            <input type="range" min="5" max="30" value={invoiceSettings.rows_per_page || 15}
+              onChange={e => setInvoiceSettings((p: any) => ({ ...p, rows_per_page: parseInt(e.target.value) }))}
+              className="w-full mt-2 accent-emerald-600" />
+            <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+              <span>5 lignes</span><span>30 lignes</span>
+            </div>
+          </div>
+          {/* Column widths */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Largeur des colonnes (%)</label>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {[
+                { label: 'Date',     key: 'col_width_date'    },
+                { label: 'N° Fact', key: 'col_width_fact'    },
+                { label: 'Client',  key: 'col_width_client'  },
+                { label: 'Route',   key: 'col_width_route'   },
+                { label: 'Montants',key: 'col_width_amounts' },
+              ].map(({ label, key }) => (
+                <div key={key}>
+                  <label className="text-[10px] font-bold text-slate-500">{label}</label>
+                  <div className="flex items-center gap-1 mt-1">
+                    <input type="range" min="5" max="30" value={invoiceSettings[key] || 12}
+                      onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: parseInt(e.target.value) }))}
+                      className="flex-1 accent-blue-500" />
+                    <span className="text-[10px] font-black text-slate-600 w-7">{invoiceSettings[key] || 12}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BLOCK 5: Columns */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-black text-white">5</div>
+          <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Colonnes à afficher dans le tableau</span>
+        </div>
+        <div className="p-5">
+          <p className="text-[10px] text-slate-400 mb-3">Date, N° Facture, Client, Départ, Arrivée, HT, TVA, TTC — toujours inclus.</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {[
+              { label: 'BL / OT',         key: 'show_bl_ot' },
+              { label: 'Bon de Commande', key: 'show_bc'    },
+              { label: 'Manutention',     key: 'show_manut' },
+              { label: 'Immobilisation',  key: 'show_immob' },
+              { label: 'Écart de délai',  key: 'show_ecart' },
+            ].map(({ label, key }) => (
+              <div key={key}
+                onClick={() => setInvoiceSettings((p: any) => ({ ...p, [key]: !p[key] }))}
+                className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${invoiceSettings[key] ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
+                <span className={`text-sm font-bold ${invoiceSettings[key] ? 'text-blue-800' : 'text-slate-500'}`}>{label}</span>
+                <div className={`w-10 h-6 rounded-full transition-all flex items-center ${invoiceSettings[key] ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-all mx-1 ${invoiceSettings[key] ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* BLOCK 6: Payment & Footer */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-rose-500 flex items-center justify-center text-[10px] font-black text-white">6</div>
           <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Paiement & Pied de page</span>
         </div>
-        <div className="p-5 space-y-4">
-          {[
-            { label: 'RIB',             key: 'rib'             },
-            { label: 'Banque',          key: 'bank_name'       },
-            { label: 'Label Signature', key: 'signature_label' },
-          ].map(({ label, key }) => (
-            <div key={key}>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
-              <input type="text" value={invoiceSettings[key] || ''}
-                onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
-                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+        <div className="p-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              { label: 'RIB',              key: 'rib',             placeholder: '123 456 7890123456789 01' },
+              { label: 'Banque',           key: 'bank_name',       placeholder: 'Attijariwafa Bank' },
+              { label: 'Label Signature',  key: 'signature_label', placeholder: 'Signature & Cachet' },
+            ].map(({ label, key, placeholder }) => (
+              <div key={key}>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+                <input type="text" placeholder={placeholder} value={invoiceSettings[key] || ''}
+                  onChange={e => setInvoiceSettings((p: any) => ({ ...p, [key]: e.target.value }))}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            ))}
+            <div className="md:col-span-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentions légales / Note pied de page</label>
+              <textarea value={invoiceSettings.footer_text || ''}
+                onChange={e => setInvoiceSettings((p: any) => ({ ...p, footer_text: e.target.value }))}
+                rows={3} placeholder="Ex: Tout retard de paiement entraîne des pénalités de 1,5% par mois..."
+                className="w-full mt-1 rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none" />
             </div>
-          ))}
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mentions légales / Note de bas de page</label>
-            <textarea value={invoiceSettings.footer_text || ''}
-              onChange={e => setInvoiceSettings((p: any) => ({ ...p, footer_text: e.target.value }))}
-              rows={3} placeholder="Ex: Règlement par virement bancaire. Tout retard de paiement..."
-              className="w-full mt-1 rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none" />
           </div>
         </div>
       </div>
+
     </div>
 
-    {/* Save button bottom */}
+    {/* Save bottom */}
     <div className="mt-6 flex justify-end">
       <button onClick={handleSaveInvoiceSettings} disabled={savingSettings}
         className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-3 rounded-xl text-sm font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg">
         {savingSettings ? <Loader2 size={16} className="animate-spin" /> : null}
-        {savingSettings ? 'Sauvegarde en cours...' : '✓ Sauvegarder le modèle'}
+        {savingSettings ? 'Sauvegarde...' : '✓ Sauvegarder le modèle'}
       </button>
     </div>
   </div>
