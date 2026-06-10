@@ -3062,12 +3062,12 @@ ${pages.map((pageRows, pageIdx) => `
         {/* TVA rate % */}
         <div>
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (%)</label>
-          <div className="flex gap-2 mt-1">
+          <div className="flex gap-2 mt-1 items-center">
             {['0', '7', '10', '14', '20'].map(rate => (
               <button key={rate} type="button"
                 onClick={() => {
-                  const ht  = parseFloat(factForm.montant_ht) || 0;
-                  const r   = parseFloat(rate);
+                  const ht = parseFloat(factForm.montant_ht) || 0;
+                  const r  = parseFloat(rate);
                   const tvaAmount = parseFloat((ht * r / 100).toFixed(2));
                   const ttc = parseFloat((ht + tvaAmount).toFixed(2));
                   setFactForm((p: any) => ({
@@ -3077,10 +3077,29 @@ ${pages.map((pageRows, pageIdx) => `
                     tva_rate:    rate,
                   }));
                 }}
-                className={`flex-1 h-9 rounded-lg text-xs font-black border-2 transition-all cursor-pointer ${factForm.tva_rate === rate ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                className={`h-9 px-2 rounded-lg text-xs font-black border-2 transition-all cursor-pointer ${factForm.tva_rate === rate ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}>
                 {rate}%
               </button>
             ))}
+            <input
+              type="number"
+              placeholder="Autre %"
+              value={['0','7','10','14','20'].includes(factForm.tva_rate) ? '' : factForm.tva_rate || ''}
+              onChange={e => {
+                const rate = e.target.value;
+                const ht = parseFloat(factForm.montant_ht) || 0;
+                const r  = parseFloat(rate) || 0;
+                const tvaAmount = parseFloat((ht * r / 100).toFixed(2));
+                const ttc = parseFloat((ht + tvaAmount).toFixed(2));
+                setFactForm((p: any) => ({
+                  ...p,
+                  tva:         String(tvaAmount),
+                  montant_ttc: String(ttc),
+                  tva_rate:    rate,
+                }));
+              }}
+              className="flex-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500"
+            />
           </div>
         </div>
 
