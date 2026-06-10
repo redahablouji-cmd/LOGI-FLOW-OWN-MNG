@@ -310,13 +310,15 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
 
       // Sync shared fields to all linked factures
       const sharedFields = {
-        client:      payload.client,
-        depart:      payload.depart,
-        arrivee:     payload.arrivee,
-        montant_ht:  payload.prix_ht,
-        montant_ttc: payload.prix_ttc,
-        bl_ot:       payload.ot_bl_bs_be,
-        bc:          payload.bon_commande,
+        client:         payload.client,
+        depart:         payload.depart,
+        arrivee:        payload.arrivee,
+        montant_ht:     payload.prix_ht,
+        montant_ttc:    payload.prix_ttc,
+        bl_ot:          payload.ot_bl_bs_be,
+        bc:             payload.bon_commande,
+        numero_facture: payload.facture,
+        date:           payload.date,
       };
       await supabase
         .from('suivi_facturation')
@@ -525,18 +527,34 @@ const fetchFacturation = async () => {
 
 const handleAutoFillFromPrestation = (prestation: any) => {
   const client = clientsList.find(c => c.nom === prestation.client);
+  const ht     = parseFloat(prestation.prix_ht)  || 0;
+  const ttc    = parseFloat(prestation.prix_ttc) || 0;
+  const tvaAmt = parseFloat((ttc - ht).toFixed(2));
+  const rate   = ht > 0 ? String(Math.round(tvaAmt / ht * 100)) : '';
+
   setFactForm({
     ...emptyFactForm,
-    client:          prestation.client       || '',
-    depart:          prestation.depart       || '',
-    arrivee:         prestation.arrivee      || '',
-    montant_ht:      String(prestation.prix_ht  || ''),
-    tva:             String((prestation.prix_ttc - prestation.prix_ht) || ''),
-    montant_ttc:     String(prestation.prix_ttc  || ''),
-    bl_ot:           prestation.ot_bl_bs_be  || '',
-    bc:              prestation.bon_commande || '',
-    delai_paiement:  String(client?.delai_paiement || 60),
-    prestation_id:   prestation.id,
+    // From prestation directly
+    date:                  prestation.date          || new Date().toISOString().split('T')[0],
+    numero_facture:        prestation.facture        || '',
+    client:                prestation.client         || '',
+    depart:                prestation.depart         || '',
+    arrivee:               prestation.arrivee        || '',
+    montant_ht:            String(ht),
+    tva:                   String(tvaAmt),
+    montant_ttc:           String(ttc),
+    tva_rate:              rate,
+    bl_ot:                 prestation.ot_bl_bs_be   || '',
+    bc:                    prestation.bon_commande   || '',
+    delai_paiement:        String(client?.delai_paiement || prestation.delai_paiement || 60),
+    // User fills these manually
+    date_paiement:         '',
+    reglement_banque_type: '',
+    reglement_numero:      '',
+    echeances:             '',
+    mode_paiement:         '',
+    statut:                'impayé',
+    prestation_id:         prestation.id,
   });
   setPrestationPickerOpen(false);
   setShowFactForm(true);
@@ -591,6 +609,8 @@ const handleSaveFacturation = async () => {
           prix_ttc:     payload.montant_ttc,
           ot_bl_bs_be:  payload.bl_ot,
           bon_commande: payload.bc,
+          facture:      payload.numero_facture,
+          date:         payload.date,
         };
         await supabase
           .from('suivi_prestation')
