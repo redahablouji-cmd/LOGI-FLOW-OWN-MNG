@@ -2910,7 +2910,7 @@ ${pages.map((pageRows, pageIdx) => `
                 .map(d => (
                   <button key={d.id} type="button"
                     onClick={() => {
-                      setSuiviForm(p => ({ ...p, matricule: d.immatriculation }));
+                      setSuiviForm(p => ({ ...p, matricule: d.immatriculation, type: d.type_vehicule || '' }));
                       setShowMatDrop(false);
                       setMatriculeSearch('');
                     }}
