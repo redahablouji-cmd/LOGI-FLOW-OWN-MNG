@@ -649,11 +649,25 @@ const overdue = facturationList.filter(f => {
   echeance.setDate(echeance.getDate() + f.delai_paiement);
   return echeance < today;
 });
-const handleGenerateInvoicePDF = () => {
+const handleGenerateInvoicePDF = async () => {
   const selected = facturationList.filter(f => selectedFacts.includes(f.id));
   if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
 
   const s = invoiceSettings;
+
+  // Convert logo to base64 so it works in the PDF print window
+  let logoBase64 = '';
+  if (s.logo_url) {
+    try {
+      const resp = await fetch(s.logo_url);
+      const blob = await resp.blob();
+      logoBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch { logoBase64 = ''; }
+  }
   const ROWS_PER_PAGE = s.rows_per_page || 15;
   const pages: any[][] = [];
   for (let i = 0; i < selected.length; i += ROWS_PER_PAGE) {
@@ -715,32 +729,32 @@ const handleGenerateInvoicePDF = () => {
       </table>`;
 
     let finalHtml = s.invoice_template_html
-      .replace('{{company_name}}',    s.company_name    || activeCompany?.name || '')
-      .replace('{{company_address}}', s.address         || '')
-      .replace('{{company_phone}}',   s.phone           || '')
-      .replace('{{company_email}}',   s.email           || '')
-      .replace('{{company_ice}}',     s.ice             || '')
-      .replace('{{company_rc}}',      s.rc              || '')
-      .replace('{{company_logo}}',    s.logo_url ? `<img src="${s.logo_url}" style="max-height:60px;max-width:150px;object-fit:contain"/>` : '')
-      .replace('{{invoice_title}}',   s.invoice_title   || 'FACTURE')
-      .replace('{{numero_facture}}',  selected[0]?.numero_facture || '')
-      .replace('{{date}}',            new Date().toLocaleDateString('fr-MA'))
-      .replace('{{client}}',          clientName)
-      .replace('{{delai_paiement}}',  String(selected[0]?.delai_paiement || 60))
-      .replace('{{date_paiement}}',   selected[0]?.date_paiement || '')
-      .replace('{{montant_ht}}',      totalHT.toLocaleString('fr-MA'))
-      .replace('{{tva}}',             totalTVA.toLocaleString('fr-MA'))
-      .replace('{{montant_ttc}}',     totalTTC.toLocaleString('fr-MA'))
-      .replace('{{total_ht}}',        totalHT.toLocaleString('fr-MA'))
-      .replace('{{total_tva}}',       totalTVA.toLocaleString('fr-MA'))
-      .replace('{{total_ttc}}',       totalTTC.toLocaleString('fr-MA'))
-      .replace('{{bl_ot}}',           selected[0]?.bl_ot        || '')
-      .replace('{{bc}}',              selected[0]?.bc            || '')
-      .replace('{{rib}}',             s.rib             || '')
-      .replace('{{bank_name}}',       s.bank_name       || '')
-      .replace('{{footer_text}}',     s.footer_text     || '')
-      .replace('{{signature_label}}', s.signature_label || 'Signature & Cachet')
-      .replace('{{rows}}',            tableHTML);
+      .replaceAll('{{company_name}}',    s.company_name    || activeCompany?.name || '')
+      .replaceAll('{{company_address}}', s.address         || '')
+      .replaceAll('{{company_phone}}',   s.phone           || '')
+      .replaceAll('{{company_email}}',   s.email           || '')
+      .replaceAll('{{company_ice}}',     s.ice             || '')
+      .replaceAll('{{company_rc}}',      s.rc              || '')
+      .replaceAll('{{company_logo}}',    logoBase64 ? `<img src="${logoBase64}" style="max-height:60px;max-width:150px;object-fit:contain"/>` : '')
+      .replaceAll('{{invoice_title}}',   s.invoice_title   || 'FACTURE')
+      .replaceAll('{{numero_facture}}',  selected[0]?.numero_facture || '')
+      .replaceAll('{{date}}',            new Date().toLocaleDateString('fr-MA'))
+      .replaceAll('{{client}}',          clientName)
+      .replaceAll('{{delai_paiement}}',  String(selected[0]?.delai_paiement || 60))
+      .replaceAll('{{date_paiement}}',   selected[0]?.date_paiement || '')
+      .replaceAll('{{montant_ht}}',      totalHT.toLocaleString('fr-MA'))
+      .replaceAll('{{tva}}',             totalTVA.toLocaleString('fr-MA'))
+      .replaceAll('{{montant_ttc}}',     totalTTC.toLocaleString('fr-MA'))
+      .replaceAll('{{total_ht}}',        totalHT.toLocaleString('fr-MA'))
+      .replaceAll('{{total_tva}}',       totalTVA.toLocaleString('fr-MA'))
+      .replaceAll('{{total_ttc}}',       totalTTC.toLocaleString('fr-MA'))
+      .replaceAll('{{bl_ot}}',           selected[0]?.bl_ot  || '')
+      .replaceAll('{{bc}}',              selected[0]?.bc      || '')
+      .replaceAll('{{rib}}',             s.rib             || '')
+      .replaceAll('{{bank_name}}',       s.bank_name       || '')
+      .replaceAll('{{footer_text}}',     s.footer_text     || '')
+      .replaceAll('{{signature_label}}', s.signature_label || 'Signature & Cachet')
+      .replaceAll('{{rows}}',            tableHTML);
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
@@ -799,7 +813,7 @@ ${pages.map((pageRows, pageIdx) => `
   ${!s.skip_header ? `
   <div class="header">
     <div style="display:flex;align-items:center;gap:10px">
-      ${s.logo_url ? `<img src="${s.logo_url}" class="logo-img"/>` : ''}
+      ${logoBase64 ? `<img src="${logoBase64}" class="logo-img"/>` : ''}
       <div>
         <div class="company-name">${s.company_name || activeCompany?.name || ''}</div>
         <div class="company-sub">
@@ -886,7 +900,7 @@ ${pages.map((pageRows, pageIdx) => `
     if (activeTab === 'suivi') fetchSuivi();
     if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
     if (activeTab === 'clients' && companyId) fetchClients();
-    if (activeTab === 'facturation' && companyId) { fetchFacturation(); fetchSuivi(); fetchClients(); }
+    if (activeTab === 'facturation' && companyId) { fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings(); }
     if (activeTab === 'settings' && companyId) fetchInvoiceSettings();
   }, [activeTab, companyId]);
 
