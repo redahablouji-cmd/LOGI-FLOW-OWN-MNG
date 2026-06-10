@@ -105,6 +105,10 @@ export default function ManagerDashboard() {
   const [showSuiviForm,    setShowSuiviForm]    = useState(false);
   const [suiviForm,        setSuiviForm]        = useState(emptySuivi);
   const [editingSuivi,     setEditingSuivi]     = useState<SuiviRecord | null>(null);
+  const [clientSearch,    setClientSearch]    = useState('');
+  const [matriculeSearch, setMatriculeSearch] = useState('');
+  const [showClientDrop,  setShowClientDrop]  = useState(false);
+  const [showMatDrop,     setShowMatDrop]     = useState(false);
 // Suivi Facturation
 const [facturationList,    setFacturationList]    = useState<any[]>([]);
 const [loadingFacturation, setLoadingFacturation] = useState(false);
@@ -1006,7 +1010,7 @@ ${pages.map((pageRows, pageIdx) => `
   useEffect(() => {
     if (activeTab === 'purchases') fetchPurchases();
     if (activeTab === 'fleetfix' && companyId) fetchMechanics();
-    if (activeTab === 'suivi') fetchSuivi();
+    if (activeTab === 'suivi') { fetchSuivi(); fetchClients(); if (companyId) fetchFleetDrivers(); }
     if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
     if (activeTab === 'clients' && companyId) fetchClients();
     if (activeTab === 'facturation' && companyId) { fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings(); }
@@ -2807,37 +2811,160 @@ ${pages.map((pageRows, pageIdx) => `
       {/* Suivi Form Modal */}
       <AnimatePresence>
         {showSuiviForm && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">
-                  {editingSuivi ? 'Modifier la Prestation' : 'Nouvelle Prestation'}
-                </h3>
-                <button onClick={() => { setShowSuiviForm(false); setEditingSuivi(null); setSuiviForm(emptySuivi); }}
-                  className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {suiviFields.map(({ label, key, type }) => (
-                  <div key={key}>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
-                    <input type={type} value={(suiviForm as any)[key] || ''}
-                      onChange={e => setSuiviForm(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-3 pt-5">
-                <button onClick={handleSaveSuivi} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
-                  {editingSuivi ? 'Enregistrer les modifications' : 'Ajouter la prestation'}
-                </button>
-                <button onClick={() => { setShowSuiviForm(false); setEditingSuivi(null); setSuiviForm(emptySuivi); }}
-                  className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
-              </div>
-            </motion.div>
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.95, opacity: 0 }}
+      className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">
+          {editingSuivi ? 'Modifier la Prestation' : 'Nouvelle Prestation'}
+        </h3>
+        <button onClick={() => { setShowSuiviForm(false); setEditingSuivi(null); setSuiviForm(emptySuivi); setShowClientDrop(false); setShowMatDrop(false); }}
+          className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        {/* CLIENT — searchable dropdown */}
+        <div className="relative">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clients</label>
+          <div className="relative mt-1">
+            <input
+              type="text"
+              value={showClientDrop ? clientSearch : (suiviForm.client || '')}
+              placeholder="Sélectionner ou rechercher..."
+              onFocus={() => { setShowClientDrop(true); setClientSearch(suiviForm.client || ''); }}
+              onChange={e => { setClientSearch(e.target.value); setShowClientDrop(true); }}
+              className="w-full h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500 pr-8"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">▾</span>
           </div>
-        )}
+          {showClientDrop && (
+            <div className="absolute z-50 top-full left-0 right-0 bg-white border-2 border-blue-200 rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+              {clientsList
+                .filter(c => c.nom?.toLowerCase().includes(clientSearch.toLowerCase()))
+                .length === 0 ? (
+                <div className="px-3 py-3 text-xs text-slate-400 text-center">Aucun client trouvé</div>
+              ) : clientsList
+                .filter(c => c.nom?.toLowerCase().includes(clientSearch.toLowerCase()))
+                .map(c => (
+                  <button key={c.id} type="button"
+                    onClick={() => {
+                      setSuiviForm(p => ({ ...p, client: c.nom }));
+                      setShowClientDrop(false);
+                      setClientSearch('');
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 ${suiviForm.client === c.nom ? 'bg-blue-50 font-bold text-blue-700' : 'text-slate-700'}`}>
+                    <p className="font-semibold">{c.nom}</p>
+                    {c.ice && <p className="text-[10px] text-slate-400">ICE: {c.ice}</p>}
+                  </button>
+                ))
+              }
+              {/* Allow typing a custom client not in list */}
+              {clientSearch && !clientsList.find(c => c.nom?.toLowerCase() === clientSearch.toLowerCase()) && (
+                <button type="button"
+                  onClick={() => {
+                    setSuiviForm(p => ({ ...p, client: clientSearch }));
+                    setShowClientDrop(false);
+                    setClientSearch('');
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 text-emerald-700 border-t border-slate-200 font-bold">
+                  + Utiliser "{clientSearch}"
+                </button>
+              )}
+            </div>
+          )}
+          {showClientDrop && (
+            <div className="fixed inset-0 z-40" onClick={() => { setShowClientDrop(false); setClientSearch(''); }} />
+          )}
+        </div>
+
+        {/* MATRICULE — searchable dropdown from fleet_drivers */}
+        <div className="relative">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Matricule</label>
+          <div className="relative mt-1">
+            <input
+              type="text"
+              value={showMatDrop ? matriculeSearch : (suiviForm.matricule || '')}
+              placeholder="Sélectionner ou rechercher..."
+              onFocus={() => { setShowMatDrop(true); setMatriculeSearch(suiviForm.matricule || ''); }}
+              onChange={e => { setMatriculeSearch(e.target.value); setShowMatDrop(true); }}
+              className="w-full h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500 pr-8"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">▾</span>
+          </div>
+          {showMatDrop && (
+            <div className="absolute z-50 top-full left-0 right-0 bg-white border-2 border-blue-200 rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+              {fleetDrivers
+                .filter(d =>
+                  d.immatriculation?.toLowerCase().includes(matriculeSearch.toLowerCase()) ||
+                  d.nom_prenom?.toLowerCase().includes(matriculeSearch.toLowerCase())
+                )
+                .length === 0 ? (
+                <div className="px-3 py-3 text-xs text-slate-400 text-center">Aucun véhicule trouvé</div>
+              ) : fleetDrivers
+                .filter(d =>
+                  d.immatriculation?.toLowerCase().includes(matriculeSearch.toLowerCase()) ||
+                  d.nom_prenom?.toLowerCase().includes(matriculeSearch.toLowerCase())
+                )
+                .map(d => (
+                  <button key={d.id} type="button"
+                    onClick={() => {
+                      setSuiviForm(p => ({ ...p, matricule: d.immatriculation }));
+                      setShowMatDrop(false);
+                      setMatriculeSearch('');
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 ${suiviForm.matricule === d.immatriculation ? 'bg-blue-50 font-bold text-blue-700' : 'text-slate-700'}`}>
+                    <p className="font-semibold font-mono">{d.immatriculation || '—'}</p>
+                    <p className="text-[10px] text-slate-400">{d.nom_prenom} — {d.type_vehicule}</p>
+                  </button>
+                ))
+              }
+              {/* Allow typing a custom plate not in list */}
+              {matriculeSearch && !fleetDrivers.find(d => d.immatriculation?.toLowerCase() === matriculeSearch.toLowerCase()) && (
+                <button type="button"
+                  onClick={() => {
+                    setSuiviForm(p => ({ ...p, matricule: matriculeSearch }));
+                    setShowMatDrop(false);
+                    setMatriculeSearch('');
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 text-emerald-700 border-t border-slate-200 font-bold">
+                  + Utiliser "{matriculeSearch}"
+                </button>
+              )}
+            </div>
+          )}
+          {showMatDrop && (
+            <div className="fixed inset-0 z-40" onClick={() => { setShowMatDrop(false); setMatriculeSearch(''); }} />
+          )}
+        </div>
+
+        {/* All other fields — same as before but skip client and matricule */}
+        {suiviFields
+          .filter(f => f.key !== 'client' && f.key !== 'matricule')
+          .map(({ label, key, type }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type={type} value={(suiviForm as any)[key] || ''}
+                onChange={e => setSuiviForm(prev => ({ ...prev, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+      </div>
+
+      <div className="flex gap-3 pt-5">
+        <button onClick={handleSaveSuivi}
+          className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+          {editingSuivi ? 'Enregistrer les modifications' : 'Ajouter la prestation'}
+        </button>
+        <button onClick={() => { setShowSuiviForm(false); setEditingSuivi(null); setSuiviForm(emptySuivi); setShowClientDrop(false); setShowMatDrop(false); }}
+          className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
+          Annuler
+        </button>
+      </div>
+    </motion.div>
+  </div>
+)}
       </AnimatePresence>
 
       {/* Edit Purchase Modal */}
