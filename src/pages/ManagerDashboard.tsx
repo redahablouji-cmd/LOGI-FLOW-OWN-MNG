@@ -679,19 +679,25 @@ const handleGenerateInvoicePDF = async () => {
   if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
 
   const s = invoiceSettings;
-
+  console.log('Invoice settings logo_url:', s.logo_url);
+  console.log('Full settings:', s);
   // Convert logo to base64 so it works in the PDF print window
   let logoBase64 = '';
   if (s.logo_url) {
     try {
-      const resp = await fetch(s.logo_url);
+      const resp = await fetch(s.logo_url, { mode: 'cors', cache: 'no-cache' });
       const blob = await resp.blob();
       logoBase64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(blob);
       });
-    } catch { logoBase64 = ''; }
+      console.log('Logo base64 length:', logoBase64.length, logoBase64.substring(0, 50));
+    } catch (err) {
+      console.error('Logo fetch failed:', err);
+      // Fallback — use URL directly
+      logoBase64 = s.logo_url;
+    }
   }
   const ROWS_PER_PAGE = s.rows_per_page || 15;
   const pages: any[][] = [];
