@@ -274,30 +274,66 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   };
 
   const handleSaveSuivi = async () => {
-    const payload = {
-      company_id: companyId || null, manager_id: managerId || null,
-      date: suiviForm.date || null, matricule: suiviForm.matricule || null,
-      type: suiviForm.type || null, facture: suiviForm.facture || null,
-      bon_commande: suiviForm.bon_commande || null, ot_bl_bs_be: suiviForm.ot_bl_bs_be || null,
-      client: suiviForm.client || null, depart: suiviForm.depart || null, arrivee: suiviForm.arrivee || null,
-      manutention:    parseFloat(suiviForm.manutention    as string) || 0,
-      immobilisation: parseFloat(suiviForm.immobilisation as string) || 0,
-      prix_ht:        parseFloat(suiviForm.prix_ht        as string) || 0,
-      prix_ttc:       parseFloat(suiviForm.prix_ttc       as string) || 0,
-      cout_revient:   parseFloat(suiviForm.cout_revient   as string) || 0,
-      benefice:       parseFloat(suiviForm.benefice       as string) || 0,
-    };
-    if (editingSuivi) {
-      const { error } = await supabase.from('suivi_prestation').update(payload).eq('id', editingSuivi.id);
-      if (!error) { toast.success("Modifié."); setEditingSuivi(null); fetchSuivi(); }
-      else toast.error(`Erreur: ${error.message}`);
-    } else {
-      const { error } = await supabase.from('suivi_prestation').insert(payload);
-      if (!error) { toast.success("Ajouté."); setShowSuiviForm(false); fetchSuivi(); }
-      else toast.error(`Erreur: ${error.message}`);
-    }
-    setSuiviForm(emptySuivi);
+  const payload = {
+    company_id:     companyId || null,
+    manager_id:     managerId || null,
+    date:           suiviForm.date           || null,
+    matricule:      suiviForm.matricule      || null,
+    type:           suiviForm.type           || null,
+    facture:        suiviForm.facture        || null,
+    bon_commande:   suiviForm.bon_commande   || null,
+    ot_bl_bs_be:    suiviForm.ot_bl_bs_be    || null,
+    client:         suiviForm.client         || null,
+    depart:         suiviForm.depart         || null,
+    arrivee:        suiviForm.arrivee        || null,
+    manutention:    parseFloat(suiviForm.manutention    as string) || 0,
+    immobilisation: parseFloat(suiviForm.immobilisation as string) || 0,
+    prix_ht:        parseFloat(suiviForm.prix_ht        as string) || 0,
+    prix_ttc:       parseFloat(suiviForm.prix_ttc       as string) || 0,
+    cout_revient:   parseFloat(suiviForm.cout_revient   as string) || 0,
+    benefice:       parseFloat(suiviForm.benefice       as string) || 0,
   };
+
+  if (editingSuivi) {
+    const { error } = await supabase
+      .from('suivi_prestation')
+      .update(payload)
+      .eq('id', editingSuivi.id);
+
+    if (!error) {
+      toast.success("Prestation modifiée.");
+      setEditingSuivi(null);
+
+      // Sync shared fields to all linked factures
+      const sharedFields = {
+        client:      payload.client,
+        depart:      payload.depart,
+        arrivee:     payload.arrivee,
+        montant_ht:  payload.prix_ht,
+        montant_ttc: payload.prix_ttc,
+        bl_ot:       payload.ot_bl_bs_be,
+        bc:          payload.bon_commande,
+      };
+      await supabase
+        .from('suivi_facturation')
+        .update(sharedFields)
+        .eq('prestation_id', editingSuivi.id);
+
+      fetchSuivi();
+      if (activeTab === 'facturation') fetchFacturation();
+    } else toast.error(`Erreur: ${error.message}`);
+  } else {
+    const { error } = await supabase
+      .from('suivi_prestation')
+      .insert(payload);
+    if (!error) {
+      toast.success("Prestation ajoutée.");
+      setShowSuiviForm(false);
+      fetchSuivi();
+    } else toast.error(`Erreur: ${error.message}`);
+  }
+  setSuiviForm(emptySuivi);
+};
 
   const handleDeleteSuivi = async (id: string) => {
     if (!confirm('Supprimer ?')) return;
@@ -473,7 +509,6 @@ const fetchFacturation = async () => {
     .select('*, suivi_prestation(client, depart, arrivee, prix_ht, prix_ttc, ot_bl_bs_be, bon_commande)')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false });
-  // Merge latest prestation data into each facture row
   const merged = (data || []).map((f: any) => ({
     ...f,
     client:  f.suivi_prestation?.client  || f.client,
@@ -505,37 +540,73 @@ const handleAutoFillFromPrestation = (prestation: any) => {
 
 const handleSaveFacturation = async () => {
   const payload = {
-    company_id:           companyId || null,
-    manager_id:           managerId || null,
-    prestation_id:        factForm.prestation_id || null,
-    date:                 factForm.date           || null,
-    numero_facture:       factForm.numero_facture || null,
-    client:               factForm.client         || null,
-    depart:               factForm.depart         || null,
-    arrivee:              factForm.arrivee        || null,
-    montant_ht:           parseFloat(factForm.montant_ht)  || 0,
-    tva:                  parseFloat(factForm.tva)         || 0,
-    montant_ttc:          parseFloat(factForm.montant_ttc) || 0,
-    bl_ot:                factForm.bl_ot                   || null,
-    bc:                   factForm.bc                      || null,
-    delai_paiement:       parseInt(factForm.delai_paiement) || 60,
-    date_paiement:        factForm.date_paiement            || null,
-    reglement_banque_type: factForm.reglement_banque_type  || null,
-    reglement_numero:     factForm.reglement_numero        || null,
-    echeances:            factForm.echeances               || null,
-    mode_paiement:        factForm.mode_paiement           || null,
-    statut:               factForm.statut || 'impayé',
-    ecart_delai: calcEcartDelai(factForm.date, factForm.date_paiement, parseInt(factForm.delai_paiement) || 60),
+    company_id:            companyId || null,
+    manager_id:            managerId || null,
+    prestation_id:         factForm.prestation_id || null,
+    date:                  factForm.date                  || null,
+    numero_facture:        factForm.numero_facture        || null,
+    client:                factForm.client                || null,
+    depart:                factForm.depart                || null,
+    arrivee:               factForm.arrivee               || null,
+    montant_ht:            parseFloat(factForm.montant_ht)  || 0,
+    tva:                   parseFloat(factForm.tva)         || 0,
+    montant_ttc:           parseFloat(factForm.montant_ttc) || 0,
+    bl_ot:                 factForm.bl_ot                   || null,
+    bc:                    factForm.bc                      || null,
+    delai_paiement:        parseInt(factForm.delai_paiement) || 60,
+    date_paiement:         factForm.date_paiement           || null,
+    reglement_banque_type: factForm.reglement_banque_type   || null,
+    reglement_numero:      factForm.reglement_numero        || null,
+    echeances:             factForm.echeances               || null,
+    mode_paiement:         factForm.mode_paiement           || null,
+    statut:                factForm.statut                  || 'impayé',
+    ecart_delai:           calcEcartDelai(
+                             factForm.date,
+                             factForm.date_paiement,
+                             parseInt(factForm.delai_paiement) || 60
+                           ),
   };
 
   if (editingFact) {
-    const { error } = await supabase.from('suivi_facturation').update(payload).eq('id', editingFact.id);
-    if (!error) { toast.success("Facture modifiée."); setEditingFact(null); fetchFacturation(); }
-    else toast.error(`Erreur: ${error.message}`);
+    const { error } = await supabase
+      .from('suivi_facturation')
+      .update(payload)
+      .eq('id', editingFact.id);
+
+    if (!error) {
+      toast.success("Facture modifiée.");
+      setEditingFact(null);
+
+      // Sync shared fields back to linked prestation
+      if (editingFact.prestation_id) {
+        const sharedBack = {
+          client:       payload.client,
+          depart:       payload.depart,
+          arrivee:      payload.arrivee,
+          prix_ht:      payload.montant_ht,
+          prix_ttc:     payload.montant_ttc,
+          ot_bl_bs_be:  payload.bl_ot,
+          bon_commande: payload.bc,
+        };
+        await supabase
+          .from('suivi_prestation')
+          .update(sharedBack)
+          .eq('id', editingFact.prestation_id);
+
+        if (activeTab === 'suivi') fetchSuivi();
+      }
+
+      fetchFacturation();
+    } else toast.error(`Erreur: ${error.message}`);
   } else {
-    const { error } = await supabase.from('suivi_facturation').insert(payload);
-    if (!error) { toast.success("Facture ajoutée."); setShowFactForm(false); fetchFacturation(); }
-    else toast.error(`Erreur: ${error.message}`);
+    const { error } = await supabase
+      .from('suivi_facturation')
+      .insert(payload);
+    if (!error) {
+      toast.success("Facture ajoutée.");
+      setShowFactForm(false);
+      fetchFacturation();
+    } else toast.error(`Erreur: ${error.message}`);
   }
   setFactForm(emptyFactForm);
 };
