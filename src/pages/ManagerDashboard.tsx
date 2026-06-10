@@ -649,6 +649,31 @@ const overdue = facturationList.filter(f => {
   echeance.setDate(echeance.getDate() + f.delai_paiement);
   return echeance < today;
 });
+const numberToWords = (n: number): string => {
+  // Simple French number to words for invoice
+  if (n === 0) return 'Zéro dirham';
+  const ones = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf',
+    'dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+  const tens = ['','','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+  const convert = (num: number): string => {
+    if (num < 20) return ones[num];
+    if (num < 100) {
+      const t = Math.floor(num/10), r = num%10;
+      if (t === 7 || t === 9) return tens[t] + (r > 0 ? '-' + ones[10+r] : (t===9?'-dix':''));
+      return tens[t] + (r > 0 ? '-' + ones[r] : '');
+    }
+    if (num < 1000) return (num === 100 ? 'cent' : ones[Math.floor(num/100)] + ' cent') + (num%100 > 0 ? ' ' + convert(num%100) : '');
+    if (num < 1000000) {
+      const m = Math.floor(num/1000);
+      return (m === 1 ? 'mille' : convert(m) + ' mille') + (num%1000 > 0 ? ' ' + convert(num%1000) : '');
+    }
+    return n.toLocaleString('fr-MA') + ' dirhams';
+  };
+  const intPart = Math.floor(n);
+  const decPart = Math.round((n - intPart) * 100);
+  return convert(intPart) + ' dirham' + (intPart > 1 ? 's' : '') +
+    (decPart > 0 ? ' et ' + convert(decPart) + ' centime' + (decPart > 1 ? 's' : '') : '');
+};
 const handleGenerateInvoicePDF = async () => {
   const selected = facturationList.filter(f => selectedFacts.includes(f.id));
   if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
@@ -713,20 +738,17 @@ const handleGenerateInvoicePDF = async () => {
   // If HTML template exists use it, otherwise generate
   if (s.invoice_template_html) {
     // Build rows table from selected cols
-    const tableHTML = `
-      <table>
-        <thead><tr>${allCols.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
-        <tbody>
-          ${selected.map(f => `
-            <tr>${allCols.map(c => {
-              if (c.num) return `<td style="text-align:right">${Number(f[c.key]||0).toLocaleString('fr-MA')} MAD</td>`;
-              if (c.ecart) { const e = f[c.key]??0; return `<td>${e>0?'+':''}${e}j</td>`; }
-              if (c.statut) return `<td>${f[c.key]||'—'}</td>`;
-              return `<td>${f[c.key]||'—'}</td>`;
-            }).join('')}</tr>
-          `).join('')}
-        </tbody>
-      </table>`;
+    const tableHTML = selected.map((f, idx) => `
+      <tr>
+        <td class="italic">${f.date || '—'}</td>
+        <td class="italic">${[f.depart, f.arrivee].filter(Boolean).join(' → ') || f.client || '—'}</td>
+        <td class="center italic">${f.tva && f.montant_ht ? Math.round((f.tva/f.montant_ht)*100)+'%' : '—'}</td>
+        <td class="center italic">F</td>
+        <td class="center italic">1</td>
+        <td class="right italic">${Number(f.montant_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+        <td class="right italic">${Number(f.montant_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+      </tr>
+    `).join('');
 
     let finalHtml = s.invoice_template_html
       .replaceAll('{{company_name}}',    s.company_name    || activeCompany?.name || '')
@@ -754,7 +776,10 @@ const handleGenerateInvoicePDF = async () => {
       .replaceAll('{{bank_name}}',       s.bank_name       || '')
       .replaceAll('{{footer_text}}',     s.footer_text     || '')
       .replaceAll('{{signature_label}}', s.signature_label || 'Signature & Cachet')
-      .replaceAll('{{rows}}',            tableHTML);
+      .replaceAll('{{rows}}',            tableHTML)
+      .replaceAll('{{client_ice}}',      '')
+      .replaceAll('{{montant_lettres}}',  numberToWords(totalTTC))
+      .replaceAll('{{page_num}}',        `1 / ${pages.length}`);
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
@@ -2116,13 +2141,85 @@ ${pages.map((pageRows, pageIdx) => `
               )}
               <input type="file" accept=".html,.htm"
                 onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const text = await file.text();
-                  setInvoiceSettings((p: any) => ({ ...p, invoice_template_html: text }));
-                  toast.success("Template HTML chargé !");
-                  e.target.value = '';
-                }}
+  const file = e.target.files?.[0];
+  if (!file) return;
+  let text = await file.text();
+
+  // Auto-inject placeholders by replacing common static patterns
+  // Client name area — replace whatever is in .client-name
+  text = text.replace(
+    /(<[^>]*class="[^"]*client-name[^"]*"[^>]*>)[^<]*/,
+    '$1{{client}}'
+  );
+  // ICE client value
+  text = text.replace(
+    /(<[^>]*class="[^"]*info-val[^"]*"[^>]*>)\s*\[?\s*ICE\s*CLIENT\s*\]?\s*/i,
+    '$1{{client_ice}}'
+  );
+  // BC number
+  text = text.replace(
+    /(<[^>]*class="[^"]*info-val[^"]*"[^>]*>)\s*\[?\s*N°?\s*BON\s*DE\s*COMMANDE\s*\]?\s*/i,
+    '$1{{bc}}'
+  );
+  // BL/OT
+  text = text.replace(
+    /(<[^>]*class="[^"]*info-val[^"]*"[^>]*>)\s*\[?\s*N°?\s*BL[^<]*\]?\s*/i,
+    '$1{{bl_ot}}'
+  );
+  // Règlement mode
+  text = text.replace(
+    /(<[^>]*class="[^"]*info-val[^"]*"[^>]*>)\s*\[?\s*VIREMENT[^<]*\]?\s*/i,
+    '$1{{mode_paiement}}'
+  );
+  // Invoice number meta-value
+  text = text.replace(
+    /(<[^>]*class="[^"]*meta-value[^"]*"[^>]*>)\s*\[?\s*AUTO[^<]*\]?\s*/i,
+    '$1{{numero_facture}}'
+  );
+  // Date meta-value
+  text = text.replace(
+    /(<[^>]*class="[^"]*meta-value[^"]*"[^>]*>)\s*\[?\s*DATE[^<]*\]?\s*/i,
+    '$1{{date}}'
+  );
+  // Total TTC value
+  text = text.replace(
+    /(<[^>]*class="[^"]*ttc-value[^"]*"[^>]*>)[^<]*/,
+    '$1{{total_ttc}} MAD'
+  );
+  // Total HT
+  text = text.replace(
+    /(<td[^>]*>)\s*=\s*Σ\s*lignes\s*(<\/td>)/i,
+    '$1{{total_ht}} MAD$2'
+  );
+  // TVA rows — replace formula text
+  text = text.replace(
+    /(<td[^>]*>)\s*=\s*HT\s*×\s*0,10\s*(<\/td>)/i,
+    '$1{{tva}} MAD$2'
+  );
+  text = text.replace(
+    /(<td[^>]*>)\s*=\s*HT\s*×\s*0,20\s*(<\/td>)/i,
+    '$1$2'
+  );
+  // Lettres value
+  text = text.replace(
+    /(<[^>]*class="[^"]*lettres-value[^"]*"[^>]*>)[^<]*/,
+    '$1{{montant_lettres}}'
+  );
+  // Replace entire tbody with {{rows}}
+  text = text.replace(
+    /<tbody>[\s\S]*?<\/tbody>/i,
+    '<tbody>{{rows}}</tbody>'
+  );
+  // Page number
+  text = text.replace(
+    /Page\s*<strong>[^<]*<\/strong>/i,
+    'Page <strong>{{page_num}}</strong>'
+  );
+
+  setInvoiceSettings((p: any) => ({ ...p, invoice_template_html: text }));
+  toast.success("Template HTML importé et converti automatiquement !");
+  e.target.value = '';
+}}
                 className="hidden" />
             </label>
 
