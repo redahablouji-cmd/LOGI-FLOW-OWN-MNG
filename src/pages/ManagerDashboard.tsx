@@ -43,7 +43,7 @@ interface SuiviRecord {
 const emptyFactForm = {
   date: new Date().toISOString().split('T')[0],
   numero_facture: '', client: '', depart: '', arrivee: '',
-  montant_ht: '', tva: '', montant_ttc: '',
+  montant_ht: '', tva: '', montant_ttc: '', tva_rate: '',
   bl_ot: '', bc: '', delai_paiement: '60',
   date_paiement: '', reglement_banque_type: '',
   reglement_numero: '', echeances: '', mode_paiement: '',
@@ -470,10 +470,17 @@ const fetchFacturation = async () => {
   setLoadingFacturation(true);
   const { data } = await supabase
     .from('suivi_facturation')
-    .select('*')
+    .select('*, suivi_prestation(client, depart, arrivee, prix_ht, prix_ttc, ot_bl_bs_be, bon_commande)')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false });
-  setFacturationList(data || []);
+  // Merge latest prestation data into each facture row
+  const merged = (data || []).map((f: any) => ({
+    ...f,
+    client:  f.suivi_prestation?.client  || f.client,
+    depart:  f.suivi_prestation?.depart  || f.depart,
+    arrivee: f.suivi_prestation?.arrivee || f.arrivee,
+  }));
+  setFacturationList(merged);
   setLoadingFacturation(false);
 };
 
@@ -1811,12 +1818,6 @@ ${pages.map((pageRows, pageIdx) => `
                   <td className="px-3 py-3 text-xs text-center text-slate-600">{f.delai_paiement} J</td>
                   <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{f.date_paiement || '—'}</td>
                   <td className="px-3 py-3">
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${f.statut === 'payé' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                      {f.statut || 'impayé'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-xs text-slate-600">{f.mode_paiement || '—'}</td>
-                  <td className="px-3 py-3">
                     {(() => {
                       const ecart = f.ecart_delai ?? calcEcartDelai(f.date, f.date_paiement, f.delai_paiement);
                       return (
@@ -1829,20 +1830,38 @@ ${pages.map((pageRows, pageIdx) => `
                   <td className="px-3 py-3 text-xs text-slate-600">{f.reglement_banque_type || '—'}</td>
                   <td className="px-3 py-3 font-mono text-xs text-slate-600">{f.reglement_numero || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{f.echeances || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.mode_paiement || '—'}</td>
+                  <td className="px-3 py-3">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${f.statut === 'payé' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                      {f.statut || 'impayé'}
+                    </span>
+                  </td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-1">
                       <button onClick={() => {
                         setEditingFact(f);
+                        const ht = Number(f.montant_ht) || 0;
+                        const tvaAmt = Number(f.tva) || 0;
+                        const rate = ht > 0 ? String(Math.round(tvaAmt / ht * 100)) : '';
                         setFactForm({
-                          date: f.date, numero_facture: f.numero_facture, client: f.client,
-                          depart: f.depart, arrivee: f.arrivee,
-                          montant_ht: String(f.montant_ht), tva: String(f.tva),
-                          montant_ttc: String(f.montant_ttc), bl_ot: f.bl_ot, bc: f.bc,
-                          delai_paiement: String(f.delai_paiement), date_paiement: f.date_paiement || '',
+                          date:                  f.date                  || '',
+                          numero_facture:        f.numero_facture        || '',
+                          client:                f.client                || '',
+                          depart:                f.depart                || '',
+                          arrivee:               f.arrivee               || '',
+                          montant_ht:            String(f.montant_ht     || ''),
+                          tva:                   String(f.tva            || ''),
+                          montant_ttc:           String(f.montant_ttc    || ''),
+                          tva_rate:              rate,
+                          bl_ot:                 f.bl_ot                 || '',
+                          bc:                    f.bc                    || '',
+                          delai_paiement:        String(f.delai_paiement || 60),
+                          date_paiement:         f.date_paiement         || '',
                           reglement_banque_type: f.reglement_banque_type || '',
-                          reglement_numero: f.reglement_numero || '',
-                          echeances: f.echeances || '', mode_paiement: f.mode_paiement || '',
-                          statut: f.statut || 'impayé',
+                          reglement_numero:      f.reglement_numero      || '',
+                          echeances:             f.echeances             || '',
+                          mode_paiement:         f.mode_paiement         || '',
+                          statut:                f.statut                || 'impayé',
                         });
                         setShowFactForm(true);
                       }} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
@@ -2987,66 +3006,128 @@ ${pages.map((pageRows, pageIdx) => `
 {/* Facture Form Modal */}
 <AnimatePresence>
   {showFactForm && (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">
-            {editingFact ? 'Modifier la Facture' : 'Nouvelle Facture'}
-          </h3>
-          <button onClick={() => { setShowFactForm(false); setEditingFact(null); }}
-            className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.95, opacity: 0 }}
+      className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">
+          {editingFact ? 'Modifier la Facture' : 'Nouvelle Facture'}
+        </h3>
+        <button onClick={() => { setShowFactForm(false); setEditingFact(null); }}
+          className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+        {/* Text/date fields */}
+        {[
+          { label: 'Date',                 key: 'date',                  type: 'date'   },
+          { label: 'N° Facture',           key: 'numero_facture',        type: 'text'   },
+          { label: 'Client',               key: 'client',                type: 'text'   },
+          { label: 'Départ',               key: 'depart',                type: 'text'   },
+          { label: 'Arrivée',              key: 'arrivee',               type: 'text'   },
+          { label: 'BL / OT',              key: 'bl_ot',                 type: 'text'   },
+          { label: 'BC',                   key: 'bc',                    type: 'text'   },
+          { label: 'Délai Paiement (J)',   key: 'delai_paiement',        type: 'number' },
+          { label: 'Date de Paiement',     key: 'date_paiement',         type: 'date'   },
+          { label: 'Règlement Banque/Type',key: 'reglement_banque_type', type: 'text'   },
+          { label: 'Règlement N°',         key: 'reglement_numero',      type: 'text'   },
+          { label: 'Échéances',            key: 'echeances',             type: 'text'   },
+          { label: 'Mode de Paiement',     key: 'mode_paiement',         type: 'text'   },
+        ].map(({ label, key, type }) => (
+          <div key={key}>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+            <input type={type} value={(factForm as any)[key] || ''}
+              onChange={e => setFactForm((p: any) => ({ ...p, [key]: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        ))}
+
+        {/* Montant HT */}
+        <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant HT (MAD)</label>
+          <input type="number" value={factForm.montant_ht || ''}
+            onChange={e => {
+              const ht  = parseFloat(e.target.value) || 0;
+              const tva = parseFloat(factForm.tva)    || 0;
+              setFactForm((p: any) => ({
+                ...p,
+                montant_ht:  e.target.value,
+                montant_ttc: tva > 0 ? String((ht * (1 + tva / 100)).toFixed(2)) : String((ht + parseFloat(p.tva_amount || '0')).toFixed(2)),
+              }));
+            }}
+            className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { label: 'Date',                  key: 'date',                  type: 'date'   },
-            { label: 'N° Facture',            key: 'numero_facture',        type: 'text'   },
-            { label: 'Client',                key: 'client',                type: 'text'   },
-            { label: 'Départ',                key: 'depart',                type: 'text'   },
-            { label: 'Arrivée',               key: 'arrivee',               type: 'text'   },
-            { label: 'Montant HT (MAD)',       key: 'montant_ht',            type: 'number' },
-            { label: 'TVA (MAD)',              key: 'tva',                   type: 'number' },
-            { label: 'Montant TTC (MAD)',      key: 'montant_ttc',           type: 'number' },
-            { label: 'BL / OT',               key: 'bl_ot',                 type: 'text'   },
-            { label: 'BC',                    key: 'bc',                    type: 'text'   },
-            { label: 'Délai Paiement (J)',     key: 'delai_paiement',        type: 'number' },
-            { label: 'Date de Paiement',       key: 'date_paiement',         type: 'date'   },
-            { label: 'Règlement Banque/Type',  key: 'reglement_banque_type', type: 'text'   },
-            { label: 'Règlement N°',           key: 'reglement_numero',      type: 'text'   },
-            { label: 'Échéances',              key: 'echeances',             type: 'text'   },
-            { label: 'Mode de Paiement',       key: 'mode_paiement',         type: 'text'   },
-          ].map(({ label, key, type }) => (
-            <div key={key}>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
-              <input type={type} value={(factForm as any)[key] || ''}
-                onChange={e => setFactForm((p: any) => ({ ...p, [key]: e.target.value }))}
-                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
-            </div>
-          ))}
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
-            <select value={factForm.statut || 'impayé'}
-              onChange={e => setFactForm((p: any) => ({ ...p, statut: e.target.value }))}
-              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
-              <option value="impayé">Impayé</option>
-              <option value="payé">Payé</option>
-            </select>
+
+        {/* TVA rate % */}
+        <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (%)</label>
+          <div className="flex gap-2 mt-1">
+            {['0', '7', '10', '14', '20'].map(rate => (
+              <button key={rate} type="button"
+                onClick={() => {
+                  const ht  = parseFloat(factForm.montant_ht) || 0;
+                  const r   = parseFloat(rate);
+                  const tvaAmount = parseFloat((ht * r / 100).toFixed(2));
+                  const ttc = parseFloat((ht + tvaAmount).toFixed(2));
+                  setFactForm((p: any) => ({
+                    ...p,
+                    tva:         String(tvaAmount),
+                    montant_ttc: String(ttc),
+                    tva_rate:    rate,
+                  }));
+                }}
+                className={`flex-1 h-9 rounded-lg text-xs font-black border-2 transition-all cursor-pointer ${factForm.tva_rate === rate ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                {rate}%
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex gap-3 pt-5">
-          <button onClick={handleSaveFacturation}
-            className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
-            {editingFact ? 'Enregistrer les modifications' : 'Ajouter la facture'}
-          </button>
-          <button onClick={() => { setShowFactForm(false); setEditingFact(null); }}
-            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
-            Annuler
-          </button>
+
+        {/* TVA amount — read only, auto calculated */}
+        <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA Montant (MAD) — auto</label>
+          <input type="number" value={factForm.tva || ''}
+            readOnly
+            className="w-full mt-1 h-9 rounded-lg border-2 border-slate-100 bg-slate-50 px-3 text-sm text-slate-500 cursor-not-allowed" />
         </div>
-      </motion.div>
-    </div>
-  )}
+
+        {/* Montant TTC — auto calculated */}
+        <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            Montant TTC (MAD) — auto
+            <span className="ml-1 text-blue-500 normal-case font-medium">= HT + TVA</span>
+          </label>
+          <input type="number" value={factForm.montant_ttc || ''}
+            readOnly
+            className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 cursor-not-allowed" />
+        </div>
+
+        {/* Statut */}
+        <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
+          <select value={factForm.statut || 'impayé'}
+            onChange={e => setFactForm((p: any) => ({ ...p, statut: e.target.value }))}
+            className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+            <option value="impayé">Impayé</option>
+            <option value="payé">Payé</option>
+          </select>
+        </div>
+
+      </div>
+      <div className="flex gap-3 pt-5">
+        <button onClick={handleSaveFacturation}
+          className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+          {editingFact ? 'Enregistrer les modifications' : 'Ajouter la facture'}
+        </button>
+        <button onClick={() => { setShowFactForm(false); setEditingFact(null); }}
+          className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
+          Annuler
+        </button>
+      </div>
+    </motion.div>
+  </div>
+)}
 </AnimatePresence>
 {/* Invoice Preview Modal */}
 <AnimatePresence>
