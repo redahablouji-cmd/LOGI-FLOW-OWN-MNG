@@ -843,15 +843,23 @@ const handleGenerateInvoicePDF = async () => {
   // If HTML template exists use it, otherwise generate
   if (s.invoice_template_html) {
     // Build rows table from selected cols
-    const tableHTML = selected.map((f, idx) => `
+    const ROWS_PER_PAGE = s.rows_per_page || 15;
+    const minRows = ROWS_PER_PAGE;
+    const emptyRowsNeeded = Math.max(0, minRows - selected.length);
+
+    const tableHTML = selected.map((f) => `
       <tr>
-        <td class="italic">${f.date || '—'}</td>
-        <td class="italic">${[f.depart, f.arrivee].filter(Boolean).join(' → ') || f.client || '—'}</td>
-        <td class="center italic">${f.tva && f.montant_ht ? Math.round((f.tva/f.montant_ht)*100)+'%' : '—'}</td>
-        <td class="center italic">F</td>
-        <td class="center italic">1</td>
-        <td class="right italic">${Number(f.montant_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
-        <td class="right italic">${Number(f.montant_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+        <td>${f.date || '—'}</td>
+        <td>${[f.depart, f.arrivee].filter(Boolean).join(' → ') || f.client || '—'}</td>
+        <td style="text-align:center">${f.tva && f.montant_ht ? Math.round((f.tva / f.montant_ht) * 100) + '%' : '—'}</td>
+        <td style="text-align:center">1</td>
+        <td style="text-align:center">F</td>
+        <td style="text-align:right">${Number(f.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+        <td style="text-align:right">${Number(f.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+      </tr>
+    `).join('') + Array(emptyRowsNeeded).fill(`
+      <tr>
+        <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td>
       </tr>
     `).join('');
 
@@ -906,7 +914,11 @@ const handleGenerateInvoicePDF = async () => {
       .replaceAll('{{client_ice}}',      '')
       .replaceAll('{{montant_lettres}}',  numberToWords(totalTTC))
       .replaceAll('{{page_num}}',        `1 / ${pages.length}`)
-      .replaceAll('{{rows}}',            tableHTML);
+      // Replace hardcoded tbody content with dynamic rows
+    finalHtml = finalHtml.replace(
+      /<tbody>[\s\S]*?<\/tbody>/i,
+      `<tbody>{{rows}}</tbody>`
+    );
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
