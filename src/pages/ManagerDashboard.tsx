@@ -882,6 +882,12 @@ const handleGenerateInvoicePDF = async () => {
       );
       finalHtml = finalHtml.replaceAll('{{company_logo}}', '');
     }
+    // Step 1 — strip hardcoded tbody, inject placeholder
+    finalHtml = finalHtml.replace(
+      /<tbody>[\s\S]*?<\/tbody>/i,
+      `<tbody>{{rows}}</tbody>`
+    );
+
 
     // Also handle {{numero_commande}} which this template uses
     finalHtml = finalHtml
@@ -914,11 +920,7 @@ const handleGenerateInvoicePDF = async () => {
       .replaceAll('{{client_ice}}',      '')
       .replaceAll('{{montant_lettres}}',  numberToWords(totalTTC))
       .replaceAll('{{page_num}}',        `1 / ${pages.length}`)
-      // Replace hardcoded tbody content with dynamic rows
-    finalHtml = finalHtml.replace(
-      /<tbody>[\s\S]*?<\/tbody>/i,
-      `<tbody>{{rows}}</tbody>`
-    );
+      .replaceAll('{{rows}}', tableHTML);
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
