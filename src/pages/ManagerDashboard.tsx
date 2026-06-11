@@ -783,22 +783,19 @@ const handleGenerateInvoicePDF = async () => {
   const s = invoiceSettings;
   console.log('Invoice settings logo_url:', s.logo_url);
   console.log('Full settings:', s);
-  // Convert logo to base64 so it works in the PDF print window
-  let logoBase64 = '';
-  if (s.logo_url) {
+  // Use already-loaded base64 preview, or fetch fresh if needed
+  let logoBase64 = logoPreviewUrl || s.logo_url || '';
+  if (logoBase64 && logoBase64.startsWith('http')) {
     try {
-      const resp = await fetch(s.logo_url, { mode: 'cors', cache: 'no-cache' });
+      const resp = await fetch(logoBase64);
       const blob = await resp.blob();
       logoBase64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(blob);
       });
-      console.log('Logo base64 length:', logoBase64.length, logoBase64.substring(0, 50));
-    } catch (err) {
-      console.error('Logo fetch failed:', err);
-      // Fallback — use URL directly
-      logoBase64 = s.logo_url;
+    } catch {
+      logoBase64 = s.logo_url || '';
     }
   }
   const ROWS_PER_PAGE = s.rows_per_page || 15;
@@ -858,16 +855,37 @@ const handleGenerateInvoicePDF = async () => {
       </tr>
     `).join('');
 
-    let finalHtml = s.invoice_template_html
+    let finalHtml = s.invoice_template_html;
+
+    // Smart logo — handle src="{{company_logo}}" and standalone {{company_logo}}
+    if (logoBase64) {
+      finalHtml = finalHtml.replace(
+        /src=["']?\{\{company_logo\}\}["']?/g,
+        `src="${logoBase64}"`
+      );
+      finalHtml = finalHtml.replaceAll(
+        '{{company_logo}}',
+        `<img src="${logoBase64}" style="max-height:60px;max-width:150px;object-fit:contain"/>`
+      );
+    } else {
+      finalHtml = finalHtml.replace(
+        /<img[^>]*src=["']?\{\{company_logo\}\}["']?[^>]*>/g,
+        ''
+      );
+      finalHtml = finalHtml.replaceAll('{{company_logo}}', '');
+    }
+
+    // Also handle {{numero_commande}} which this template uses
+    finalHtml = finalHtml
       .replaceAll('{{company_name}}',    s.company_name    || activeCompany?.name || '')
       .replaceAll('{{company_address}}', s.address         || '')
       .replaceAll('{{company_phone}}',   s.phone           || '')
       .replaceAll('{{company_email}}',   s.email           || '')
       .replaceAll('{{company_ice}}',     s.ice             || '')
       .replaceAll('{{company_rc}}',      s.rc              || '')
-      .replaceAll('{{company_logo}}',    logoBase64 ? `<img src="${logoBase64}" style="max-height:60px;max-width:150px;object-fit:contain"/>` : '')
       .replaceAll('{{invoice_title}}',   s.invoice_title   || 'FACTURE')
       .replaceAll('{{numero_facture}}',  selected[0]?.numero_facture || '')
+      .replaceAll('{{numero_commande}}', selected[0]?.bc             || '')
       .replaceAll('{{date}}',            new Date().toLocaleDateString('fr-MA'))
       .replaceAll('{{client}}',          clientName)
       .replaceAll('{{delai_paiement}}',  String(selected[0]?.delai_paiement || 60))
@@ -875,19 +893,20 @@ const handleGenerateInvoicePDF = async () => {
       .replaceAll('{{montant_ht}}',      totalHT.toLocaleString('fr-MA'))
       .replaceAll('{{tva}}',             totalTVA.toLocaleString('fr-MA'))
       .replaceAll('{{montant_ttc}}',     totalTTC.toLocaleString('fr-MA'))
-      .replaceAll('{{total_ht}}',        totalHT.toLocaleString('fr-MA'))
-      .replaceAll('{{total_tva}}',       totalTVA.toLocaleString('fr-MA'))
-      .replaceAll('{{total_ttc}}',       totalTTC.toLocaleString('fr-MA'))
-      .replaceAll('{{bl_ot}}',           selected[0]?.bl_ot  || '')
-      .replaceAll('{{bc}}',              selected[0]?.bc      || '')
+      .replaceAll('{{total_ht}}',        totalHT.toLocaleString('fr-MA') + ' MAD')
+      .replaceAll('{{total_tva}}',       totalTVA.toLocaleString('fr-MA') + ' MAD')
+      .replaceAll('{{total_ttc}}',       totalTTC.toLocaleString('fr-MA') + ' MAD')
+      .replaceAll('{{bl_ot}}',           selected[0]?.bl_ot        || '')
+      .replaceAll('{{bc}}',              selected[0]?.bc            || '')
       .replaceAll('{{rib}}',             s.rib             || '')
       .replaceAll('{{bank_name}}',       s.bank_name       || '')
       .replaceAll('{{footer_text}}',     s.footer_text     || '')
       .replaceAll('{{signature_label}}', s.signature_label || 'Signature & Cachet')
-      .replaceAll('{{rows}}',            tableHTML)
+      .replaceAll('{{mode_paiement}}',   selected[0]?.mode_paiement || '')
       .replaceAll('{{client_ice}}',      '')
       .replaceAll('{{montant_lettres}}',  numberToWords(totalTTC))
-      .replaceAll('{{page_num}}',        `1 / ${pages.length}`);
+      .replaceAll('{{page_num}}',        `1 / ${pages.length}`)
+      .replaceAll('{{rows}}',            tableHTML);
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
