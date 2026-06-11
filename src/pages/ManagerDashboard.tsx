@@ -857,13 +857,73 @@ const handleGenerateInvoicePDF = async () => {
         <td style="text-align:right">${Number(f.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
         <td style="text-align:right">${Number(f.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
       </tr>
-    `).join('') + Array(emptyRowsNeeded).fill(`
-      <tr>
-        <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td>
-      </tr>
     `).join('');
 
     let finalHtml = s.invoice_template_html;
+    // 1. Remove all empty filler rows
+    finalHtml = finalHtml.replace(/<tr>\s*(<td[^>]*>\s*&nbsp;\s*<\/td>|<td[^>]*>\s*<\/td>){2,}\s*<\/tr>/gi, '');
+
+    // 2. Replace tbody with dynamic rows
+    finalHtml = finalHtml.replace(
+      /<tbody>[\s\S]*?<\/tbody>/i,
+      `<tbody>{{rows}}</tbody>`
+    );
+
+    // 3. Inject CSS to keep totals+signature on same page as last row
+    const pageBreakCSS = `
+    <style>
+      .bottom-section, .totals-block, .totals-wrap, .sig-area, .sig-wrap,
+      .totals-box, .lettres-section, .total-ttc-bar {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      /* Force totals to stay with last table row */
+      .table-wrap + .bottom-section,
+      table + .totals-wrap,
+      table + .totals-block {
+        page-break-before: avoid !important;
+        break-before: avoid !important;
+      }
+    </style>`;
+    finalHtml = finalHtml.replace('</head>', pageBreakCSS + '</head>');
+    // Inject smart page-break CSS
+    const smartCSS = `
+      <style>
+        /* Remove min-height from empty rows — we use tbody min-height instead */
+        .td-empty { display: none !important; }
+        tbody tr td:first-child:only-child { display: none; }
+
+        /* Make tbody fill remaining space so totals stay on same page */
+        tbody {
+          display: table-row-group;
+        }
+
+        /* Keep totals + signature together — never split them */
+        .bottom-section,
+        .totals-box,
+        .totals-block,
+        .totals-wrap,
+        .sig-area,
+        .sig-wrap,
+        .lettres-section {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        /* This is the key — keep last row + totals together on same page */
+        .keep-together {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+      </style>
+    `;
+    finalHtml = finalHtml.replace('</head>', smartCSS + '</head>');
+
+    // Remove all hardcoded empty rows
+    finalHtml = finalHtml.replace(
+      /<tbody>[\s\S]*?<\/tbody>/i,
+      `<tbody>{{rows}}</tbody>`
+    );
 
     // Smart logo — handle src="{{company_logo}}" and standalone {{company_logo}}
     if (logoBase64) {
@@ -921,6 +981,21 @@ const handleGenerateInvoicePDF = async () => {
       .replaceAll('{{montant_lettres}}',  numberToWords(totalTTC))
       .replaceAll('{{page_num}}',        `1 / ${pages.length}`)
       .replaceAll('{{rows}}', tableHTML);
+      // Wrap totals + signature in keep-together div
+    finalHtml = finalHtml
+      .replace(
+        /(<div[^>]*class="[^"]*bottom-section[^"]*")/i,
+        '<div class="keep-together" style="page-break-inside:avoid"><div class="keep-together-inner" style="page-break-inside:avoid">KEEP_START$1'
+      )
+      .replace(
+        /(<div[^>]*class="[^"]*sig-area[^"]*"[\s\S]*?<\/div>\s*<\/div>)/i,
+        '$1KEEP_END</div></div>'
+      );
+
+    // Clean up markers if regex didn't match perfectly
+    finalHtml = finalHtml
+      .replace('KEEP_START', '')
+      .replace('KEEP_END', '');
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
