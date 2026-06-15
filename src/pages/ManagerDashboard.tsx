@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
 import CreateStaffForm from '../components/manager/CreateStaffForm';
+import CoutRevientTab from '../components/manager/CoutRevientTab';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -20,7 +21,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients' | 'facturation' | 'settings';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients' | 'facturation' | 'settings'| 'cout_revient';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -1178,6 +1179,7 @@ ${pages.map((pageRows, pageIdx) => `
   { id: 'fleetfix',    label: 'FleetFix',             icon: Wrench },
   { id: 'suivi',       label: 'Suivi Prestation',     icon: FileText },
   { id: 'chauffeurs',  label: 'Chauffeurs',           icon: Truck },
+  { id: 'cout_revient',label: 'Coût de Revient',      icon: TrendingUp },
   { id: 'clients',     label: 'Clients',              icon: Users },
   { id: 'facturation', label: 'Suivi Facturation',    icon: Receipt },
   { id: 'settings', label: 'Paramètres Facture', icon: Settings },
@@ -1741,6 +1743,9 @@ ${pages.map((pageRows, pageIdx) => `
       </div>
     )}
   </div>
+)}
+{activeTab === 'cout_revient' && (
+  <CoutRevientTab companyId={companyId} />
 )}
 {activeTab === 'clients' && (
   <div>
