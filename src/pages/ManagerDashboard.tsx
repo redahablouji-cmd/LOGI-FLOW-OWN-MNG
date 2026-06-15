@@ -379,6 +379,7 @@ const handleXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       nom_prenom:          String(r[1] || ''),
       immatriculation:     String(r[2] || ''),
       type_vehicule:       String(r[3] || ''),
+      consommation:        parseFloat(r[4]) || 0,
       cin:                 String(r[4] || ''),
       imm_cnss:            String(r[5] || ''),
       fonction:            String(r[6] || ''),
@@ -424,6 +425,7 @@ const handleEditDriverSave = async () => {
     nom_prenom:          driverEditForm.nom_prenom,
     immatriculation:     driverEditForm.immatriculation,
     type_vehicule:       driverEditForm.type_vehicule,
+    consommation:        parseFloat(driverEditForm.consommation) || 0,
     cin:                 driverEditForm.cin,
     imm_cnss:            driverEditForm.imm_cnss,
     fonction:            driverEditForm.fonction,
@@ -1661,7 +1663,7 @@ ${pages.map((pageRows, pageIdx) => `
           </button>
           <button onClick={() => exportToXLS(fleetDrivers.map(d => ({
             'Code': d.code, 'Nom/Prénom': d.nom_prenom, 'Immatriculation': d.immatriculation,
-            'Type': d.type_vehicule, 'CIN': d.cin, 'IMM CNSS': d.imm_cnss,
+            'Type': d.type_vehicule, 'Consommation': d.consommation, 'CIN': d.cin, 'IMM CNSS': d.imm_cnss,
             'Fonction': d.fonction, 'Date Naissance': d.date_naissance,
             'Situation Familiale': d.situation_familiale, 'Nb Déduction': d.nb_deduction,
             'Date Embauche': d.date_embauche, 'Adresse': d.adresse,
@@ -1682,7 +1684,7 @@ ${pages.map((pageRows, pageIdx) => `
     {/* Template download hint */}
     <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
       📋 Format attendu du fichier XLS — colonnes dans l'ordre :
-      <span className="font-black ml-1">Code | Nom/Prénom | Immatriculation | Type | CIN | IMM CNSS | Fonction | Date Naissance | Situation Familiale | Nb Déduction | Date Embauche | Adresse</span>
+      <span className="font-black ml-1">Code | Nom/Prénom | Immatriculation | Type | Consommation | CIN | IMM CNSS | Fonction | Date Naissance | Situation Familiale | Nb Déduction | Date Embauche | Adresse</span>
     </div>
 
     {loadingDrivers ? (
@@ -1693,7 +1695,7 @@ ${pages.map((pageRows, pageIdx) => `
           <table className="w-full text-left min-w-[1100px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Code','Nom / Prénom','Immat.','Type','CIN','IMM CNSS','Fonction','Naissance','Situation','Déductions','Embauche','Adresse','Actions'].map(h => (
+                {['Code','Nom / Prénom','Immat.','Type','Consommation','CIN','IMM CNSS','Fonction','Naissance','Situation','Déductions','Embauche','Adresse','Actions'].map(h => (
                   <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1701,7 +1703,7 @@ ${pages.map((pageRows, pageIdx) => `
             <tbody className="divide-y divide-slate-100">
               {fleetDrivers.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-12 text-center">
+                  <td colSpan={14} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <Truck size={32} className="text-slate-300" />
                       <p className="text-sm text-slate-400 font-medium">Aucun chauffeur importé.</p>
@@ -1715,6 +1717,7 @@ ${pages.map((pageRows, pageIdx) => `
                   <td className="px-3 py-3 text-xs font-semibold text-slate-800">{d.nom_prenom}</td>
                   <td className="px-3 py-3 font-mono text-xs font-bold text-slate-700">{d.immatriculation || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{d.type_vehicule || '—'}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-slate-700 font-semibold">{d.consommation ? `${d.consommation} L/100km` : '—'}</td>
                   <td className="px-3 py-3 font-mono text-xs text-slate-600">{d.cin || '—'}</td>
                   <td className="px-3 py-3 font-mono text-xs text-slate-600">{d.imm_cnss || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{d.fonction || '—'}</td>
@@ -3216,6 +3219,7 @@ ${pages.map((pageRows, pageIdx) => `
             { label: 'Nom / Prénom',         key: 'nom_prenom',          type: 'text'   },
             { label: 'Immatriculation',      key: 'immatriculation',     type: 'text'   },
             { label: 'Type Véhicule',        key: 'type_vehicule',       type: 'text'   },
+            { label: 'Consommation (L/100km)', key: 'consommation',       type: 'number' },
             { label: 'CIN',                  key: 'cin',                 type: 'text'   },
             { label: 'IMM CNSS',             key: 'imm_cnss',            type: 'text'   },
             { label: 'Fonction',             key: 'fonction',            type: 'text'   },
