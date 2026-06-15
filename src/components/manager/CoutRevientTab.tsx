@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Loader2, RefreshCw, Download, Truck, Copy, CopyPlus, Save, TrendingUp } from 'lucide-react';
+import {  useRef, useCallback } from 'react';
+import { Loader2, RefreshCw, Download, Truck, Copy, CopyPlus, TrendingUp, Check, CloudOff } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 
@@ -125,10 +126,55 @@ interface Props {
 }
 
 export default function CoutRevientTab({ companyId }: Props) {
-  const [trucks, setTrucks]   = useState<string[]>([]);   // immatriculations from fleet_drivers
-  const [rows, setRows]       = useState<Record<string, any>>({}); // keyed by matricule
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
+  const [trucks, setTrucks]   = useState<string[]>([]);
+  const [rows, setRows]       = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(false);
+
+
+  // Autosave status
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowsRef   = useRef(rows);
+  const trucksRef = useRef(trucks);
+  rowsRef.current   = rows;
+  trucksRef.current = trucks;
+
+  // Save all trucks silently in the background
+  const saveNow = useCallback(async () => {
+    if (!companyId) return;
+    const currentTrucks = trucksRef.current;
+    const currentRows   = rowsRef.current;
+    if (!currentTrucks.length) return;
+    setSaveStatus('saving');
+    const payload = currentTrucks.map(t => {
+      const r = currentRows[t] || {};
+      const clean: any = { company_id: companyId, matricule: t, updated_at: new Date().toISOString() };
+      ALL_NUM_KEYS.forEach(k => { clean[k] = num(r[k]); });
+      return clean;
+    });
+    const { error } = await supabase
+      .from('cout_revient')
+      .upsert(payload, { onConflict: 'company_id,matricule' });
+    if (error) setSaveStatus('error');
+    else setSaveStatus('saved');
+  }, [companyId]);
+
+  // Debounce: trigger save ~900ms after the last change
+  const scheduleSave = useCallback(() => {
+    setSaveStatus('saving');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { saveNow(); }, 900);
+  }, [saveNow]);
+
+  // Flush pending save when component unmounts (e.g. user changes tab)
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveNow();
+    };
+  }, [saveNow]);
+  
   const [activeTruck, setActiveTruck] = useState<string>('');
 
   // ── Load trucks + saved cost rows ──
@@ -141,8 +187,8 @@ export default function CoutRevientTab({ companyId }: Props) {
       supabase.from('cout_revient').select('*').eq('company_id', companyId),
     ]);
 
-    const plates = Array.from(
-      new Set((drivers || []).map(d => (d.immatriculation || '').trim()).filter(Boolean))
+    const plates: string[] = Array.from(
+      new Set((drivers || []).map((d: any) => (d.immatriculation || '').trim()).filter(Boolean))
     );
 
     const savedMap: Record<string, any> = {};
@@ -164,6 +210,7 @@ export default function CoutRevientTab({ companyId }: Props) {
   // ── Update a single field on one truck ──
   const setField = (matricule: string, key: string, value: string) => {
     setRows(prev => ({ ...prev, [matricule]: { ...prev[matricule], [key]: value } }));
+    scheduleSave();
   };
 
   // ── Copy one field's value into every other truck ──
@@ -175,7 +222,8 @@ export default function CoutRevientTab({ companyId }: Props) {
       trucks.forEach(t => { next[t] = { ...next[t], [key]: value }; });
       return next;
     });
-    toast.success(`Valeur copiée sur ${trucks.length} camion(s).`);
+   toast.success(`Valeur copiée sur ${trucks.length} camion(s).`);
+    scheduleSave();
   };
 
   // ── Copy an ENTIRE section (Fixes / Variables / Structure / Monthly) to all trucks ──
@@ -191,6 +239,7 @@ export default function CoutRevientTab({ companyId }: Props) {
       return next;
     });
     toast.success(`${label} copié sur tous les camions.`);
+    scheduleSave();
   };
 
   // ── Save everything ──
@@ -268,11 +317,24 @@ export default function CoutRevientTab({ companyId }: Props) {
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
               <Download size={14} /> Export XLS
             </button>
-            <button onClick={handleSave} disabled={saving}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {saving ? 'Sauvegarde...' : 'Sauvegarder'}
-            </button>
+            {/* Autosave status indicator */}
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider">
+              {saveStatus === 'saving' && (
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Loader2 size={14} className="animate-spin" /> Enregistrement...
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <Check size={14} /> Enregistré
+                </span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="flex items-center gap-1.5 text-rose-400">
+                  <CloudOff size={14} /> Erreur
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
