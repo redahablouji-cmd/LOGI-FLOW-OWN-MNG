@@ -21,7 +21,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'clients' | 'facturation' | 'settings'| 'cout_revient';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'facturation' | 'settings';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -83,6 +83,13 @@ export default function ManagerDashboard() {
   const [editingClient,    setEditingClient]    = useState<any | null>(null);
   const [clientEditForm,   setClientEditForm]   = useState<any>({});
   const [uploadingClients, setUploadingClients] = useState(false);
+
+  // Fournisseurs
+  const [fournisseursList,      setFournisseursList]      = useState<any[]>([]);
+  const [loadingFournisseurs,   setLoadingFournisseurs]   = useState(false);
+  const [editingFournisseur,    setEditingFournisseur]    = useState<any | null>(null);
+  const [fournisseurEditForm,   setFournisseurEditForm]   = useState<any>({});
+  const [uploadingFournisseurs, setUploadingFournisseurs] = useState(false);
 
   // Purchases
   const [purchases,        setPurchases]        = useState<Purchase[]>([]);
@@ -498,11 +505,11 @@ const handleClientsXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
     const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[0]);
-    const records = dataRows.map((r: any[]) => ({
-      company_id:    companyId,
-      nom:           String(r[0] || '').trim(),
-      adresse:       String(r[1] || '').trim(),
-      ice:           String(r[2] || '').trim(),
+   const records = dataRows.map((r: any[]) => ({
+      company_id:     companyId,
+      nom:            String(r[0] || '').trim(),
+      adresse:        String(r[1] || '').trim(),
+      ice:            String(r[2] || '').trim(),
       delai_paiement: parseInt(r[3]) || 60,
     }));
     if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
@@ -533,6 +540,76 @@ const handleEditClientSave = async () => {
     delai_paiement: parseInt(clientEditForm.delai_paiement) || 60,
   }).eq('id', editingClient.id);
   if (!error) { toast.success("Client modifié."); setEditingClient(null); fetchClients(); }
+  else toast.error(`Erreur: ${error.message}`);
+};
+// ── Fournisseurs ──────────────────────────────────────────────────────
+const fetchFournisseurs = async () => {
+  if (!companyId) return;
+  setLoadingFournisseurs(true);
+  const { data } = await supabase
+    .from('fournisseurs')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+  setFournisseursList(data || []);
+  setLoadingFournisseurs(false);
+};
+
+const handleFournisseursXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !companyId) return;
+  setUploadingFournisseurs(true);
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[0]);
+    const records = dataRows.map((r: any[]) => ({
+      company_id:     companyId,
+      nom:            String(r[0] || '').trim(),
+      categorie:      String(r[1] || '').trim(),
+      taux_tva:       parseFloat(r[2]) || 0.20,
+      if_number:      String(r[3] || '').trim(),
+      ice:            String(r[4] || '').trim(),
+      adresse:        String(r[5] || '').trim(),
+      telephone:      String(r[6] || '').trim(),
+      banque:         String(r[7] || '').trim(),
+      delai_paiement: parseInt(r[8]) || 60,
+    }));
+    if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
+    await supabase.from('fournisseurs').delete().eq('company_id', companyId);
+    const { error } = await supabase.from('fournisseurs').insert(records);
+    if (!error) { toast.success(`${records.length} fournisseurs importés.`); fetchFournisseurs(); }
+    else toast.error(`Erreur: ${error.message}`);
+  } catch (err: any) {
+    toast.error(`Erreur: ${err.message}`);
+  } finally {
+    setUploadingFournisseurs(false);
+    e.target.value = '';
+  }
+};
+
+const handleDeleteFournisseur = async (id: string) => {
+  if (!confirm('Supprimer ce fournisseur ?')) return;
+  const { error } = await supabase.from('fournisseurs').delete().eq('id', id);
+  if (!error) { setFournisseursList(prev => prev.filter(f => f.id !== id)); toast.success("Supprimé."); }
+  else toast.error(`Erreur: ${error.message}`);
+};
+
+const handleEditFournisseurSave = async () => {
+  const { error } = await supabase.from('fournisseurs').update({
+    nom:            fournisseurEditForm.nom,
+    categorie:      fournisseurEditForm.categorie,
+    taux_tva:       parseFloat(fournisseurEditForm.taux_tva) || 0.20,
+    if_number:      fournisseurEditForm.if_number,
+    ice:            fournisseurEditForm.ice,
+    adresse:        fournisseurEditForm.adresse,
+    telephone:      fournisseurEditForm.telephone,
+    banque:         fournisseurEditForm.banque,
+    delai_paiement: parseInt(fournisseurEditForm.delai_paiement) || 60,
+  }).eq('id', editingFournisseur.id);
+  if (!error) { toast.success("Fournisseur modifié."); setEditingFournisseur(null); fetchFournisseurs(); }
   else toast.error(`Erreur: ${error.message}`);
 };
 // ── Suivi Facturation ──────────────────────────────────────────────────
@@ -1179,6 +1256,8 @@ ${pages.map((pageRows, pageIdx) => `
     if (activeTab === 'suivi') { fetchSuivi(); fetchClients(); if (companyId) fetchFleetDrivers(); }
     if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
     if (activeTab === 'clients' && companyId) fetchClients();
+    if (activeTab === 'fournisseurs' && companyId) fetchFournisseurs();
+    if (activeTab === 'purchases') { fetchPurchases(); if (companyId) fetchFournisseurs(); }
     if (activeTab === 'facturation' && companyId) { fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings(); }
     if (activeTab === 'settings' && companyId) fetchInvoiceSettings();
   }, [activeTab, companyId]);
@@ -1218,6 +1297,7 @@ ${pages.map((pageRows, pageIdx) => `
   { id: 'chauffeurs',  label: 'Chauffeurs',           icon: Truck },
   { id: 'cout_revient',label: 'Coût de Revient',      icon: TrendingUp },
   { id: 'clients',     label: 'Clients',              icon: Users },
+  { id: 'fournisseurs',label: 'Fournisseurs',         icon: ShoppingBag },
   { id: 'facturation', label: 'Suivi Facturation',    icon: Receipt },
   { id: 'settings', label: 'Paramètres Facture', icon: Settings },
 ] as const;
@@ -1898,6 +1978,93 @@ ${pages.map((pageRows, pageIdx) => `
                         className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors">
                         <Trash2 size={13} />
                       </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+  </div>
+)}
+{activeTab === 'fournisseurs' && (
+  <div>
+    <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-orange-500 text-slate-950 mb-2">
+            <ShoppingBag className="w-3.5 h-3.5" /> Base Fournisseurs
+          </span>
+          <h1 className="text-2xl font-extrabold tracking-tight">Gestion des Fournisseurs</h1>
+          <p className="text-sm text-slate-400 mt-1">{fournisseursList.length} fournisseurs enregistrés</p>
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <button onClick={fetchFournisseurs}
+            className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <RefreshCw className="w-3.5 h-3.5" /> Actualiser
+          </button>
+          <button onClick={() => exportToXLS(fournisseursList.map(f => ({
+            'Fournisseur': f.nom, 'Catégorie': f.categorie, 'Taux TVA': f.taux_tva,
+            'IF': f.if_number, 'ICE': f.ice, 'Adresse': f.adresse,
+            'Téléphone': f.telephone, 'Banque': f.banque, 'Délai Paiement': f.delai_paiement,
+          })), 'fournisseurs_export')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+            <Download size={14} /> Export XLS
+          </button>
+          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingFournisseurs ? 'bg-slate-600 opacity-60' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+            <Upload size={14} />
+            {uploadingFournisseurs ? 'Importation...' : 'Importer XLS'}
+            <input type="file" accept=".xlsx,.xls" onChange={handleFournisseursXLSUpload} className="hidden" disabled={uploadingFournisseurs} />
+          </label>
+        </div>
+      </div>
+    </div>
+    <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
+      📋 Format attendu : <span className="font-black">Fournisseur | Catégorie | Taux TVA | IF | ICE | Adresse | Téléphone | Banque | Délai Paiement (J)</span>
+    </div>
+    {loadingFournisseurs ? (
+      <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
+    ) : (
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                {['Fournisseur','Catégorie','Taux TVA','IF','ICE','Adresse','Téléphone','Banque','Délai (J)','Actions'].map(h => (
+                  <th key={h} className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {fournisseursList.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <ShoppingBag size={32} className="text-slate-300" />
+                      <p className="text-sm text-slate-400 font-medium">Aucun fournisseur.</p>
+                      <p className="text-xs text-slate-400">Cliquez sur "Importer XLS" pour charger votre base fournisseurs.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : fournisseursList.map(f => (
+                <tr key={f.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-xs font-semibold text-slate-800">{f.nom}</td>
+                  <td className="px-4 py-3"><span className="text-[9px] font-black bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded uppercase">{f.categorie || '—'}</span></td>
+                  <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{f.taux_tva ? `${(f.taux_tva * 100).toFixed(0)}%` : '20%'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{f.if_number || '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-blue-600">{f.ice || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600 max-w-[250px] truncate">{f.adresse || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{f.telephone || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{f.banque || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-center font-bold text-slate-700">{f.delai_paiement} J</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setEditingFournisseur(f); setFournisseurEditForm({ ...f }); }}
+                        className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={13} /></button>
+                      <button onClick={() => handleDeleteFournisseur(f.id)}
+                        className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -3183,8 +3350,30 @@ ${pages.map((pageRows, pageIdx) => `
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl space-y-4">
               <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Modifier l'Achat</h3>
+              {/* Fournisseur dropdown */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fournisseur</label>
+                <select value={(editingPurchase as any).fournisseur || ''}
+                  onChange={e => {
+                    const nom = e.target.value;
+                    const found = fournisseursList.find(f => f.nom === nom);
+                    setEditingPurchase({ ...editingPurchase!,
+                      fournisseur: nom,
+                      ...(found ? { if_number: found.if_number || '', ice_number: found.ice || '' } : {}),
+                    });
+                  }}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                  <option value="">— Sélectionner —</option>
+                  {fournisseursList.map(f => (
+                    <option key={f.id} value={f.nom}>{f.nom}{f.ice ? ` (ICE: ${f.ice})` : ''}</option>
+                  ))}
+                  {(editingPurchase as any).fournisseur && !fournisseursList.find(f => f.nom === (editingPurchase as any).fournisseur) && (
+                    <option value={(editingPurchase as any).fournisseur}>{(editingPurchase as any).fournisseur} (personnalisé)</option>
+                  )}
+                </select>
+              </div>
+              {/* Other fields */}
               {[
-                { label: 'Fournisseur', key: 'fournisseur', type: 'text' },
                 { label: 'N° Facture', key: 'numero_facture', type: 'text' },
                 { label: 'Date', key: 'date_achat', type: 'date' },
                 { label: 'Montant HT', key: 'montant_ht', type: 'number' },
@@ -3194,7 +3383,7 @@ ${pages.map((pageRows, pageIdx) => `
                 <div key={key}>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
                   <input type={type} value={(editingPurchase as any)[key] || ''}
-                    onChange={e => setEditingPurchase({ ...editingPurchase, [key]: type === 'number' ? parseFloat(e.target.value) : e.target.value })}
+                    onChange={e => setEditingPurchase({ ...editingPurchase!, [key]: type === 'number' ? parseFloat(e.target.value) : e.target.value })}
                     className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
               ))}
@@ -3356,6 +3545,45 @@ ${pages.map((pageRows, pageIdx) => `
             className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
             Annuler
           </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Edit Fournisseur Modal */}
+<AnimatePresence>
+  {editingFournisseur && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Modifier le Fournisseur</h3>
+          <button onClick={() => setEditingFournisseur(null)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        {[
+          { label: 'Nom Fournisseur',     key: 'nom',            type: 'text'   },
+          { label: 'Catégorie',            key: 'categorie',      type: 'text'   },
+          { label: 'Taux TVA (ex: 0.20)',  key: 'taux_tva',       type: 'number' },
+          { label: 'IF',                   key: 'if_number',      type: 'text'   },
+          { label: 'ICE',                  key: 'ice',            type: 'text'   },
+          { label: 'Adresse',              key: 'adresse',        type: 'text'   },
+          { label: 'Téléphone',            key: 'telephone',      type: 'text'   },
+          { label: 'Banque',               key: 'banque',         type: 'text'   },
+          { label: 'Délai Paiement (J)',   key: 'delai_paiement', type: 'number' },
+        ].map(({ label, key, type }) => (
+          <div key={key}>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+            <input type={type} value={fournisseurEditForm[key] || ''}
+              onChange={e => setFournisseurEditForm((p: any) => ({ ...p, [key]: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        ))}
+        <div className="flex gap-3 pt-2">
+          <button onClick={handleEditFournisseurSave}
+            className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">Enregistrer</button>
+          <button onClick={() => setEditingFournisseur(null)}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
         </div>
       </motion.div>
     </div>
