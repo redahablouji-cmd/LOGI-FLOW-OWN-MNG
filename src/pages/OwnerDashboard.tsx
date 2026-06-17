@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, LogOut, Copy, Check, ShieldCheck, RefreshCw } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { signOut as authSignOut } from '../lib/auth';
 import { Company } from '../lib/auth';
 import CompanyProfile from '../components/owner/CompanyProfile';
 import CreateManagerForm from '../components/owner/CreateManagerForm';
@@ -10,61 +10,40 @@ import { toast } from 'sonner';
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
-  const { user, loading, signOut } = useAuth();
-
   const [activeCompany, setActiveCompany] = useState<Company | null>(null);
   const [loadingCompany, setLoadingCompany] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [ownerEmail, setOwnerEmail] = useState('');
 
   const fetchCompany = async () => {
     try {
       setLoadingCompany(true);
 
-      // Use sessionStorage email (set during login) — bypasses Supabase session race condition
-      let ownerEmail = sessionStorage.getItem('owner_email');
+      // 1. Try sessionStorage (set during login)
+      let email = sessionStorage.getItem('owner_email');
 
-      // Fallback: try Supabase session
-      if (!ownerEmail) {
+      // 2. Fallback: try Supabase session
+      if (!email) {
         const { data: { session } } = await supabase.auth.getSession();
-        ownerEmail = session?.user?.email || null;
+        email = session?.user?.email || null;
       }
 
-      // Fallback: try useAuth user
-      if (!ownerEmail && user?.email) {
-        ownerEmail = user.email;
-      }
-
-      // No email found anywhere — genuinely not logged in
-      if (!ownerEmail) {
-        navigate('/login');
+      // 3. No email anywhere — show "not logged in" (don't auto-redirect)
+      if (!email) {
+        setLoadingCompany(false);
         return;
       }
 
-      if (isSupabaseConfigured) {
-        const { data, error } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('owner_email', ownerEmail)
-          .maybeSingle();
+      setOwnerEmail(email);
 
-        if (error) throw error;
-        if (!data) {
-          toast.error("Aucune entreprise associée à ce compte.");
-          sessionStorage.removeItem('owner_email');
-          sessionStorage.removeItem('owner_session');
-          await signOut();
-          navigate('/login');
-          return;
-        }
-        setActiveCompany(data);
-      } else {
-        const compRaw = localStorage.getItem('logiflow_mock_companies');
-        if (compRaw) {
-          const companies: Company[] = JSON.parse(compRaw);
-          const found = companies.find(c => c.owner_email === ownerEmail);
-          if (found) setActiveCompany(found);
-        }
-      }
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('owner_email', email)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) setActiveCompany(data);
     } catch (err) {
       console.error('Error fetching company:', err);
       toast.error("Erreur lors du chargement de l'entreprise.");
@@ -74,30 +53,16 @@ export default function OwnerDashboard() {
   };
 
   useEffect(() => {
-    // Check if owner has a valid session (from sessionStorage or Supabase)
-    const hasOwnerSession = sessionStorage.getItem('owner_session') === 'true';
+    fetchCompany();
+  }, []);
 
-    if (!loading) {
-      if (!user && !hasOwnerSession) {
-        navigate('/login');
-      } else {
-        fetchCompany();
-      }
-    }
-  }, [loading]);
-
-  useEffect(() => {
-    if (loading) return;
-    // Small delay to let auth state fully settle after navigation
-    const timeout = setTimeout(() => {
-      if (!user) {
-        navigate('/login');
-      } else {
-        fetchCompany();
-      }
-    }, 100);
-    return () => clearTimeout(timeout);
-  }, [user, loading]);
+  const handleSignOut = async () => {
+    sessionStorage.removeItem('owner_email');
+    sessionStorage.removeItem('owner_session');
+    try { await authSignOut(); } catch {}
+    toast.success("Déconnexion réussie");
+    navigate('/login');
+  };
 
   const handleCopyCode = async () => {
     if (!activeCompany) return;
@@ -111,7 +76,7 @@ export default function OwnerDashboard() {
     }
   };
 
-  if (loading || loadingCompany) {
+  if (loadingCompany) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
         <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
@@ -122,11 +87,20 @@ export default function OwnerDashboard() {
 
   if (!activeCompany) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <p className="text-slate-500 text-sm">Aucune entreprise trouvée.</p>
-        <button onClick={() => navigate('/login')} className="mt-4 text-blue-600 text-sm font-bold">
-          Retour à la connexion
-        </button>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-8 max-w-md text-center shadow-sm">
+          <div className="bg-blue-600 h-10 w-10 rounded flex items-center justify-center mx-auto mb-4">
+            <span className="text-white font-bold text-lg">LF</span>
+          </div>
+          <h2 className="text-lg font-extrabold text-slate-900 mb-2">Session Expirée</h2>
+          <p className="text-slate-500 text-sm mb-6">
+            Veuillez vous reconnecter avec votre code entreprise.
+          </p>
+          <button onClick={() => navigate('/login')}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm cursor-pointer transition-colors">
+            Retour à la connexion
+          </button>
+        </div>
       </div>
     );
   }
@@ -166,14 +140,8 @@ export default function OwnerDashboard() {
               <span className="text-xs text-slate-400 block">Bienvenue,</span>
               <span className="text-sm font-bold text-slate-700">{activeCompany.owner_name}</span>
             </div>
-            <button
-              onClick={() => {
-                sessionStorage.removeItem('owner_email');
-                sessionStorage.removeItem('owner_session');
-                signOut().then(() => { toast.success("Déconnexion réussie"); navigate('/login'); });
-              }}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/70 transition-colors cursor-pointer"
-            >
+            <button onClick={handleSignOut}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/70 transition-colors cursor-pointer">
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Déconnexion</span>
             </button>
@@ -193,10 +161,8 @@ export default function OwnerDashboard() {
               Modifiez la structure de votre entreprise et recrutez des managers pour diviser le travail opérationnel.
             </p>
           </div>
-          <button
-            onClick={fetchCompany}
-            className="self-start md:self-center bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
-          >
+          <button onClick={fetchCompany}
+            className="self-start md:self-center bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer">
             <RefreshCw className="w-3.5 h-3.5" /> Actualiser
           </button>
         </div>
@@ -206,7 +172,7 @@ export default function OwnerDashboard() {
             <CompanyProfile
               company={activeCompany}
               ownerProfile={null}
-              ownerEmail={user?.email || ''}
+              ownerEmail={ownerEmail}
               onCompanyUpdate={(updated) => {
                 setActiveCompany(updated);
                 toast.success("Nom de l'entreprise enregistré !");
