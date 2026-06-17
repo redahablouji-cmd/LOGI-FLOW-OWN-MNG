@@ -17,21 +17,29 @@ export default function OwnerDashboard() {
   const [copiedCode, setCopiedCode] = useState(false);
 
   const fetchCompany = async () => {
-    if (!user) return;
     try {
       setLoadingCompany(true);
 
+      // Check session directly — don't rely on useAuth state (avoids race condition)
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        // No session at all — genuinely not logged in
+        navigate('/login');
+        return;
+      }
+
+      const currentEmail = session.user.email;
+
       if (isSupabaseConfigured) {
-        // Find company where owner_email matches logged in user
         const { data, error } = await supabase
           .from('companies')
           .select('*')
-          .eq('owner_email', user.email)
+          .eq('owner_email', currentEmail)
           .maybeSingle();
 
         if (error) throw error;
         if (!data) {
-          // Not an owner — redirect to login
           toast.error("Aucune entreprise associée à ce compte.");
           await signOut();
           navigate('/login');
@@ -39,11 +47,10 @@ export default function OwnerDashboard() {
         }
         setActiveCompany(data);
       } else {
-        // Demo mode
         const compRaw = localStorage.getItem('logiflow_mock_companies');
         if (compRaw) {
           const companies: Company[] = JSON.parse(compRaw);
-          const found = companies.find(c => c.owner_email === user.email);
+          const found = companies.find(c => c.owner_email === currentEmail);
           if (found) setActiveCompany(found);
         }
       }
@@ -54,6 +61,16 @@ export default function OwnerDashboard() {
       setLoadingCompany(false);
     }
   };
+
+  useEffect(() => {
+    if (!loading) {
+      // Give the auth session time to fully persist after login navigation
+      const timeout = setTimeout(() => {
+        fetchCompany();
+      }, 200);
+      return () => clearTimeout(timeout);
+    }
+  }, [loading]);
 
   useEffect(() => {
     if (loading) return;

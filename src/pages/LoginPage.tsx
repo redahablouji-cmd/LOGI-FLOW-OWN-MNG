@@ -48,6 +48,9 @@ export default function LoginPage() {
     const { user, error: signErr } = await signIn(emailToUse, password.trim());
     if (signErr) throw new Error("Identifiants invalides.");
 
+    // Wait for session to be fully persisted
+    await new Promise(resolve => setTimeout(resolve, 300));
+
     // Route based on how they logged in
     if (isOwner) {
       toast.success("Connexion réussie — Espace Propriétaire");
