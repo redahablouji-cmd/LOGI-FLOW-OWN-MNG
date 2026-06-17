@@ -48,11 +48,11 @@ export default function LoginPage() {
     const { user, error: signErr } = await signIn(emailToUse, password.trim());
     if (signErr) throw new Error("Identifiants invalides.");
 
-    // Wait for session to be fully persisted
-    await new Promise(resolve => setTimeout(resolve, 300));
-
     // Route based on how they logged in
     if (isOwner) {
+      // Store owner session in sessionStorage so OwnerDashboard can use it directly
+      sessionStorage.setItem('owner_email', emailToUse);
+      sessionStorage.setItem('owner_session', 'true');
       toast.success("Connexion réussie — Espace Propriétaire");
       navigate('/owner');
     } else {

@@ -20,27 +20,38 @@ export default function OwnerDashboard() {
     try {
       setLoadingCompany(true);
 
-      // Check session directly — don't rely on useAuth state (avoids race condition)
-      const { data: { session } } = await supabase.auth.getSession();
+      // Use sessionStorage email (set during login) — bypasses Supabase session race condition
+      let ownerEmail = sessionStorage.getItem('owner_email');
 
-      if (!session?.user) {
-        // No session at all — genuinely not logged in
+      // Fallback: try Supabase session
+      if (!ownerEmail) {
+        const { data: { session } } = await supabase.auth.getSession();
+        ownerEmail = session?.user?.email || null;
+      }
+
+      // Fallback: try useAuth user
+      if (!ownerEmail && user?.email) {
+        ownerEmail = user.email;
+      }
+
+      // No email found anywhere — genuinely not logged in
+      if (!ownerEmail) {
         navigate('/login');
         return;
       }
-
-      const currentEmail = session.user.email;
 
       if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from('companies')
           .select('*')
-          .eq('owner_email', currentEmail)
+          .eq('owner_email', ownerEmail)
           .maybeSingle();
 
         if (error) throw error;
         if (!data) {
           toast.error("Aucune entreprise associée à ce compte.");
+          sessionStorage.removeItem('owner_email');
+          sessionStorage.removeItem('owner_session');
           await signOut();
           navigate('/login');
           return;
@@ -50,7 +61,7 @@ export default function OwnerDashboard() {
         const compRaw = localStorage.getItem('logiflow_mock_companies');
         if (compRaw) {
           const companies: Company[] = JSON.parse(compRaw);
-          const found = companies.find(c => c.owner_email === currentEmail);
+          const found = companies.find(c => c.owner_email === ownerEmail);
           if (found) setActiveCompany(found);
         }
       }
@@ -63,12 +74,15 @@ export default function OwnerDashboard() {
   };
 
   useEffect(() => {
+    // Check if owner has a valid session (from sessionStorage or Supabase)
+    const hasOwnerSession = sessionStorage.getItem('owner_session') === 'true';
+
     if (!loading) {
-      // Give the auth session time to fully persist after login navigation
-      const timeout = setTimeout(() => {
+      if (!user && !hasOwnerSession) {
+        navigate('/login');
+      } else {
         fetchCompany();
-      }, 200);
-      return () => clearTimeout(timeout);
+      }
     }
   }, [loading]);
 
@@ -153,7 +167,11 @@ export default function OwnerDashboard() {
               <span className="text-sm font-bold text-slate-700">{activeCompany.owner_name}</span>
             </div>
             <button
-              onClick={() => signOut().then(() => { toast.success("Déconnexion réussie"); navigate('/login'); })}
+              onClick={() => {
+                sessionStorage.removeItem('owner_email');
+                sessionStorage.removeItem('owner_session');
+                signOut().then(() => { toast.success("Déconnexion réussie"); navigate('/login'); });
+              }}
               className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/70 transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
