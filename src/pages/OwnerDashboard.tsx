@@ -56,13 +56,16 @@ export default function OwnerDashboard() {
   };
 
   useEffect(() => {
-    if (!loading) {
+    if (loading) return;
+    // Small delay to let auth state fully settle after navigation
+    const timeout = setTimeout(() => {
       if (!user) {
         navigate('/login');
       } else {
         fetchCompany();
       }
-    }
+    }, 100);
+    return () => clearTimeout(timeout);
   }, [user, loading]);
 
   const handleCopyCode = async () => {

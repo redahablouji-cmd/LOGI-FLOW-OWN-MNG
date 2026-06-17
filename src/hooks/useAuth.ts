@@ -18,7 +18,6 @@ export function useAuth(): UseAuthReturn {
 
   const fetchUser = useCallback(async () => {
     try {
-      setLoading(true);
       if (isSupabaseConfigured) {
         const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user || null);
@@ -38,9 +37,9 @@ export function useAuth(): UseAuthReturn {
     fetchUser();
 
     if (isSupabaseConfigured) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user || null);
-        setLoading(false);
+        // Don't touch loading here — fetchUser already handles it once
       });
       return () => subscription.unsubscribe();
     }
@@ -51,6 +50,18 @@ export function useAuth(): UseAuthReturn {
     setUser(null);
   }, []);
 
+  const refreshAuth = useCallback(async () => {
+    // Don't set loading=true on refresh — prevents flash redirects
+    try {
+      if (isSupabaseConfigured) {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user || null);
+      }
+    } catch (err) {
+      console.error('refreshAuth error:', err);
+    }
+  }, []);
+
   return {
     user,
     profile:    null,
@@ -58,6 +69,6 @@ export function useAuth(): UseAuthReturn {
     company_id: null,
     loading,
     signOut,
-    refreshAuth: fetchUser,
+    refreshAuth,
   };
 }
