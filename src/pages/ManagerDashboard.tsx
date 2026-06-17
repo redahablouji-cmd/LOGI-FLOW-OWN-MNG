@@ -27,6 +27,9 @@ interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
   date_achat: string; montant_ht: number; tva_rate: number; tva_amount: number;
   montant_ttc: number; banque: string; mode_paiement: string; notes: string; created_at: string;
+  designation?: string; if_number?: string; ice_number?: string;
+  affectation_immatriculation?: string; numero_ref?: string;
+  echeance?: string; ecart_delai_paiement?: number;
 }
 interface MaintenanceRecord {
   id: string; truck_plate: string; type: string; part_fixed: string; garage_name: string;
@@ -85,6 +88,7 @@ export default function ManagerDashboard() {
   const [purchases,        setPurchases]        = useState<Purchase[]>([]);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [editingPurchase,  setEditingPurchase]  = useState<Purchase | null>(null);
+  const [uploadingPurchaseXLS, setUploadingPurchaseXLS] = useState(false);
 
   // FleetFix
   const [mechanics,        setMechanics]        = useState<MechanicProfile[]>([]);
@@ -233,16 +237,47 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   };
 
   // ── Purchases ──────────────────────────────────────────────────────────
-  const handleSavePurchase = async () => {
-    if (!editingPurchase) return;
-    const { error } = await supabase.from('purchases').update({
-      fournisseur: editingPurchase.fournisseur, numero_facture: editingPurchase.numero_facture,
-      date_achat: editingPurchase.date_achat, montant_ht: editingPurchase.montant_ht,
-      tva_amount: editingPurchase.tva_amount, montant_ttc: editingPurchase.montant_ttc,
-      notes: editingPurchase.notes,
-    }).eq('id', editingPurchase.id);
-    if (!error) { toast.success("Modifié."); setEditingPurchase(null); fetchPurchases(); }
-    else toast.error(`Erreur: ${error.message}`);
+  const handlePurchaseXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPurchaseXLS(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const dataRows = rawRows.slice(1).filter((r: any[]) => r.length > 0 && (r[0] || r[1] || r[2]));
+
+      const records = dataRows.map((r: any[]) => ({
+        date_achat:                  r[0] ? String(r[0]) : null,
+        numero_facture:              String(r[1] || '').trim() || null,
+        fournisseur:                 String(r[2] || '').trim() || null,
+        category:                    String(r[3] || '').trim() || null,
+        designation:                 String(r[4] || '').trim() || null,
+        montant_ht:                  parseFloat(r[5]) || 0,
+        tva_rate:                    parseFloat(r[6]) || 0,
+        tva_amount:                  parseFloat(r[7]) || 0,
+        montant_ttc:                 parseFloat(r[8]) || 0,
+        ecart_delai_paiement:        parseInt(r[9]) || null,
+        if_number:                   String(r[10] || '').trim() || null,
+        ice_number:                  String(r[11] || '').trim() || null,
+        affectation_immatriculation: String(r[12] || '').trim() || null,
+        banque:                      String(r[13] || '').trim() || null,
+        numero_ref:                  String(r[14] || '').trim() || null,
+        echeance:                    r[15] ? String(r[15]) : null,
+        mode_paiement:               String(r[16] || '').trim() || null,
+      }));
+
+      if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
+      const { error } = await supabase.from('purchases').insert(records);
+      if (!error) { toast.success(`${records.length} achats importés.`); fetchPurchases(); }
+      else toast.error(`Erreur: ${error.message}`);
+    } catch (err: any) {
+      toast.error(`Erreur: ${err.message}`);
+    } finally {
+      setUploadingPurchaseXLS(false);
+      e.target.value = '';
+    }
   };
 
   const handleDeletePurchase = async (id: string) => {
@@ -1313,10 +1348,29 @@ ${pages.map((pageRows, pageIdx) => `
                     <button onClick={fetchPurchases} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <RefreshCw className="w-3.5 h-3.5" /> Actualiser
                     </button>
-                    <button onClick={() => exportToXLS(purchases.map(p => ({
-                      'Date': p.date_achat || '', 'Catégorie': CATEGORY_LABELS[p.category] || p.category,
-                      'Fournisseur': p.fournisseur || '', 'N° Facture': p.numero_facture || '',
-                      'Montant HT': p.montant_ht, 'TVA': p.tva_amount, 'Montant TTC': p.montant_ttc,
+                    <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingPurchaseXLS ? 'bg-slate-600 opacity-60' : 'bg-amber-600 hover:bg-amber-700'} text-white`}>
+                      <Upload size={14} />
+                      {uploadingPurchaseXLS ? 'Importation...' : 'Importer XLS'}
+                      <input type="file" accept=".xlsx,.xls" onChange={handlePurchaseXLSUpload} className="hidden" disabled={uploadingPurchaseXLS} />
+                    </label>
+                    <button onClick={() => exportToXLS(purchases.map((p: any) => ({
+                      'Date':                        p.date_achat                  || '',
+                      'Catégorie':                   CATEGORY_LABELS[p.category]   || p.category,
+                      'Fournisseur':                 p.fournisseur                 || '',
+                      'N° Facture':                  p.numero_facture              || '',
+                      'Désignation':                 p.designation                 || '',
+                      'IF':                          p.if_number                   || '',
+                      'ICE':                         p.ice_number                  || '',
+                      'Affectation Immatriculation': p.affectation_immatriculation || '',
+                      'Montant HT':                  p.montant_ht,
+                      'TVA':                         p.tva_amount,
+                      'Montant TTC':                 p.montant_ttc,
+                      'Banque':                      p.banque                      || '',
+                      'N° Réf':                      p.numero_ref                  || '',
+                      'Échéance':                    p.echeance                    || '',
+                      'Mode Paiement':               p.mode_paiement               || '',
+                      'Écart Délai (J)':             p.ecart_delai_paiement ?? '',
+                      'Notes':                       p.notes                       || '',
                     })), 'achats_historique')}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <Download size={14} /> Export XLS
@@ -1324,30 +1378,49 @@ ${pages.map((pageRows, pageIdx) => `
                   </div>
                 </div>
               </div>
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
+                📋 Format import XLS — colonnes dans l'ordre :
+                <span className="font-black ml-1">Dates | Factures | Fournisseurs | Catégorie | Désignations | Montant HT | Taux | TVA | Montant TTC | Écart Délai | IF | ICE | Affectation Immat. | Banque | N° Réf | Échéance | Mode</span>
+              </div>
               {loadingPurchases ? (
                 <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left min-w-[1800px]">
                       <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>{['Date','Catégorie','Fournisseur','N° Facture','HT','TVA','TTC','Actions'].map(h => (
-                          <th key={h} className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                        <tr>{['Date','Catégorie','Fournisseur','N° Facture','Désignation','IF','ICE','Affectation','HT','TVA','TTC','Banque','N° Réf','Échéance','Mode','Écart Délai','Actions'].map(h => (
+                          <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {purchases.length === 0 ? (
-                          <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat enregistré.</td></tr>
-                        ) : purchases.map(p => (
+                          <tr><td colSpan={17} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat enregistré.</td></tr>
+                        ) : purchases.map((p: any) => (
                           <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-3 text-xs text-slate-700">{p.date_achat || '—'}</td>
-                            <td className="px-4 py-3"><span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded uppercase">{CATEGORY_LABELS[p.category] || p.category}</span></td>
-                            <td className="px-4 py-3 text-xs font-semibold text-slate-700">{p.fournisseur || '—'}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-blue-600">{p.numero_facture || '—'}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.montant_ht?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-amber-700">{p.tva_amount?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-                            <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900">{p.montant_ttc?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-                            <td className="px-4 py-3">
+                            <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{p.date_achat || '—'}</td>
+                            <td className="px-3 py-3"><span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded uppercase whitespace-nowrap">{CATEGORY_LABELS[p.category] || p.category}</span></td>
+                            <td className="px-3 py-3 text-xs font-semibold text-slate-700">{p.fournisseur || '—'}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-blue-600">{p.numero_facture || '—'}</td>
+                            <td className="px-3 py-3 text-xs text-slate-600 max-w-[180px] truncate" title={p.designation || ''}>{p.designation || '—'}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-slate-600">{p.if_number || '—'}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-slate-600">{p.ice_number || '—'}</td>
+                            <td className="px-3 py-3 font-mono text-xs font-bold text-cyan-700">{p.affectation_immatriculation || '—'}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-slate-700">{p.montant_ht?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-amber-700">{p.tva_amount?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-3 font-mono text-xs font-bold text-slate-900">{p.montant_ttc?.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-3 text-xs text-slate-600">{p.banque || '—'}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-slate-700">{p.numero_ref || '—'}</td>
+                            <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{p.echeance || '—'}</td>
+                            <td className="px-3 py-3 text-xs text-slate-600">{p.mode_paiement || '—'}</td>
+                            <td className="px-3 py-3">
+                              {p.ecart_delai_paiement !== null && p.ecart_delai_paiement !== undefined ? (
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono ${p.ecart_delai_paiement < 0 ? 'bg-rose-50 text-rose-700' : p.ecart_delai_paiement <= 15 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                  {p.ecart_delai_paiement > 0 ? `+${p.ecart_delai_paiement}` : p.ecart_delai_paiement}j
+                                </span>
+                              ) : '—'}
+                            </td>
+                            <td className="px-3 py-3">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => setEditingPurchase(p)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={13} /></button>
                                 <button onClick={() => handleDeletePurchase(p.id)} className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={13} /></button>
