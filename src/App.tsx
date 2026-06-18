@@ -29,16 +29,15 @@ export default function App() {
           {/* Catch All - Redirect to login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
-      </BrowserRouter>
-      
       {/* Toast Notification Provider */}
-      <Toaster 
-        position="top-right" 
-        expand={true} 
-        richColors 
-        closeButton 
-        theme="light"
-      />
+        <Toaster 
+          position="top-right" 
+          expand={true} 
+          richColors 
+          closeButton 
+          theme="light"
+        />
+      </BrowserRouter>
     </>
   );
 }
