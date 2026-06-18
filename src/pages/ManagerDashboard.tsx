@@ -803,11 +803,8 @@ const handleFactXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 // ── Invoice Settings ───────────────────────────────────────────────────
 const fetchInvoiceSettings = async () => {
   if (!companyId) return;
-  const { data } = await supabase
-    .from('invoice_settings')
-    .select('*')
-    .eq('company_id', companyId)
-    .maybeSingle();
+  const { data } = await supabase.from('invoice_templates')
+        .select('*').eq('company_id', companyId).eq('is_default', true).maybeSingle();
   if (data) {
     setInvoiceSettings(data);
     if (data.logo_url) setLogoPreviewUrl(data.logo_url);
@@ -844,7 +841,7 @@ const handleSaveInvoiceSettings = async () => {
   setSavingSettings(true);
   const payload = { ...invoiceSettings, company_id: companyId, updated_at: new Date().toISOString() };
   const { error } = await supabase
-    .from('invoice_settings')
+    .from('invoice_templates')
     .upsert(payload, { onConflict: 'company_id' });
   if (!error) toast.success("Modèle sauvegardé !");
   else toast.error(`Erreur: ${error.message}`);
