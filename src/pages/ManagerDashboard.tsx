@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
 import CreateStaffForm from '../components/manager/CreateStaffForm';
 import CoutRevientTab from '../components/manager/CoutRevientTab';
-import InvoiceEngine from '../components/manager/InvoiceEngine';
+import InvoiceEngine, { generateInvoicePDF, numberToWords } from '../components/manager/InvoiceEngine';
 import TruckDocumentsTab from '../components/manager/TruckDocumentsTab';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
@@ -868,386 +868,45 @@ const overdue = facturationList.filter(f => {
   echeance.setDate(echeance.getDate() + f.delai_paiement);
   return echeance < today;
 });
-const numberToWords = (n: number): string => {
-  // Simple French number to words for invoice
-  if (n === 0) return 'Zéro dirham';
-  const ones = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf',
-    'dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
-  const tens = ['','','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
-  const convert = (num: number): string => {
-    if (num < 20) return ones[num];
-    if (num < 100) {
-      const t = Math.floor(num/10), r = num%10;
-      if (t === 7 || t === 9) return tens[t] + (r > 0 ? '-' + ones[10+r] : (t===9?'-dix':''));
-      return tens[t] + (r > 0 ? '-' + ones[r] : '');
-    }
-    if (num < 1000) return (num === 100 ? 'cent' : ones[Math.floor(num/100)] + ' cent') + (num%100 > 0 ? ' ' + convert(num%100) : '');
-    if (num < 1000000) {
-      const m = Math.floor(num/1000);
-      return (m === 1 ? 'mille' : convert(m) + ' mille') + (num%1000 > 0 ? ' ' + convert(num%1000) : '');
-    }
-    return n.toLocaleString('fr-MA') + ' dirhams';
-  };
-  const intPart = Math.floor(n);
-  const decPart = Math.round((n - intPart) * 100);
-  return convert(intPart) + ' dirham' + (intPart > 1 ? 's' : '') +
-    (decPart > 0 ? ' et ' + convert(decPart) + ' centime' + (decPart > 1 ? 's' : '') : '');
-};
-const handleGenerateInvoicePDF = async () => {
-  const selected = facturationList.filter(f => selectedFacts.includes(f.id));
-  if (selected.length === 0) { toast.error("Sélectionnez au moins une facture."); return; }
 
-  const s = invoiceSettings;
-  console.log('Invoice settings logo_url:', s.logo_url);
-  console.log('Full settings:', s);
-  // Use already-loaded base64 preview, or fetch fresh if needed
-  let logoBase64 = logoPreviewUrl || s.logo_url || '';
-  if (logoBase64 && logoBase64.startsWith('http')) {
-    try {
-      const resp = await fetch(logoBase64);
-      const blob = await resp.blob();
-      logoBase64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      logoBase64 = s.logo_url || '';
-    }
-  }
-  const ROWS_PER_PAGE = s.rows_per_page || 15;
-  const pages: any[][] = [];
-  for (let i = 0; i < selected.length; i += ROWS_PER_PAGE) {
-    pages.push(selected.slice(i, i + ROWS_PER_PAGE));
-  }
+const handleGenerateInvoicePDF = () => {
+    if (selectedFacts.length === 0) return;
+    const selected = facturationList.filter((f: any) => selectedFacts.includes(f.id));
+    if (selected.length === 0) return;
 
-  const totalHT  = selected.reduce((sum, f) => sum + (f.montant_ht  || 0), 0);
-  const totalTVA = selected.reduce((sum, f) => sum + (f.tva         || 0), 0);
-  const totalTTC = selected.reduce((sum, f) => sum + (f.montant_ttc || 0), 0);
-  const clientName = selected[0]?.client || '';
-  const primary = s.primary_color || '#1e40af';
-  const accent  = s.accent_color  || '#f59e0b';
-  const fs      = s.font_size     || 11;
+    const s = invoiceSettings;
+    const client = selected[0]?.client || '';
 
-  // All 18 columns — filtered by user selection
-  const allCols = [
-    { label: 'Date',            key: 'date',                  show: s.col_show_date,             num: false },
-    { label: 'N° Fact.',        key: 'numero_facture',        show: s.col_show_fact,             num: false },
-    { label: 'Client',          key: 'client',                show: s.col_show_client,           num: false },
-    { label: 'Départ',          key: 'depart',                show: s.col_show_depart,           num: false },
-    { label: 'Arrivée',         key: 'arrivee',               show: s.col_show_arrivee,          num: false },
-    { label: 'HT (MAD)',        key: 'montant_ht',            show: s.col_show_ht,               num: true  },
-    { label: 'TVA (MAD)',       key: 'tva',                   show: s.col_show_tva,              num: true  },
-    { label: 'TTC (MAD)',       key: 'montant_ttc',           show: s.col_show_ttc,              num: true  },
-    { label: 'BL/OT',          key: 'bl_ot',                 show: s.col_show_bl_ot,            num: false },
-    { label: 'BC',              key: 'bc',                    show: s.col_show_bc,               num: false },
-    { label: 'Délai (J)',       key: 'delai_paiement',        show: s.col_show_delai,            num: false },
-    { label: 'Date Paiement',   key: 'date_paiement',         show: s.col_show_date_paiement,    num: false },
-    { label: 'Écart Délai',     key: 'ecart_delai',           show: s.col_show_ecart,            num: false, ecart: true },
-    { label: 'Règl. Banque',    key: 'reglement_banque_type', show: s.col_show_reglement_banque, num: false },
-    { label: 'Règl. N°',        key: 'reglement_numero',      show: s.col_show_reglement_num,    num: false },
-    { label: 'Échéances',       key: 'echeances',             show: s.col_show_echeances,        num: false },
-    { label: 'Mode Paiement',   key: 'mode_paiement',         show: s.col_show_mode,             num: false },
-    { label: 'Statut',          key: 'statut',                show: s.col_show_statut,           num: false, statut: true },
-  ].filter(c => c.show !== false);
+    const placeholders: Record<string, string> = {
+      company_name: s.company_name || activeCompany?.name || '',
+      company_address: s.address || '',
+      company_phone: s.phone || '',
+      company_email: s.email || '',
+      company_ice: s.ice || '',
+      company_rc: s.rc || '',
+      company_logo: s.logo_url
+        ? `<img src="${s.logo_url}" style="max-height:55px;max-width:130px;object-fit:contain"/>`
+        : '',
+      invoice_title: s.invoice_title || 'FACTURE',
+      numero_facture: selected[0]?.numero_facture || '',
+      date: selected[0]?.date || new Date().toLocaleDateString('fr-MA'),
+      client: client,
+      delai_paiement: String(selected[0]?.delai_paiement || 60),
+      rib: s.rib || '',
+      bank_name: s.bank_name || '',
+      signature_label: s.signature_label || 'Signature & Cachet',
+      footer_text: s.footer_text || '',
+    };
 
-  const mt = s.margin_top    || 12;
-  const mb = s.margin_bottom || 12;
-  const ml = s.margin_left   || 15;
-  const mr = s.margin_right  || 15;
-  const colW = Math.floor(100 / allCols.length);
-
-  // If HTML template exists use it, otherwise generate
-  if (s.invoice_template_html) {
-    // Build rows table from selected cols
-    const ROWS_PER_PAGE = s.rows_per_page || 15;
-    const minRows = ROWS_PER_PAGE;
-    const emptyRowsNeeded = Math.max(0, minRows - selected.length);
-
-    const tableHTML = selected.map((f) => `
-      <tr>
-        <td>${f.date || '—'}</td>
-        <td>${[f.depart, f.arrivee].filter(Boolean).join(' → ') || f.client || '—'}</td>
-        <td style="text-align:center">${f.tva && f.montant_ht ? Math.round((f.tva / f.montant_ht) * 100) + '%' : '—'}</td>
-        <td style="text-align:center">1</td>
-        <td style="text-align:center">F</td>
-        <td style="text-align:right">${Number(f.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-        <td style="text-align:right">${Number(f.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-      </tr>
-    `).join('');
-
-    let finalHtml = s.invoice_template_html;
-    // 1. Remove all empty filler rows
-    finalHtml = finalHtml.replace(/<tr>\s*(<td[^>]*>\s*&nbsp;\s*<\/td>|<td[^>]*>\s*<\/td>){2,}\s*<\/tr>/gi, '');
-
-    // 2. Replace tbody with dynamic rows
-    finalHtml = finalHtml.replace(
-      /<tbody>[\s\S]*?<\/tbody>/i,
-      `<tbody>{{rows}}</tbody>`
-    );
-
-    // 3. Inject CSS to keep totals+signature on same page as last row
-    const pageBreakCSS = `
-    <style>
-      .bottom-section, .totals-block, .totals-wrap, .sig-area, .sig-wrap,
-      .totals-box, .lettres-section, .total-ttc-bar {
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-      }
-      /* Force totals to stay with last table row */
-      .table-wrap + .bottom-section,
-      table + .totals-wrap,
-      table + .totals-block {
-        page-break-before: avoid !important;
-        break-before: avoid !important;
-      }
-    </style>`;
-    finalHtml = finalHtml.replace('</head>', pageBreakCSS + '</head>');
-    // Inject smart page-break CSS
-    const smartCSS = `
-      <style>
-        /* Remove min-height from empty rows — we use tbody min-height instead */
-        .td-empty { display: none !important; }
-        tbody tr td:first-child:only-child { display: none; }
-
-        /* Make tbody fill remaining space so totals stay on same page */
-        tbody {
-          display: table-row-group;
-        }
-
-        /* Keep totals + signature together — never split them */
-        .bottom-section,
-        .totals-box,
-        .totals-block,
-        .totals-wrap,
-        .sig-area,
-        .sig-wrap,
-        .lettres-section {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
-
-        /* This is the key — keep last row + totals together on same page */
-        .keep-together {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
-      </style>
-    `;
-    finalHtml = finalHtml.replace('</head>', smartCSS + '</head>');
-
-    // Remove all hardcoded empty rows
-    finalHtml = finalHtml.replace(
-      /<tbody>[\s\S]*?<\/tbody>/i,
-      `<tbody>{{rows}}</tbody>`
-    );
-
-    // Smart logo — handle src="{{company_logo}}" and standalone {{company_logo}}
-    if (logoBase64) {
-      finalHtml = finalHtml.replace(
-        /src=["']?\{\{company_logo\}\}["']?/g,
-        `src="${logoBase64}"`
-      );
-      finalHtml = finalHtml.replaceAll(
-        '{{company_logo}}',
-        `<img src="${logoBase64}" style="max-height:60px;max-width:150px;object-fit:contain"/>`
-      );
-    } else {
-      finalHtml = finalHtml.replace(
-        /<img[^>]*src=["']?\{\{company_logo\}\}["']?[^>]*>/g,
-        ''
-      );
-      finalHtml = finalHtml.replaceAll('{{company_logo}}', '');
-    }
-    // Step 1 — strip hardcoded tbody, inject placeholder
-    finalHtml = finalHtml.replace(
-      /<tbody>[\s\S]*?<\/tbody>/i,
-      `<tbody>{{rows}}</tbody>`
-    );
-
-
-    // Also handle {{numero_commande}} which this template uses
-    finalHtml = finalHtml
-      .replaceAll('{{company_name}}',    s.company_name    || activeCompany?.name || '')
-      .replaceAll('{{company_address}}', s.address         || '')
-      .replaceAll('{{company_phone}}',   s.phone           || '')
-      .replaceAll('{{company_email}}',   s.email           || '')
-      .replaceAll('{{company_ice}}',     s.ice             || '')
-      .replaceAll('{{company_rc}}',      s.rc              || '')
-      .replaceAll('{{invoice_title}}',   s.invoice_title   || 'FACTURE')
-      .replaceAll('{{numero_facture}}',  selected[0]?.numero_facture || '')
-      .replaceAll('{{numero_commande}}', selected[0]?.bc             || '')
-      .replaceAll('{{date}}',            new Date().toLocaleDateString('fr-MA'))
-      .replaceAll('{{client}}',          clientName)
-      .replaceAll('{{delai_paiement}}',  String(selected[0]?.delai_paiement || 60))
-      .replaceAll('{{date_paiement}}',   selected[0]?.date_paiement || '')
-      .replaceAll('{{montant_ht}}',      totalHT.toLocaleString('fr-MA'))
-      .replaceAll('{{tva}}',             totalTVA.toLocaleString('fr-MA'))
-      .replaceAll('{{montant_ttc}}',     totalTTC.toLocaleString('fr-MA'))
-      .replaceAll('{{total_ht}}',        totalHT.toLocaleString('fr-MA') + ' MAD')
-      .replaceAll('{{total_tva}}',       totalTVA.toLocaleString('fr-MA') + ' MAD')
-      .replaceAll('{{total_ttc}}',       totalTTC.toLocaleString('fr-MA') + ' MAD')
-      .replaceAll('{{bl_ot}}',           selected[0]?.bl_ot        || '')
-      .replaceAll('{{bc}}',              selected[0]?.bc            || '')
-      .replaceAll('{{rib}}',             s.rib             || '')
-      .replaceAll('{{bank_name}}',       s.bank_name       || '')
-      .replaceAll('{{footer_text}}',     s.footer_text     || '')
-      .replaceAll('{{signature_label}}', s.signature_label || 'Signature & Cachet')
-      .replaceAll('{{mode_paiement}}',   selected[0]?.mode_paiement || '')
-      .replaceAll('{{client_ice}}',      '')
-      .replaceAll('{{montant_lettres}}',  numberToWords(totalTTC))
-      .replaceAll('{{page_num}}',        `1 / ${pages.length}`)
-      .replaceAll('{{rows}}', tableHTML);
-      // Wrap totals + signature in keep-together div
-    finalHtml = finalHtml
-      .replace(
-        /(<div[^>]*class="[^"]*bottom-section[^"]*")/i,
-        '<div class="keep-together" style="page-break-inside:avoid"><div class="keep-together-inner" style="page-break-inside:avoid">KEEP_START$1'
-      )
-      .replace(
-        /(<div[^>]*class="[^"]*sig-area[^"]*"[\s\S]*?<\/div>\s*<\/div>)/i,
-        '$1KEEP_END</div></div>'
-      );
-
-    // Clean up markers if regex didn't match perfectly
-    finalHtml = finalHtml
-      .replace('KEEP_START', '')
-      .replace('KEEP_END', '');
-
+    const html = generateInvoicePDF(s, selected, placeholders, numberToWords);
     const win = window.open('', '_blank');
-    if (win) { win.document.write(finalHtml); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
-    return;
-  }
-
-  // Generated template
-  const html = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8"/>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:Arial,sans-serif; font-size:${fs}px; color:#1e293b; }
-  .page { width:210mm; min-height:297mm; padding:${mt}mm ${mr}mm ${mb}mm ${ml}mm; page-break-after:always; position:relative; }
-  .page:last-child { page-break-after:auto; }
-  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; padding-bottom:10px; border-bottom:3px solid ${primary}; }
-  .logo-img { max-height:55px; max-width:130px; object-fit:contain; }
-  .company-name { font-size:${fs+7}px; font-weight:900; color:${primary}; }
-  .company-sub { font-size:${fs-2}px; color:#64748b; margin-top:3px; line-height:1.6; }
-  .invoice-title { font-size:${fs+11}px; font-weight:900; color:${primary}; letter-spacing:2px; }
-  .invoice-num { font-size:${fs+2}px; font-weight:700; color:${accent}; margin-top:3px; }
-  .invoice-meta { font-size:${fs-2}px; color:#64748b; margin-top:3px; line-height:1.6; }
-  .client-box { background:#f8fafc; border-left:4px solid ${accent}; padding:7px 12px; margin-bottom:12px; border-radius:0 6px 6px 0; }
-  .client-name { font-size:${fs+1}px; font-weight:700; color:#1e293b; }
-  .client-sub { font-size:${fs-2}px; color:#64748b; margin-top:2px; }
-  table { width:100%; border-collapse:collapse; margin-bottom:10px; }
-  th { background:${primary}; color:white; padding:5px 6px; text-align:left; font-size:${fs-3}px; text-transform:uppercase; letter-spacing:0.3px; }
-  td { padding:4px 6px; border-bottom:1px solid #f1f5f9; font-size:${fs-1}px; }
-  tr:nth-child(even) td { background:#f8fafc; }
-  .num { text-align:right; }
-  .totals-wrap { display:flex; justify-content:flex-end; margin-top:8px; }
-  .totals-box { border:2px solid ${primary}; border-radius:6px; padding:8px 14px; min-width:200px; }
-  .t-row { display:flex; justify-content:space-between; padding:2px 0; font-size:${fs}px; }
-  .t-total { font-weight:700; font-size:${fs+2}px; color:${primary}; border-top:1px solid #e2e8f0; margin-top:4px; padding-top:5px; }
-  .payment-box { margin-top:10px; padding:7px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:${fs-2}px; }
-  .payment-title { font-weight:700; color:${primary}; font-size:${fs-1}px; margin-bottom:3px; }
-  .sig-wrap { display:flex; justify-content:flex-end; margin-top:14px; }
-  .sig-box { border:1px solid #cbd5e1; border-radius:6px; padding:8px 16px; min-width:160px; text-align:center; }
-  .sig-label { font-size:${fs-3}px; font-weight:700; color:#64748b; text-transform:uppercase; }
-  .sig-space { height:38px; }
-  .footer-area { margin-top:14px; border-top:1px solid #e2e8f0; padding-top:5px; }
-  .footer-text { font-size:${fs-3}px; color:#94a3b8; text-align:center; }
-  .page-num { font-size:${fs-3}px; color:#94a3b8; text-align:right; margin-top:3px; }
-  .badge { display:inline-block; padding:1px 5px; border-radius:3px; font-size:${fs-3}px; font-weight:700; }
-  .badge-red { background:#fee2e2; color:#991b1b; }
-  .badge-green { background:#dcfce7; color:#166534; }
-  .statut-paye { background:#dcfce7; color:#166534; padding:1px 6px; border-radius:3px; font-size:${fs-3}px; font-weight:700; text-transform:uppercase; }
-  .statut-impaye { background:#fee2e2; color:#991b1b; padding:1px 6px; border-radius:3px; font-size:${fs-3}px; font-weight:700; text-transform:uppercase; }
-  @media print { body { print-color-adjust:exact; -webkit-print-color-adjust:exact; } }
-</style>
-</head>
-<body>
-${pages.map((pageRows, pageIdx) => `
-<div class="page">
-  ${!s.skip_header ? `
-  <div class="header">
-    <div style="display:flex;align-items:center;gap:10px">
-      ${logoBase64 ? `<img src="${logoBase64}" class="logo-img"/>` : ''}
-      <div>
-        <div class="company-name">${s.company_name || activeCompany?.name || ''}</div>
-        <div class="company-sub">
-          ${s.address ? s.address + '<br/>' : ''}
-          ${s.phone   ? 'Tél: ' + s.phone + (s.email ? ' — ' : '<br/>') : ''}
-          ${s.email   ? s.email + '<br/>' : ''}
-          ${s.ice     ? 'ICE: ' + s.ice + (s.rc ? ' — RC: ' + s.rc : '') : ''}
-        </div>
-      </div>
-    </div>
-    <div style="text-align:right">
-      <div class="invoice-title">${s.invoice_title || 'FACTURE'}</div>
-      ${selected[0]?.numero_facture ? `<div class="invoice-num">N° ${selected[0].numero_facture}</div>` : ''}
-      <div class="invoice-meta">Date: ${new Date().toLocaleDateString('fr-MA')}<br/>Page ${pageIdx+1} / ${pages.length}</div>
-    </div>
-  </div>
-  <div class="client-box">
-    <div class="client-name">${clientName}</div>
-    <div class="client-sub">${selected.length} prestation(s) — Délai: ${selected[0]?.delai_paiement || 60}j</div>
-  </div>
-  ` : `<div style="text-align:right;font-size:${fs-2}px;color:#64748b;margin-bottom:8px;">Page ${pageIdx+1} / ${pages.length}</div>`}
-
-  <table>
-    <thead>
-      <tr>${allCols.map(c => `<th style="width:${colW}%">${c.label}</th>`).join('')}</tr>
-    </thead>
-    <tbody>
-      ${pageRows.map(f => `
-        <tr>
-          ${allCols.map(c => {
-            const v = f[c.key];
-            if (c.num)    return `<td class="num">${Number(v||0).toLocaleString('fr-MA')} MAD</td>`;
-            if (c.ecart)  { const e = v??0; return `<td class="num"><span class="badge ${e>0?'badge-red':'badge-green'}">${e>0?'+':''}${e}j</span></td>`; }
-            if (c.statut) return `<td><span class="${v==='payé'?'statut-paye':'statut-impaye'}">${v||'impayé'}</span></td>`;
-            return `<td>${v||'—'}</td>`;
-          }).join('')}
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  ${pageIdx === pages.length - 1 ? `
-  <div class="totals-wrap">
-    <div class="totals-box">
-      <div class="t-row"><span>Total HT</span><span>${totalHT.toLocaleString('fr-MA')} MAD</span></div>
-      <div class="t-row"><span>Total TVA</span><span>${totalTVA.toLocaleString('fr-MA')} MAD</span></div>
-      <div class="t-row t-total"><span>Total TTC</span><span>${totalTTC.toLocaleString('fr-MA')} MAD</span></div>
-    </div>
-  </div>
-  ${(s.rib||s.bank_name) ? `
-  <div class="payment-box">
-    <div class="payment-title">Coordonnées Bancaires</div>
-    ${s.bank_name ? 'Banque: <strong>'+s.bank_name+'</strong>  ' : ''}
-    ${s.rib       ? 'RIB: <strong>'+s.rib+'</strong>' : ''}
-  </div>` : ''}
-  <div class="sig-wrap">
-    <div class="sig-box">
-      <div class="sig-label">${s.signature_label||'Signature & Cachet'}</div>
-      <div class="sig-space"></div>
-    </div>
-  </div>
-  ` : ''}
-
-  ${!s.skip_footer ? `
-  <div class="footer-area">
-    ${s.footer_text ? `<div class="footer-text">${s.footer_text}</div>` : ''}
-    <div class="page-num">Page ${pageIdx+1} / ${pages.length}</div>
-  </div>` : ''}
-</div>
-`).join('')}
-</body>
-</html>`;
-
-  const win = window.open('', '_blank');
-  if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
-};
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 600);
+    }
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
