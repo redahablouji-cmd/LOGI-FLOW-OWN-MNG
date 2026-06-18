@@ -97,6 +97,9 @@ export default function ManagerDashboard() {
   const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [editingPurchase,  setEditingPurchase]  = useState<Purchase | null>(null);
   const [uploadingPurchaseXLS, setUploadingPurchaseXLS] = useState(false);
+  const [purchaseFilter, setPurchaseFilter] = useState({
+    fournisseur: '', dateFrom: '', dateTo: '', category: '', matricule: '', banque: '', mode: '',
+  });
 
   // FleetFix
   const [mechanics,        setMechanics]        = useState<MechanicProfile[]>([]);
@@ -1321,6 +1324,16 @@ ${pages.map((pageRows, pageIdx) => `
     { label: 'Coût de Revient (MAD)',  key: 'cout_revient',   type: 'number' },
     { label: 'Bénéfice (MAD)',         key: 'benefice',       type: 'number' },
   ];
+  const filteredPurchases = purchases.filter((p: any) => {
+    if (purchaseFilter.fournisseur && !p.fournisseur?.toLowerCase().includes(purchaseFilter.fournisseur.toLowerCase())) return false;
+    if (purchaseFilter.category && p.category !== purchaseFilter.category) return false;
+    if (purchaseFilter.dateFrom && (p.date_achat || '') < purchaseFilter.dateFrom) return false;
+    if (purchaseFilter.dateTo && (p.date_achat || '') > purchaseFilter.dateTo) return false;
+    if (purchaseFilter.matricule && !p.affectation_immatriculation?.toLowerCase().includes(purchaseFilter.matricule.toLowerCase())) return false;
+    if (purchaseFilter.banque && p.banque !== purchaseFilter.banque) return false;
+    if (purchaseFilter.mode && p.mode_paiement !== purchaseFilter.mode) return false;
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
@@ -1435,7 +1448,7 @@ ${pages.map((pageRows, pageIdx) => `
                       {uploadingPurchaseXLS ? 'Importation...' : 'Importer XLS'}
                       <input type="file" accept=".xlsx,.xls" onChange={handlePurchaseXLSUpload} className="hidden" disabled={uploadingPurchaseXLS} />
                     </label>
-                    <button onClick={() => exportToXLS(purchases.map((p: any) => ({
+                    <button onClick={() => exportToXLS(filteredPurchases.map((p: any) => ({
                       'Date':                        p.date_achat                  || '',
                       'Catégorie':                   CATEGORY_LABELS[p.category]   || p.category,
                       'Fournisseur':                 p.fournisseur                 || '',
@@ -1460,6 +1473,79 @@ ${pages.map((pageRows, pageIdx) => `
                   </div>
                 </div>
               </div>
+              {/* Filters */}
+              <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fournisseur</label>
+                  <input type="text" placeholder="Rechercher..."
+                    value={purchaseFilter.fournisseur}
+                    onChange={e => setPurchaseFilter(p => ({ ...p, fournisseur: e.target.value }))}
+                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
+                  <input type="date" value={purchaseFilter.dateFrom}
+                    onChange={e => setPurchaseFilter(p => ({ ...p, dateFrom: e.target.value }))}
+                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
+                  <input type="date" value={purchaseFilter.dateTo}
+                    onChange={e => setPurchaseFilter(p => ({ ...p, dateTo: e.target.value }))}
+                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catégorie</label>
+                  <select value={purchaseFilter.category}
+                    onChange={e => setPurchaseFilter(p => ({ ...p, category: e.target.value }))}
+                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                    <option value="">Toutes</option>
+                    {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Matricule</label>
+                  <input type="text" placeholder="Rechercher..."
+                    value={purchaseFilter.matricule}
+                    onChange={e => setPurchaseFilter(p => ({ ...p, matricule: e.target.value }))}
+                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
+                  <select value={purchaseFilter.banque}
+                    onChange={e => setPurchaseFilter(p => ({ ...p, banque: e.target.value }))}
+                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                    <option value="">Toutes</option>
+                    <option value="AWB">AWB</option>
+                    <option value="BMCE">BMCE</option>
+                    <option value="BMCI">BMCI</option>
+                    <option value="CIH">CIH</option>
+                    <option value="SG">Société Générale</option>
+                    <option value="Espèces">Espèces</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mode</label>
+                  <select value={purchaseFilter.mode}
+                    onChange={e => setPurchaseFilter(p => ({ ...p, mode: e.target.value }))}
+                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                    <option value="">Tous</option>
+                    <option value="Effet">Effet</option>
+                    <option value="Chèque">Chèque</option>
+                    <option value="Virement">Virement</option>
+                    <option value="Espèces">Espèces</option>
+                  </select>
+                </div>
+                <button onClick={() => setPurchaseFilter({ fournisseur: '', dateFrom: '', dateTo: '', category: '', matricule: '', banque: '', mode: '' })}
+                  className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
+                  Réinitialiser
+                </button>
+                <span className="text-[10px] text-slate-400 font-bold ml-auto">
+                  {filteredPurchases.length} / {purchases.length} résultat(s)
+                </span>
+              </div>
               <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
                 📋 Format import XLS — colonnes dans l'ordre :
                 <span className="font-black ml-1">Dates | Factures | Fournisseurs | Catégorie | Désignations | Montant HT | Taux | TVA | Montant TTC | Écart Délai | IF | ICE | Affectation Immat. | Banque | N° Réf | Échéance | Mode</span>
@@ -1476,9 +1562,9 @@ ${pages.map((pageRows, pageIdx) => `
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {purchases.length === 0 ? (
-                          <tr><td colSpan={17} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat enregistré.</td></tr>
-                        ) : purchases.map((p: any) => (
+                        {filteredPurchases.length === 0 ? (
+                          <tr><td colSpan={17} className="px-4 py-10 text-center text-sm text-slate-400">{purchases.length === 0 ? 'Aucun achat enregistré.' : 'Aucun résultat pour ces filtres.'}</td></tr>
+                        ) : filteredPurchases.map((p: any) => (
                           <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{p.date_achat || '—'}</td>
                             <td className="px-3 py-3"><span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded uppercase whitespace-nowrap">{CATEGORY_LABELS[p.category] || p.category}</span></td>
