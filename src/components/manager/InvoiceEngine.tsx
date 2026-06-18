@@ -422,6 +422,47 @@ export default function InvoiceEngine({ companyId, logoPreviewUrl }: Props) {
             {/* Import HTML */}
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <p className="text-xs font-black text-slate-700 uppercase tracking-widest mb-3">Importer un Template HTML</p>
+
+              {/* Prompt guide */}
+              <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs font-black text-slate-700 mb-2">📋 Vous avez un Excel ? Convertissez-le en HTML avec n'importe quel AI :</p>
+                <p className="text-[10px] text-slate-500 mb-3">Copiez ce prompt, collez-le dans ChatGPT / Claude / Gemini, et uploadez votre fichier Excel à côté.</p>
+                <div className="relative">
+                  <pre className="bg-white border border-slate-200 rounded-lg p-3 text-[9px] text-slate-600 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed">{`Convert my attached invoice Excel file into a clean HTML template for a logistics invoicing system.
+
+RULES:
+1. Replicate my exact layout, colors, fonts, logo placement from the Excel
+2. Use A4 page size (210mm × 297mm) with 15mm margins
+3. Use only inline CSS or <style> block
+4. Structure in order: HEADER, CLIENT BOX, DATA TABLE (<thead>+<tbody>), TOTALS, FOOTER
+5. Replace dynamic data with: {{company_name}} {{company_address}} {{company_phone}} {{company_email}} {{company_ice}} {{company_rc}} {{company_logo}} {{invoice_title}} {{numero_facture}} {{date}} {{client}} {{delai_paiement}} {{total_ht}} {{total_tva}} {{total_ttc}} {{montant_lettres}} {{rib}} {{bank_name}} {{signature_label}} {{footer_text}}
+6. Table body = <tbody>{{rows}}</tbody>
+7. Add @media print CSS
+8. Main data table must be the LARGEST table
+9. Keep my original design
+10. Output ONLY the HTML file`}</pre>
+                  <button onClick={() => {
+                    navigator.clipboard.writeText(`Convert my attached invoice Excel file into a clean HTML template for a logistics invoicing system.
+
+RULES:
+1. Replicate my exact layout, colors, fonts, logo placement from the Excel
+2. Use A4 page size (210mm × 297mm) with 15mm margins
+3. Use only inline CSS or <style> block
+4. Structure in order: HEADER, CLIENT BOX, DATA TABLE (<thead>+<tbody>), TOTALS, FOOTER
+5. Replace dynamic data with: {{company_name}} {{company_address}} {{company_phone}} {{company_email}} {{company_ice}} {{company_rc}} {{company_logo}} {{invoice_title}} {{numero_facture}} {{date}} {{client}} {{delai_paiement}} {{total_ht}} {{total_tva}} {{total_ttc}} {{montant_lettres}} {{rib}} {{bank_name}} {{signature_label}} {{footer_text}}
+6. Table body = <tbody>{{rows}}</tbody>
+7. Add @media print CSS
+8. Main data table must be the LARGEST table
+9. Keep my original design
+10. Output ONLY the HTML file`);
+                    toast.success("Prompt copié !");
+                  }}
+                    className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase cursor-pointer">
+                    Copier
+                  </button>
+                </div>
+              </div>
+
               <label className={`flex items-center justify-center h-20 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${editing.original_html ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'}`}>
                 {editing.original_html ? (
                   <div className="flex items-center gap-2">
