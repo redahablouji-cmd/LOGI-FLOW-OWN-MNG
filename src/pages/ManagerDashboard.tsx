@@ -875,8 +875,73 @@ const handleGenerateInvoicePDF = () => {
     if (selected.length === 0) return;
 
     const s = invoiceSettings;
-    const client = selected[0]?.client || '';
 
+    // Calculate totals
+    const totalHT  = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ht) || 0), 0);
+    const totalTVA = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.tva) || 0), 0);
+    const totalTTC = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ttc) || 0), 0);
+
+    const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // ─── IF IMPORTED HTML TEMPLATE EXISTS → USE IT DIRECTLY ───
+    if (s.original_html || s.invoice_template_html) {
+      let html = s.original_html || s.invoice_template_html;
+
+      // Build rows matching the template's 6-column structure
+      const rowsHtml = selected.map((f: any, i: number) => {
+        const ht = parseFloat(f.montant_ht) || 0;
+        const tva = parseFloat(f.tva) || 0;
+        const tvaRate = ht > 0 ? ((tva / ht) * 100).toFixed(0) + '%' : '0%';
+        return `<tr>
+          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${f.date || ''}</td>
+          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:left;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${f.depart || ''} → ${f.arrivee || ''}</td>
+          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">1</td>
+          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${fmt(ht)}</td>
+          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${tvaRate}</td>
+          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${fmt(ht)}</td>
+        </tr>`;
+      }).join('');
+
+      // Replace tbody content with real rows
+      html = html.replace(/<tbody>[\s\S]*?<\/tbody>/i, `<tbody>${rowsHtml}</tbody>`);
+
+      // Replace all placeholders
+      const replacements: Record<string, string> = {
+        company_name: s.company_name || activeCompany?.name || '',
+        company_address: s.address || '',
+        company_phone: s.phone || '',
+        company_email: s.email || '',
+        company_ice: s.ice || '',
+        company_rc: s.rc || '',
+        company_logo: s.logo_url ? `<img src="${s.logo_url}" style="max-height:55px;max-width:130px;object-fit:contain"/>` : '',
+        invoice_title: s.invoice_title || 'FACTURE',
+        numero_facture: selected[0]?.numero_facture || '',
+        date: selected[0]?.date || new Date().toLocaleDateString('fr-MA'),
+        client: selected[0]?.client || '',
+        delai_paiement: String(selected[0]?.delai_paiement || 60),
+        bl_ot: selected[0]?.bl_ot || selected[0]?.ot_bl_bs_be || '',
+        bc: selected[0]?.bc || '',
+        total_ht: fmt(totalHT) + ' MAD',
+        total_tva: fmt(totalTVA) + ' MAD',
+        total_ttc: fmt(totalTTC) + ' MAD',
+        montant_lettres: numberToWords(totalTTC),
+        rib: s.rib || '',
+        bank_name: s.bank_name || '',
+        signature_label: s.signature_label || 'Signature & Cachet',
+        footer_text: s.footer_text || '',
+        page_num: '1',
+      };
+
+      Object.entries(replacements).forEach(([key, val]) => {
+        html = html.replaceAll(`{{${key}}}`, val);
+      });
+
+      const win = window.open('', '_blank');
+      if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+      return;
+    }
+
+    // ─── NO IMPORTED TEMPLATE → USE BUILT-IN GENERATOR ───
     const placeholders: Record<string, string> = {
       company_name: s.company_name || activeCompany?.name || '',
       company_address: s.address || '',
@@ -884,13 +949,11 @@ const handleGenerateInvoicePDF = () => {
       company_email: s.email || '',
       company_ice: s.ice || '',
       company_rc: s.rc || '',
-      company_logo: s.logo_url
-        ? `<img src="${s.logo_url}" style="max-height:55px;max-width:130px;object-fit:contain"/>`
-        : '',
+      company_logo: s.logo_url ? `<img src="${s.logo_url}" style="max-height:55px;max-width:130px;object-fit:contain"/>` : '',
       invoice_title: s.invoice_title || 'FACTURE',
       numero_facture: selected[0]?.numero_facture || '',
       date: selected[0]?.date || new Date().toLocaleDateString('fr-MA'),
-      client: client,
+      client: selected[0]?.client || '',
       delai_paiement: String(selected[0]?.delai_paiement || 60),
       rib: s.rib || '',
       bank_name: s.bank_name || '',
@@ -900,12 +963,7 @@ const handleGenerateInvoicePDF = () => {
 
     const html = generateInvoicePDF(s, selected, placeholders, numberToWords);
     const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(() => win.print(), 600);
-    }
+    if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
   };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
