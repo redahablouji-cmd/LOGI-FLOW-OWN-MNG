@@ -132,7 +132,9 @@ const [loadingFacturation, setLoadingFacturation] = useState(false);
 const [showFactForm,       setShowFactForm]       = useState(false);
 const [editingFact,        setEditingFact]        = useState<any | null>(null);
 const [factForm,           setFactForm]           = useState<any>({});
-const [selectedFacts,      setSelectedFacts]      = useState<string[]>([]);
+const [selectedFacts, setSelectedFacts] = useState<string[]>([]);
+const [allTemplates, setAllTemplates] = useState<any[]>([]);
+const [selectedTemplateId, setSelectedTemplateId] = useState('');
 const [factFilter,         setFactFilter]         = useState({ client: '', dateFrom: '', dateTo: '', statut: '' });
 const [uploadingFacts, setUploadingFacts] = useState(false);
 const [invoiceSettings,  setInvoiceSettings]  = useState<any>({
@@ -966,6 +968,8 @@ const handleGenerateInvoicePDF = () => {
     const selected = facturationList.filter((f: any) => selectedFacts.includes(f.id));
     if (selected.length === 0) return;
 
+    // Get the selected template (or fall back to default invoiceSettings)
+    const tmpl = allTemplates.find((t: any) => t.id === selectedTemplateId);
     const s = invoiceSettings;
     const ROWS_PER_PAGE_FIRST = s.rows_per_page || 18;
     const ROWS_PER_PAGE = ROWS_PER_PAGE_FIRST + 6;
@@ -975,39 +979,101 @@ const handleGenerateInvoicePDF = () => {
     const totalTTC = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ttc) || 0), 0);
     const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    // Auto-fill client address + ICE from clients table
+    // Auto-fill client from clients table
     const clientName = selected[0]?.client || '';
     const clientData = clientsList.find((c: any) => c.nom === clientName);
     const clientAddress = clientData?.adresse || '';
     const clientICE = clientData?.ice || '';
 
-    // Build row HTML
-    const buildRow = (f: any, i: number) => {
+    // ─── Detect column structure from template ───
+    // Parse column_mapping if available, otherwise auto-detect from template HTML
+    let columns: { header: string; field: string; align: string; format?: string }[] = [];
+
+    if (tmpl?.column_mapping && Array.isArray(tmpl.column_mapping) && tmpl.column_mapping.length > 0) {
+      columns = tmpl.column_mapping;
+    } else {
+      // Default: detect from template name or use 9-column fallback
+      const templateHtml = tmpl?.original_html || tmpl?.invoice_template_html || s.original_html || s.invoice_template_html || '';
+      // Count <th> tags in the data table to determine column count
+      const thMatch = templateHtml.match(/<th[^>]*>[\s\S]*?<\/th>/gi);
+      const thCount = thMatch ? thMatch.length : 0;
+
+      if (thCount >= 15) {
+        // Template has meta table (6 cols) + data table (9 cols) = 15+
+        columns = [
+          { header: 'Date/Poste', field: 'date', align: 'center' },
+          { header: 'Désignation', field: 'designation', align: 'left' },
+          { header: 'Type', field: 'type', align: 'center' },
+          { header: 'BL', field: 'bl_ot', align: 'center' },
+          { header: 'BC', field: 'bc', align: 'center' },
+          { header: 'Quantité', field: 'quantity', align: 'center' },
+          { header: 'Prix unitaire HT', field: 'montant_ht', align: 'right', format: 'number' },
+          { header: 'TVA %', field: 'tva_rate', align: 'center' },
+          { header: 'Montant HT', field: 'montant_ht_total', align: 'right', format: 'number' },
+        ];
+      } else if (thCount >= 12) {
+        // Meta (6) + data (6) = 12
+        columns = [
+          { header: 'Date/Poste', field: 'date', align: 'center' },
+          { header: 'Désignation', field: 'designation', align: 'left' },
+          { header: 'Quantité', field: 'quantity', align: 'center' },
+          { header: 'Prix unitaire HT', field: 'montant_ht', align: 'right', format: 'number' },
+          { header: 'TVA %', field: 'tva_rate', align: 'center' },
+          { header: 'Montant HT', field: 'montant_ht_total', align: 'right', format: 'number' },
+        ];
+      } else {
+        // Fallback: 6 basic columns
+        columns = [
+          { header: 'Date', field: 'date', align: 'center' },
+          { header: 'Désignation', field: 'designation', align: 'left' },
+          { header: 'Quantité', field: 'quantity', align: 'center' },
+          { header: 'Prix unitaire HT', field: 'montant_ht', align: 'right', format: 'number' },
+          { header: 'TVA %', field: 'tva_rate', align: 'center' },
+          { header: 'Montant HT', field: 'montant_ht_total', align: 'right', format: 'number' },
+        ];
+      }
+    }
+
+    // ─── Dynamic row builder ───
+    const getFieldValue = (f: any, field: string): string => {
       const ht = parseFloat(f.montant_ht) || 0;
       const tva = parseFloat(f.tva) || 0;
       const tvaRate = ht > 0 ? ((tva / ht) * 100).toFixed(0) + '%' : '0%';
-      const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
-      return `<tr>
-        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;background:${bg}">${f.date || ''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:left;font-size:10px;background:${bg}">${f.depart || ''} → ${f.arrivee || ''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;background:${bg}">1</td>
-        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;background:${bg}">${fmt(ht)}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;background:${bg}">${tvaRate}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;background:${bg}">${fmt(ht)}</td>
-      </tr>`;
+      switch (field) {
+        case 'date': return f.date || '';
+        case 'designation': return `${f.depart || ''} → ${f.arrivee || ''}`;
+        case 'type': return f.type || '';
+        case 'bl_ot': return f.bl_ot || f.ot_bl_bs_be || '';
+        case 'bc': return f.bc || '';
+        case 'quantity': return '1';
+        case 'montant_ht': return fmt(ht);
+        case 'tva_rate': return tvaRate;
+        case 'montant_ht_total': return fmt(ht);
+        case 'tva_amount': return fmt(tva);
+        case 'montant_ttc': return fmt(parseFloat(f.montant_ttc) || 0);
+        case 'numero_facture': return f.numero_facture || '';
+        case 'client': return f.client || '';
+        case 'depart': return f.depart || '';
+        case 'arrivee': return f.arrivee || '';
+        default: return f[field] || '';
+      }
     };
 
-    // Table header
-    const theadHTML = `<thead><tr>
-      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:12%">Date/Poste</th>
-      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:28%">Désignation<br/><span style="font-weight:400;font-size:8px;opacity:0.7">De → Vers</span></th>
-      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:10%">Quantité</th>
-      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:18%">Prix unitaire HT</th>
-      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:10%">TVA %</th>
-      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:16%">Montant HT</th>
-    </tr></thead>`;
+    const buildRow = (f: any, i: number) => {
+      const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
+      return `<tr>${columns.map(col => {
+        const val = col.format === 'number' ? getFieldValue(f, col.field) : getFieldValue(f, col.field);
+        return `<td style="padding:4px 5px;border:1px solid #e5e5e5;text-align:${col.align};font-size:9px;background:${bg}">${val}</td>`;
+      }).join('')}</tr>`;
+    };
 
-    // Paginate rows
+    // ─── Dynamic thead ───
+    const colW = Math.floor(100 / columns.length);
+    const theadHTML = `<thead><tr>${columns.map(col =>
+      `<th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:5px 4px;text-transform:uppercase;border:1px solid #1F3864;width:${colW}%">${col.header}</th>`
+    ).join('')}</tr></thead>`;
+
+    // ─── Paginate ───
     const pages: { rows: any[]; isFirst: boolean; isLast: boolean; num: number }[] = [];
     const remaining = [...selected];
     let pageNum = 0;
@@ -1020,7 +1086,6 @@ const handleGenerateInvoicePDF = () => {
     }
     const totalPages = pages.length;
 
-    // Client info (auto-filled from clients table)
     const clientHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:16px">
       <div style="border:1px solid #bbb;border-left:4px solid #D4A017;padding:10px 16px;min-width:280px;background:#FAFAFA;border-radius:0 4px 4px 0">
         <div style="font-size:12px;font-weight:700;color:#1e293b">${clientName}</div>
@@ -1029,27 +1094,25 @@ const handleGenerateInvoicePDF = () => {
       </div>
     </div>`;
 
-    // Meta table
     const metaHTML = `<table style="width:100%;border-collapse:collapse;margin-bottom:12px">
       <tr>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">N° Facture</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">N°OT / N°BL</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">Date</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">N°Commande</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">Échéance</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">Réf. Client</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">N° Facture</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">N°OT / N°BL</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">Date</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">N°Commande</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">Échéance</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">Réf. Client</th>
       </tr>
       <tr>
-        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.numero_facture || ''}</td>
-        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bl_ot || selected[0]?.ot_bl_bs_be || ''}</td>
-        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.date || ''}</td>
-        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bc || ''}</td>
-        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.delai_paiement || 60} jours</td>
-        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${clientName}</td>
+        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.numero_facture || ''}</td>
+        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bl_ot || selected[0]?.ot_bl_bs_be || ''}</td>
+        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.date || ''}</td>
+        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bc || ''}</td>
+        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.delai_paiement || 60} jours</td>
+        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${clientName}</td>
       </tr>
     </table>`;
 
-    // Totals block
     const totalsHTML = `<div style="display:flex;justify-content:flex-end;margin-top:0">
       <div style="width:260px;border:1px solid #ddd">
         <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #eee"><span>Sous-total HT</span><span>${fmt(totalHT)} MAD</span></div>
@@ -1063,18 +1126,13 @@ const handleGenerateInvoicePDF = () => {
       ${numberToWords(totalTTC)}
     </div>`;
 
-    // Build pages
     const pagesHTML = pages.map(p => {
       const rowsHtml = p.rows.map((f: any, i: number) => buildRow(f, i)).join('');
-
-      return `<div style="width:210mm;min-height:297mm;padding:${p.isFirst ? '35mm' : '15mm'} 15mm 15mm 15mm;position:relative;font-family:Arial,sans-serif;font-size:10px;color:#000;page-break-after:${p.isLast ? 'auto' : 'always'}">
-        <div style="position:absolute;top:8mm;right:15mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
+      return `<div style="width:210mm;min-height:297mm;padding:${p.isFirst ? '35mm' : '15mm'} 12mm 15mm 12mm;position:relative;font-family:Arial,sans-serif;font-size:10px;color:#000;page-break-after:${p.isLast ? 'auto' : 'always'}">
+        <div style="position:absolute;top:8mm;right:12mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
         ${p.isFirst ? clientHTML : ''}
         ${p.isFirst ? metaHTML : ''}
-        <table style="width:100%;border-collapse:collapse">
-          ${theadHTML}
-          <tbody>${rowsHtml}</tbody>
-        </table>
+        <table style="width:100%;border-collapse:collapse">${theadHTML}<tbody>${rowsHtml}</tbody></table>
         ${p.isLast ? totalsHTML : ''}
       </div>`;
     }).join('');
@@ -1098,7 +1156,15 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'clients' && companyId) fetchClients();
     if (activeTab === 'fournisseurs' && companyId) fetchFournisseurs();
     if (activeTab === 'purchases') { fetchPurchases(); if (companyId) fetchFournisseurs(); }
-    if (activeTab === 'facturation' && companyId) { fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings(); }
+    if (activeTab === 'facturation' && companyId) {
+      fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
+      supabase.from('invoice_templates').select('id, template_name, is_default, column_mapping, original_html, invoice_template_html')
+        .eq('company_id', companyId).order('created_at').then(({ data }) => {
+          setAllTemplates(data || []);
+          const def = (data || []).find((t: any) => t.is_default);
+          if (def && !selectedTemplateId) setSelectedTemplateId(def.id);
+        });
+    }
     if (activeTab === 'settings' && companyId) fetchInvoiceSettings();
   }, [activeTab, companyId]);
 
@@ -2080,11 +2146,21 @@ const handleGenerateInvoicePDF = () => {
             <Download size={14} /> Export XLS
           </button>
           {selectedFacts.length > 0 && (
-            <button onClick={handleGenerateInvoicePDF}
-              className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
-              <FileText size={14} /> Générer PDF ({selectedFacts.length})
-            </button>
-          )}
+                <div className="flex items-center gap-2">
+                  <select value={selectedTemplateId}
+                    onChange={e => setSelectedTemplateId(e.target.value)}
+                    className="h-9 rounded-lg border-2 border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 focus:outline-none focus:border-violet-500">
+                    <option value="">— Modèle —</option>
+                    {allTemplates.map((t: any) => (
+                      <option key={t.id} value={t.id}>{t.template_name}{t.is_default ? ' ⭐' : ''}</option>
+                    ))}
+                  </select>
+                  <button onClick={handleGenerateInvoicePDF}
+                    className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <FileText size={14} /> Générer PDF ({selectedFacts.length})
+                  </button>
+                </div>
+              )}
           <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingFacts ? 'bg-slate-600 opacity-60' : 'bg-amber-600 hover:bg-amber-700'} text-white`}>
             <Upload size={14} />
             {uploadingFacts ? 'Importation...' : 'Importer XLS'}
