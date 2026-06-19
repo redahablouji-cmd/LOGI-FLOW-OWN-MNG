@@ -54,7 +54,9 @@ const emptyFactForm = {
   date_paiement: '', reglement_banque_type: '',
   reglement_numero: '', echeances: '', mode_paiement: '',
   statut: 'impayé',
+  observation: '',
 };
+
 
 const emptySuivi = {
   date: new Date().toISOString().split('T')[0],
@@ -713,6 +715,7 @@ const handleSaveFacturation = async () => {
     echeances:             factForm.echeances               || null,
     mode_paiement:         factForm.mode_paiement           || null,
     statut:                factForm.statut                  || 'impayé',
+    observation:           (factForm as any).observation     || null,
     ecart_delai:           calcEcartDelai(
                              factForm.date,
                              factForm.date_paiement,
@@ -832,6 +835,7 @@ const handleStartWizard = () => {
           echeances: form.echeances || null,
           mode_paiement: form.mode_paiement || null,
           statut: form.statut || 'impayé',
+          observation: form.observation || null,
           ecart_delai: calcEcartDelai(form.date, form.date_paiement, parseInt(form.delai_paiement) || 60),
         };
         await supabase.from('suivi_facturation').insert(payload);
@@ -1127,7 +1131,12 @@ const handleGenerateInvoicePDF = () => {
     </div>`;
 
     const pagesHTML = pages.map(p => {
-      const rowsHtml = p.rows.map((f: any, i: number) => buildRow(f, i)).join('');
+      // Observation row (first row, first page only, spans all columns)
+      const obsText = p.isFirst && selected[0]?.observation ? selected[0].observation : '';
+      const obsRow = obsText
+        ? `<tr><td colspan="${columns.length}" style="padding:8px 10px;border:1px solid #ddd;font-size:11px;font-weight:700;font-style:italic;background:#fff;text-align:left">${obsText}</td></tr>`
+        : '';
+      const rowsHtml = obsRow + p.rows.map((f: any, i: number) => buildRow(f, i + (obsText ? 1 : 0))).join('');
 
       // Fill remaining space with empty rows
       const maxRows = p.isFirst ? ROWS_PER_PAGE_FIRST : ROWS_PER_PAGE;
@@ -3066,6 +3075,18 @@ const handleGenerateInvoicePDF = () => {
             <input type="number" readOnly value={wizardForms[wizardStep]?.montant_ttc || ''}
               className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 cursor-not-allowed" />
           </div>
+          {/* Observation */}
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation (1ère ligne)</label>
+            <input type="text" value={wizardForms[wizardStep]?.observation || ''}
+              onChange={e => {
+                const updated = [...wizardForms];
+                updated[wizardStep] = { ...updated[wizardStep], observation: e.target.value };
+                setWizardForms(updated);
+              }}
+              placeholder="ex: Transport marchandises — Lot 45B"
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
 
           {/* Statut */}
           <div>
@@ -3231,6 +3252,14 @@ const handleGenerateInvoicePDF = () => {
           <input type="number" value={factForm.montant_ttc || ''}
             readOnly
             className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 cursor-not-allowed" />
+        </div>
+        {/* Observation */}
+        <div className="sm:col-span-2 lg:col-span-3">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation (1ère ligne de la facture)</label>
+          <input type="text" value={(factForm as any).observation || ''}
+            onChange={e => setFactForm((p: any) => ({ ...p, observation: e.target.value }))}
+            placeholder="ex: Transport de matériaux de construction — Chantier Tanger Nord"
+            className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
         </div>
 
         {/* Statut */}
