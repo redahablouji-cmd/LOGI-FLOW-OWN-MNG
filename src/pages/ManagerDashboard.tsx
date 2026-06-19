@@ -1134,7 +1134,7 @@ const handleGenerateInvoicePDF = () => {
       // Observation row (first row, first page only, spans all columns)
       const obsText = p.isFirst && selected[0]?.observation ? selected[0].observation : '';
       const obsRow = obsText
-        ? `<tr><td colspan="${columns.length}" style="padding:8px 10px;border:1px solid #ddd;font-size:11px;font-weight:700;font-style:italic;background:#fff;text-align:left">${obsText}</td></tr>`
+        ? `<tr><td colspan="${columns.length}" style="padding:8px 10px;border:1px solid #ddd;font-size:11px;font-weight:700;font-style:italic;background:#fff;text-align:center">${obsText}</td></tr>`
         : '';
       const rowsHtml = obsRow + p.rows.map((f: any, i: number) => buildRow(f, i + (obsText ? 1 : 0))).join('');
 
