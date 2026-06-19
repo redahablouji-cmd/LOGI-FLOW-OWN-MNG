@@ -1128,11 +1128,24 @@ const handleGenerateInvoicePDF = () => {
 
     const pagesHTML = pages.map(p => {
       const rowsHtml = p.rows.map((f: any, i: number) => buildRow(f, i)).join('');
+
+      // Fill remaining space with empty rows
+      const maxRows = p.isFirst ? ROWS_PER_PAGE_FIRST : ROWS_PER_PAGE;
+      const emptyCount = Math.max(0, (p.isLast ? maxRows - 4 : maxRows) - p.rows.length);
+      const emptyCols = columns.length;
+      const emptyRowsHtml = Array.from({ length: emptyCount }, (_, i) => {
+        const idx = p.rows.length + i;
+        const bg = idx % 2 === 1 ? '#F2F2F2' : '#fff';
+        return `<tr>${Array.from({ length: emptyCols }, () =>
+          `<td style="padding:7px 8px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>`
+        ).join('')}</tr>`;
+      }).join('');
+
       return `<div style="width:210mm;min-height:297mm;padding:${p.isFirst ? '35mm' : '15mm'} 12mm 15mm 12mm;position:relative;font-family:Arial,sans-serif;font-size:10px;color:#000;page-break-after:${p.isLast ? 'auto' : 'always'}">
         <div style="position:absolute;top:8mm;right:12mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
         ${p.isFirst ? clientHTML : ''}
         ${p.isFirst ? metaHTML : ''}
-        <table style="width:100%;border-collapse:collapse">${theadHTML}<tbody>${rowsHtml}</tbody></table>
+        <table style="width:100%;border-collapse:collapse">${theadHTML}<tbody>${rowsHtml}${emptyRowsHtml}</tbody></table>
         ${p.isLast ? totalsHTML : ''}
       </div>`;
     }).join('');
