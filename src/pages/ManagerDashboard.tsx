@@ -160,6 +160,7 @@ const [uploadingLogo,    setUploadingLogo]    = useState(false);
 const [logoPreviewUrl,   setLogoPreviewUrl]   = useState('');
 const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [selectedPrestations, setSelectedPrestations] = useState<string[]>([]);
+  const [prestationFilter, setPrestationFilter] = useState({ client: '', dateFrom: '', dateTo: '', matricule: '' });
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardPrestations, setWizardPrestations] = useState<any[]>([]);
   const [wizardForms, setWizardForms] = useState<any[]>([]);
@@ -2756,6 +2757,37 @@ const handleGenerateInvoicePDF = () => {
           <button onClick={() => { setPrestationPickerOpen(false); setSelectedPrestations([]); }}
             className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
         </div>
+        {/* Filters */}
+        <div className="mb-4 flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+            <input type="text" placeholder="Rechercher..." value={prestationFilter.client}
+              onChange={e => setPrestationFilter(p => ({ ...p, client: e.target.value }))}
+              className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
+            <input type="date" value={prestationFilter.dateFrom}
+              onChange={e => setPrestationFilter(p => ({ ...p, dateFrom: e.target.value }))}
+              className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
+            <input type="date" value={prestationFilter.dateTo}
+              onChange={e => setPrestationFilter(p => ({ ...p, dateTo: e.target.value }))}
+              className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Matricule</label>
+            <input type="text" placeholder="Rechercher..." value={prestationFilter.matricule}
+              onChange={e => setPrestationFilter(p => ({ ...p, matricule: e.target.value }))}
+              className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" />
+          </div>
+          <button onClick={() => setPrestationFilter({ client: '', dateFrom: '', dateTo: '', matricule: '' })}
+            className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
+            Réinitialiser
+          </button>
+        </div>
 
         {/* Multi-select toolbar */}
         {selectedPrestations.length > 0 && (
@@ -2781,8 +2813,23 @@ const handleGenerateInvoicePDF = () => {
             <tr>
               <th className="px-3 py-2 w-8">
                 <input type="checkbox"
-                  checked={selectedPrestations.length === suiviList.length && suiviList.length > 0}
-                  onChange={e => setSelectedPrestations(e.target.checked ? suiviList.map((p: any) => p.id) : [])}
+                  checked={selectedPrestations.length > 0 && suiviList.filter((p: any) => {
+                    if (prestationFilter.client && !p.client?.toLowerCase().includes(prestationFilter.client.toLowerCase())) return false;
+                    if (prestationFilter.matricule && !p.matricule?.toLowerCase().includes(prestationFilter.matricule.toLowerCase())) return false;
+                    if (prestationFilter.dateFrom && (p.date || '') < prestationFilter.dateFrom) return false;
+                    if (prestationFilter.dateTo && (p.date || '') > prestationFilter.dateTo) return false;
+                    return true;
+                  }).every((p: any) => selectedPrestations.includes(p.id))}
+                  onChange={e => {
+                    const filtered = suiviList.filter((p: any) => {
+                      if (prestationFilter.client && !p.client?.toLowerCase().includes(prestationFilter.client.toLowerCase())) return false;
+                      if (prestationFilter.matricule && !p.matricule?.toLowerCase().includes(prestationFilter.matricule.toLowerCase())) return false;
+                      if (prestationFilter.dateFrom && (p.date || '') < prestationFilter.dateFrom) return false;
+                      if (prestationFilter.dateTo && (p.date || '') > prestationFilter.dateTo) return false;
+                      return true;
+                    });
+                    setSelectedPrestations(e.target.checked ? filtered.map((p: any) => p.id) : []);
+                  }}
                   className="accent-blue-600" />
               </th>
               {['Date','Matricule','Client','Départ','Arrivée','Prix HT','Prix TTC','BL/OT'].map(h => (
@@ -2791,9 +2838,17 @@ const handleGenerateInvoicePDF = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {suiviList.length === 0 ? (
-              <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-400">Aucune prestation disponible.</td></tr>
-            ) : suiviList.map((p: any) => (
+            {(() => {
+              const filtered = suiviList.filter((p: any) => {
+                if (prestationFilter.client && !p.client?.toLowerCase().includes(prestationFilter.client.toLowerCase())) return false;
+                if (prestationFilter.matricule && !p.matricule?.toLowerCase().includes(prestationFilter.matricule.toLowerCase())) return false;
+                if (prestationFilter.dateFrom && (p.date || '') < prestationFilter.dateFrom) return false;
+                if (prestationFilter.dateTo && (p.date || '') > prestationFilter.dateTo) return false;
+                return true;
+              });
+              return filtered.length === 0 ? (
+                <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-400">{suiviList.length === 0 ? 'Aucune prestation disponible.' : 'Aucun résultat pour ces filtres.'}</td></tr>
+              ) : filtered.map((p: any) => (
               <tr key={p.id} className="hover:bg-blue-50 transition-colors">
                 <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
                   <input type="checkbox"
@@ -2814,7 +2869,8 @@ const handleGenerateInvoicePDF = () => {
                 <td className="px-3 py-2 font-bold cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{Number(p.prix_ttc).toLocaleString('fr-MA')}</td>
                 <td className="px-3 py-2 cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{p.ot_bl_bs_be || '—'}</td>
               </tr>
-            ))}
+            ));
+            })()}
           </tbody>
         </table>
         <div className="mt-4 pt-4 border-t border-slate-100">
