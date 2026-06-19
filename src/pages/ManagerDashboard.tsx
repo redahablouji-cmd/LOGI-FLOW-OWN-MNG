@@ -1158,7 +1158,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'purchases') { fetchPurchases(); if (companyId) fetchFournisseurs(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
-      supabase.from('invoice_templates').select('id, template_name, is_default, column_mapping, original_html, invoice_template_html')
+      supabase.from('invoice_templates').select('*')
         .eq('company_id', companyId).order('created_at').then(({ data }) => {
           setAllTemplates(data || []);
           const def = (data || []).find((t: any) => t.is_default);
