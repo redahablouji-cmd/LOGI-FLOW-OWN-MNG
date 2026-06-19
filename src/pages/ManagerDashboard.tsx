@@ -1061,16 +1061,16 @@ const handleGenerateInvoicePDF = () => {
 
     const buildRow = (f: any, i: number) => {
       const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
-      return `<tr>${columns.map(col => {
+     return `<tr>${columns.map(col => {
         const val = col.format === 'number' ? getFieldValue(f, col.field) : getFieldValue(f, col.field);
-        return `<td style="padding:4px 5px;border:1px solid #e5e5e5;text-align:${col.align};font-size:9px;background:${bg}">${val}</td>`;
+        return `<td style="padding:7px 8px;border:1px solid #ddd;text-align:${col.align};font-size:11px;background:${bg}">${val}</td>`;
       }).join('')}</tr>`;
     };
 
     // ─── Dynamic thead ───
     const colW = Math.floor(100 / columns.length);
     const theadHTML = `<thead><tr>${columns.map(col =>
-      `<th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:5px 4px;text-transform:uppercase;border:1px solid #1F3864;width:${colW}%">${col.header}</th>`
+      `<th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 6px;text-transform:uppercase;border:1px solid #1F3864;width:${colW}%">${col.header}</th>`
     ).join('')}</tr></thead>`;
 
     // ─── Paginate ───
@@ -1086,42 +1086,42 @@ const handleGenerateInvoicePDF = () => {
     }
     const totalPages = pages.length;
 
-    const clientHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:16px">
-      <div style="border:1px solid #bbb;border-left:4px solid #D4A017;padding:10px 16px;min-width:280px;background:#FAFAFA;border-radius:0 4px 4px 0">
-        <div style="font-size:12px;font-weight:700;color:#1e293b">${clientName}</div>
-        ${clientAddress ? `<div style="font-size:9px;color:#555;margin-top:3px">${clientAddress}</div>` : ''}
-        ${clientICE ? `<div style="font-size:9px;color:#555;margin-top:2px">ICE: ${clientICE}</div>` : ''}
+    const clientHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+      <div style="border:1px solid #bbb;border-left:4px solid #D4A017;padding:12px 18px;min-width:320px;background:#FAFAFA;border-radius:0 4px 4px 0">
+        <div style="font-size:14px;font-weight:700;color:#1e293b">${clientName}</div>
+        ${clientAddress ? `<div style="font-size:11px;color:#555;margin-top:4px">${clientAddress}</div>` : ''}
+        ${clientICE ? `<div style="font-size:11px;color:#555;margin-top:3px">ICE: ${clientICE}</div>` : ''}
       </div>
     </div>`;
 
-    const metaHTML = `<table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+    const metaHTML = `<table style="width:100%;border-collapse:collapse;margin-bottom:14px">
       <tr>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">N° Facture</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">N°OT / N°BL</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">Date</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">N°Commande</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">Échéance</th>
-        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 6px;text-transform:uppercase;border:1px solid #1F3864">Réf. Client</th>
+        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">N° Facture</th>
+        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">N°OT / N°BL</th>
+        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">Date</th>
+        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">N°Commande</th>
+        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">Échéance</th>
+        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">Réf. Client</th>
       </tr>
       <tr>
-        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.numero_facture || ''}</td>
-        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bl_ot || selected[0]?.ot_bl_bs_be || ''}</td>
-        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.date || ''}</td>
-        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bc || ''}</td>
-        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.delai_paiement || 60} jours</td>
-        <td style="text-align:center;padding:6px 6px;font-size:10px;border:1px solid #ddd;background:#fff">${clientName}</td>
+        <td style="text-align:center;padding:8px 8px;font-size:12px;border:1px solid #ddd;background:#fff">${selected[0]?.numero_facture || ''}</td>
+        <td style="text-align:center;padding:8px 8px;font-size:12px;border:1px solid #ddd;background:#fff">${selected[0]?.bl_ot || selected[0]?.ot_bl_bs_be || ''}</td>
+        <td style="text-align:center;padding:8px 8px;font-size:12px;border:1px solid #ddd;background:#fff">${selected[0]?.date || ''}</td>
+        <td style="text-align:center;padding:8px 8px;font-size:12px;border:1px solid #ddd;background:#fff">${selected[0]?.bc || ''}</td>
+        <td style="text-align:center;padding:8px 8px;font-size:12px;border:1px solid #ddd;background:#fff">${selected[0]?.delai_paiement || 60} jours</td>
+        <td style="text-align:center;padding:8px 8px;font-size:12px;border:1px solid #ddd;background:#fff">${clientName}</td>
       </tr>
     </table>`;
 
     const totalsHTML = `<div style="display:flex;justify-content:flex-end;margin-top:0">
-      <div style="width:260px;border:1px solid #ddd">
-        <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #eee"><span>Sous-total HT</span><span>${fmt(totalHT)} MAD</span></div>
-        <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #eee"><span>TVA</span><span>${fmt(totalTVA)} MAD</span></div>
-        <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #eee"><span>Remise</span><span>0,00 MAD</span></div>
-        <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;font-weight:900;background:#1F3864;color:#fff"><span>TOTAL TTC</span><span>${fmt(totalTTC)} MAD</span></div>
+      <div style="width:300px;border:1px solid #ddd">
+        <div style="display:flex;justify-content:space-between;padding:6px 12px;font-size:12px;font-weight:700;border-bottom:1px solid #eee"><span>Sous-total HT</span><span>${fmt(totalHT)} MAD</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 12px;font-size:12px;font-weight:700;border-bottom:1px solid #eee"><span>TVA</span><span>${fmt(totalTVA)} MAD</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 12px;font-size:12px;font-weight:700;border-bottom:1px solid #eee"><span>Remise</span><span>0,00 MAD</span></div>
+        <div style="display:flex;justify-content:space-between;padding:8px 12px;font-size:14px;font-weight:900;background:#1F3864;color:#fff"><span>TOTAL TTC</span><span>${fmt(totalTTC)} MAD</span></div>
       </div>
     </div>
-    <div style="margin-top:14px;font-size:9px;color:#7F7F7F;line-height:1.5">
+    <div style="margin-top:16px;font-size:11px;color:#7F7F7F;line-height:1.5">
       <strong style="color:#333">Arrêtée la présente facture à la somme de :</strong>
       ${numberToWords(totalTTC)}
     </div>`;
@@ -1138,7 +1138,7 @@ const handleGenerateInvoicePDF = () => {
     }).join('');
 
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
-      <style>*{margin:0;padding:0;box-sizing:border-box}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style>
+      <style>*{margin:0;padding:0;box-sizing:border-box}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}html,body{margin:0;padding:0}}</style>
       </head><body>${pagesHTML}</body></html>`;
 
     const win = window.open('', '_blank');
