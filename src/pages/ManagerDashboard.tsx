@@ -875,93 +875,122 @@ const handleGenerateInvoicePDF = () => {
     if (selected.length === 0) return;
 
     const s = invoiceSettings;
+    const ROWS_PER_PAGE_FIRST = s.rows_per_page || 18;
+    const ROWS_PER_PAGE = ROWS_PER_PAGE_FIRST + 6;
 
-    // Calculate totals
     const totalHT  = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ht) || 0), 0);
     const totalTVA = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.tva) || 0), 0);
     const totalTTC = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ttc) || 0), 0);
-
     const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    // ─── IF IMPORTED HTML TEMPLATE EXISTS → USE IT DIRECTLY ───
-    if (s.original_html || s.invoice_template_html) {
-      let html = s.original_html || s.invoice_template_html;
+    // Auto-fill client address + ICE from clients table
+    const clientName = selected[0]?.client || '';
+    const clientData = clientsList.find((c: any) => c.nom === clientName);
+    const clientAddress = clientData?.adresse || '';
+    const clientICE = clientData?.ice || '';
 
-      // Build rows matching the template's 6-column structure
-      const rowsHtml = selected.map((f: any, i: number) => {
-        const ht = parseFloat(f.montant_ht) || 0;
-        const tva = parseFloat(f.tva) || 0;
-        const tvaRate = ht > 0 ? ((tva / ht) * 100).toFixed(0) + '%' : '0%';
-        return `<tr>
-          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${f.date || ''}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:left;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${f.depart || ''} → ${f.arrivee || ''}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">1</td>
-          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${fmt(ht)}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${tvaRate}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;${i%2===1?'background:#F2F2F2':'background:#fff'}">${fmt(ht)}</td>
-        </tr>`;
-      }).join('');
-
-      // Replace tbody content with real rows
-      html = html.replace(/<tbody>[\s\S]*?<\/tbody>/i, `<tbody>${rowsHtml}</tbody>`);
-
-      // Replace all placeholders
-      const replacements: Record<string, string> = {
-        company_name: s.company_name || activeCompany?.name || '',
-        company_address: s.address || '',
-        company_phone: s.phone || '',
-        company_email: s.email || '',
-        company_ice: s.ice || '',
-        company_rc: s.rc || '',
-        company_logo: s.logo_url ? `<img src="${s.logo_url}" style="max-height:55px;max-width:130px;object-fit:contain"/>` : '',
-        invoice_title: s.invoice_title || 'FACTURE',
-        numero_facture: selected[0]?.numero_facture || '',
-        date: selected[0]?.date || new Date().toLocaleDateString('fr-MA'),
-        client: selected[0]?.client || '',
-        delai_paiement: String(selected[0]?.delai_paiement || 60),
-        bl_ot: selected[0]?.bl_ot || selected[0]?.ot_bl_bs_be || '',
-        bc: selected[0]?.bc || '',
-        total_ht: fmt(totalHT) + ' MAD',
-        total_tva: fmt(totalTVA) + ' MAD',
-        total_ttc: fmt(totalTTC) + ' MAD',
-        montant_lettres: numberToWords(totalTTC),
-        rib: s.rib || '',
-        bank_name: s.bank_name || '',
-        signature_label: s.signature_label || 'Signature & Cachet',
-        footer_text: s.footer_text || '',
-        page_num: '1',
-      };
-
-      Object.entries(replacements).forEach(([key, val]) => {
-        html = html.replaceAll(`{{${key}}}`, val);
-      });
-
-      const win = window.open('', '_blank');
-      if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
-      return;
-    }
-
-    // ─── NO IMPORTED TEMPLATE → USE BUILT-IN GENERATOR ───
-    const placeholders: Record<string, string> = {
-      company_name: s.company_name || activeCompany?.name || '',
-      company_address: s.address || '',
-      company_phone: s.phone || '',
-      company_email: s.email || '',
-      company_ice: s.ice || '',
-      company_rc: s.rc || '',
-      company_logo: s.logo_url ? `<img src="${s.logo_url}" style="max-height:55px;max-width:130px;object-fit:contain"/>` : '',
-      invoice_title: s.invoice_title || 'FACTURE',
-      numero_facture: selected[0]?.numero_facture || '',
-      date: selected[0]?.date || new Date().toLocaleDateString('fr-MA'),
-      client: selected[0]?.client || '',
-      delai_paiement: String(selected[0]?.delai_paiement || 60),
-      rib: s.rib || '',
-      bank_name: s.bank_name || '',
-      signature_label: s.signature_label || 'Signature & Cachet',
-      footer_text: s.footer_text || '',
+    // Build row HTML
+    const buildRow = (f: any, i: number) => {
+      const ht = parseFloat(f.montant_ht) || 0;
+      const tva = parseFloat(f.tva) || 0;
+      const tvaRate = ht > 0 ? ((tva / ht) * 100).toFixed(0) + '%' : '0%';
+      const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
+      return `<tr>
+        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;background:${bg}">${f.date || ''}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:left;font-size:10px;background:${bg}">${f.depart || ''} → ${f.arrivee || ''}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;background:${bg}">1</td>
+        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;background:${bg}">${fmt(ht)}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:center;font-size:10px;background:${bg}">${tvaRate}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e5e5;text-align:right;font-size:10px;background:${bg}">${fmt(ht)}</td>
+      </tr>`;
     };
 
-    const html = generateInvoicePDF(s, selected, placeholders, numberToWords);
+    // Table header
+    const theadHTML = `<thead><tr>
+      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:12%">Date/Poste</th>
+      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:28%">Désignation<br/><span style="font-weight:400;font-size:8px;opacity:0.7">De → Vers</span></th>
+      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:10%">Quantité</th>
+      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:18%">Prix unitaire HT</th>
+      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:10%">TVA %</th>
+      <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864;width:16%">Montant HT</th>
+    </tr></thead>`;
+
+    // Paginate rows
+    const pages: { rows: any[]; isFirst: boolean; isLast: boolean; num: number }[] = [];
+    const remaining = [...selected];
+    let pageNum = 0;
+    while (remaining.length > 0) {
+      pageNum++;
+      const isFirst = pageNum === 1;
+      const capacity = isFirst ? ROWS_PER_PAGE_FIRST : ROWS_PER_PAGE;
+      const pageRows = remaining.splice(0, capacity);
+      pages.push({ rows: pageRows, isFirst, isLast: remaining.length === 0, num: pageNum });
+    }
+    const totalPages = pages.length;
+
+    // Client info (auto-filled from clients table)
+    const clientHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <div style="border:1px solid #bbb;border-left:4px solid #D4A017;padding:10px 16px;min-width:280px;background:#FAFAFA;border-radius:0 4px 4px 0">
+        <div style="font-size:12px;font-weight:700;color:#1e293b">${clientName}</div>
+        ${clientAddress ? `<div style="font-size:9px;color:#555;margin-top:3px">${clientAddress}</div>` : ''}
+        ${clientICE ? `<div style="font-size:9px;color:#555;margin-top:2px">ICE: ${clientICE}</div>` : ''}
+      </div>
+    </div>`;
+
+    // Meta table
+    const metaHTML = `<table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+      <tr>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">N° Facture</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">N°OT / N°BL</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">Date</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">N°Commande</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">Échéance</th>
+        <th style="background:#1F3864;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:6px 8px;text-transform:uppercase;border:1px solid #1F3864">Réf. Client</th>
+      </tr>
+      <tr>
+        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.numero_facture || ''}</td>
+        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bl_ot || selected[0]?.ot_bl_bs_be || ''}</td>
+        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.date || ''}</td>
+        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.bc || ''}</td>
+        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${selected[0]?.delai_paiement || 60} jours</td>
+        <td style="text-align:center;padding:6px 8px;font-size:10px;border:1px solid #ddd;background:#fff">${clientName}</td>
+      </tr>
+    </table>`;
+
+    // Totals block
+    const totalsHTML = `<div style="display:flex;justify-content:flex-end;margin-top:0">
+      <div style="width:260px;border:1px solid #ddd">
+        <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #eee"><span>Sous-total HT</span><span>${fmt(totalHT)} MAD</span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #eee"><span>TVA</span><span>${fmt(totalTVA)} MAD</span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #eee"><span>Remise</span><span>0,00 MAD</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;font-weight:900;background:#1F3864;color:#fff"><span>TOTAL TTC</span><span>${fmt(totalTTC)} MAD</span></div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:#7F7F7F;line-height:1.5">
+      <strong style="color:#333">Arrêtée la présente facture à la somme de :</strong>
+      ${numberToWords(totalTTC)}
+    </div>`;
+
+    // Build pages
+    const pagesHTML = pages.map(p => {
+      const rowsHtml = p.rows.map((f: any, i: number) => buildRow(f, i)).join('');
+
+      return `<div style="width:210mm;min-height:297mm;padding:${p.isFirst ? '35mm' : '15mm'} 15mm 15mm 15mm;position:relative;font-family:Arial,sans-serif;font-size:10px;color:#000;page-break-after:${p.isLast ? 'auto' : 'always'}">
+        <div style="position:absolute;top:8mm;right:15mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
+        ${p.isFirst ? clientHTML : ''}
+        ${p.isFirst ? metaHTML : ''}
+        <table style="width:100%;border-collapse:collapse">
+          ${theadHTML}
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        ${p.isLast ? totalsHTML : ''}
+      </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+      <style>*{margin:0;padding:0;box-sizing:border-box}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style>
+      </head><body>${pagesHTML}</body></html>`;
+
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
   };
