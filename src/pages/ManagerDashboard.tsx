@@ -159,6 +159,14 @@ const [showPreview,      setShowPreview]      = useState(false);
 const [uploadingLogo,    setUploadingLogo]    = useState(false);
 const [logoPreviewUrl,   setLogoPreviewUrl]   = useState('');
 const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
+  const [selectedPrestations, setSelectedPrestations] = useState<string[]>([]);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardPrestations, setWizardPrestations] = useState<any[]>([]);
+  const [wizardForms, setWizardForms] = useState<any[]>([]);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardGroupId, setWizardGroupId] = useState('');
+  const [savingWizard, setSavingWizard] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -754,6 +762,89 @@ const handleSaveFacturation = async () => {
   }
   setFactForm(emptyFactForm);
 };
+const handleStartWizard = () => {
+    const selected = suiviList.filter((p: any) => selectedPrestations.includes(p.id));
+    if (selected.length < 2) return;
+    const groupId = crypto.randomUUID();
+    const forms = selected.map((prestation: any) => {
+      const client = clientsList.find((c: any) => c.nom === prestation.client);
+      const ht = parseFloat(prestation.prix_ht) || 0;
+      const ttc = parseFloat(prestation.prix_ttc) || 0;
+      const tvaAmt = parseFloat((ttc - ht).toFixed(2));
+      const rate = ht > 0 ? String(Math.round(tvaAmt / ht * 100)) : '';
+      return {
+        date: prestation.date || new Date().toISOString().split('T')[0],
+        numero_facture: prestation.facture || '',
+        client: prestation.client || '',
+        depart: prestation.depart || '',
+        arrivee: prestation.arrivee || '',
+        montant_ht: String(ht),
+        tva: String(tvaAmt),
+        montant_ttc: String(ttc),
+        tva_rate: rate,
+        bl_ot: prestation.ot_bl_bs_be || '',
+        bc: prestation.bon_commande || '',
+        delai_paiement: String(client?.delai_paiement || 60),
+        date_paiement: '',
+        reglement_banque_type: '',
+        reglement_numero: '',
+        echeances: '',
+        mode_paiement: '',
+        statut: 'impayé',
+        prestation_id: prestation.id,
+      };
+    });
+    setWizardGroupId(groupId);
+    setWizardPrestations(selected);
+    setWizardForms(forms);
+    setWizardStep(0);
+    setPrestationPickerOpen(false);
+    setSelectedPrestations([]);
+    setWizardOpen(true);
+  };
+
+  const handleSaveWizard = async () => {
+    setSavingWizard(true);
+    try {
+      for (const form of wizardForms) {
+        const payload = {
+          company_id: companyId || null,
+          manager_id: managerId || null,
+          prestation_id: form.prestation_id || null,
+          invoice_group_id: wizardGroupId,
+          date: form.date || null,
+          numero_facture: form.numero_facture || null,
+          client: form.client || null,
+          depart: form.depart || null,
+          arrivee: form.arrivee || null,
+          montant_ht: parseFloat(form.montant_ht) || 0,
+          tva: parseFloat(form.tva) || 0,
+          montant_ttc: parseFloat(form.montant_ttc) || 0,
+          bl_ot: form.bl_ot || null,
+          bc: form.bc || null,
+          delai_paiement: parseInt(form.delai_paiement) || 60,
+          date_paiement: form.date_paiement || null,
+          reglement_banque_type: form.reglement_banque_type || null,
+          reglement_numero: form.reglement_numero || null,
+          echeances: form.echeances || null,
+          mode_paiement: form.mode_paiement || null,
+          statut: form.statut || 'impayé',
+          ecart_delai: calcEcartDelai(form.date, form.date_paiement, parseInt(form.delai_paiement) || 60),
+        };
+        await supabase.from('suivi_facturation').insert(payload);
+      }
+      toast.success(`${wizardForms.length} factures groupées créées !`);
+      setWizardOpen(false);
+      setWizardForms([]);
+      setWizardPrestations([]);
+      setWizardStep(0);
+      fetchFacturation();
+    } catch (err: any) {
+      toast.error(`Erreur: ${err.message}`);
+    } finally {
+      setSavingWizard(false);
+    }
+  };
 
 const handleDeleteFact = async (id: string) => {
   if (!confirm('Supprimer cette facture ?')) return;
@@ -2079,11 +2170,80 @@ const handleGenerateInvoicePDF = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredFacts.length === 0 ? (
-                <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">
-                  Aucune facture. Cliquez sur "Nouvelle Facture".
-                </td></tr>
-              ) : filteredFacts.map(f => (
+              {(() => {
+                const groups: Record<string, any[]> = {};
+                const ungrouped: any[] = [];
+                filteredFacts.forEach((f: any) => {
+                  if (f.invoice_group_id) {
+                    if (!groups[f.invoice_group_id]) groups[f.invoice_group_id] = [];
+                    groups[f.invoice_group_id].push(f);
+                  } else {
+                    ungrouped.push(f);
+                  }
+                });
+                const allRows: { type: 'single' | 'group'; data: any; children?: any[] }[] = [];
+                Object.entries(groups).forEach(([gid, items]) => {
+                  allRows.push({ type: 'group', data: { id: gid, invoice_group_id: gid,
+                    client: items[0]?.client, date: items[0]?.date, numero_facture: items[0]?.numero_facture,
+                    montant_ht: items.reduce((s: number, i: any) => s + (parseFloat(i.montant_ht)||0), 0),
+                    tva: items.reduce((s: number, i: any) => s + (parseFloat(i.tva)||0), 0),
+                    montant_ttc: items.reduce((s: number, i: any) => s + (parseFloat(i.montant_ttc)||0), 0),
+                    statut: items.every((i: any) => i.statut === 'payé') ? 'payé' : 'impayé',
+                    count: items.length,
+                  }, children: items });
+                });
+                ungrouped.forEach(f => allRows.push({ type: 'single', data: f }));
+
+                if (allRows.length === 0) return (
+                  <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">Aucune facture. Cliquez sur "Nouvelle Facture".</td></tr>
+                );
+
+                return allRows.map((row) => {
+                  if (row.type === 'group') {
+                    const g = row.data;
+                    const isExp = expandedGroups.includes(g.invoice_group_id);
+                    const childIds = (row.children||[]).map((c:any) => c.id);
+                    const allSel = childIds.every((id:string) => selectedFacts.includes(id));
+                    return [
+                      <tr key={`grp-${g.invoice_group_id}`}
+                        onClick={() => setExpandedGroups(prev => prev.includes(g.invoice_group_id) ? prev.filter(x => x !== g.invoice_group_id) : [...prev, g.invoice_group_id])}
+                        className="bg-blue-50/50 hover:bg-blue-50 cursor-pointer border-b-2 border-blue-200">
+                        <td className="px-3 py-3"><input type="checkbox" checked={allSel} onClick={e => e.stopPropagation()}
+                          onChange={e => setSelectedFacts(prev => e.target.checked ? [...new Set([...prev,...childIds])] : prev.filter(id => !childIds.includes(id)))} className="accent-blue-600" /></td>
+                        <td className="px-3 py-3 text-xs text-slate-700">{g.date}</td>
+                        <td className="px-3 py-3 font-mono text-xs text-blue-600">{g.numero_facture}</td>
+                        <td className="px-3 py-3 text-xs font-semibold text-slate-700">{g.client}</td>
+                        <td colSpan={2} className="px-3 py-3"><span className="text-[9px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">{g.count} prestations groupées {isExp ? '▼' : '▶'}</span></td>
+                        <td className="px-3 py-3 font-mono text-xs text-slate-700">{g.montant_ht.toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                        <td className="px-3 py-3 font-mono text-xs text-amber-700">{g.tva.toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                        <td className="px-3 py-3 font-mono text-xs font-bold text-slate-900">{g.montant_ttc.toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                        <td colSpan={6} className="px-3 py-3"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${g.statut==='payé'?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}`}>{g.statut}</span></td>
+                      </tr>,
+                      ...(isExp ? (row.children||[]).map((f:any) => (
+                        <tr key={f.id} className="bg-blue-50/20 hover:bg-blue-50/40 transition-colors">
+                          <td className="px-3 py-2 pl-8"><input type="checkbox" checked={selectedFacts.includes(f.id)}
+                            onChange={e => setSelectedFacts(prev => e.target.checked ? [...prev,f.id] : prev.filter(x=>x!==f.id))} className="accent-blue-600" /></td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{f.date||'—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-blue-400">{f.numero_facture||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{f.client||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{f.depart||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{f.arrivee||'—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-500">{Number(f.montant_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-amber-500">{Number(f.tva||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-600">{Number(f.montant_ttc||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{f.bl_ot||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{f.bc||'—'}</td>
+                          <td className="px-3 py-2"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${f.statut==='payé'?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}`}>{f.statut}</span></td>
+                          <td className="px-3 py-2">
+                            <button onClick={() => { setEditingFact(f); setFactForm({...f,montant_ht:String(f.montant_ht),tva:String(f.tva),montant_ttc:String(f.montant_ttc),delai_paiement:String(f.delai_paiement||60)}); setShowFactForm(true); }}
+                              className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider cursor-pointer">Modifier</button>
+                          </td>
+                        </tr>
+                      )) : []),
+                    ];
+                  }
+                  const f = row.data;
+                  return (
                 <tr key={f.id} className={`hover:bg-slate-50 transition-colors ${selectedFacts.includes(f.id) ? 'bg-blue-50/50' : ''}`}>
                   <td className="px-3 py-3">
                     <input type="checkbox" checked={selectedFacts.includes(f.id)}
@@ -2160,7 +2320,9 @@ const handleGenerateInvoicePDF = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                  );
+                });
+              })()}
             </tbody>
           </table>
         </div>
@@ -2585,15 +2747,44 @@ const handleGenerateInvoicePDF = () => {
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-white rounded-xl p-6 max-w-4xl w-full shadow-xl max-h-[80vh] overflow-y-auto">
+        className="bg-white rounded-xl p-6 max-w-5xl w-full shadow-xl max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Sélectionner une Prestation</h3>
-          <button onClick={() => setPrestationPickerOpen(false)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+          <div>
+            <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Sélectionner des Prestations</h3>
+            <p className="text-xs text-slate-500 mt-1">Cliquez sur une ligne pour une facture simple, ou cochez plusieurs pour une facture groupée.</p>
+          </div>
+          <button onClick={() => { setPrestationPickerOpen(false); setSelectedPrestations([]); }}
+            className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
         </div>
-        <p className="text-xs text-slate-500 mb-4">Cliquez sur une prestation pour auto-remplir la facture.</p>
+
+        {/* Multi-select toolbar */}
+        {selectedPrestations.length > 0 && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+            <span className="text-sm font-black text-blue-800">{selectedPrestations.length} prestation(s) sélectionnée(s)</span>
+            <div className="flex gap-2">
+              <button onClick={() => setSelectedPrestations([])}
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
+                Tout désélectionner
+              </button>
+              {selectedPrestations.length >= 2 && (
+                <button onClick={handleStartWizard}
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-lg cursor-pointer flex items-center gap-1.5">
+                  <FileText size={12} /> Créer facture groupée ({selectedPrestations.length})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
+              <th className="px-3 py-2 w-8">
+                <input type="checkbox"
+                  checked={selectedPrestations.length === suiviList.length && suiviList.length > 0}
+                  onChange={e => setSelectedPrestations(e.target.checked ? suiviList.map((p: any) => p.id) : [])}
+                  className="accent-blue-600" />
+              </th>
               {['Date','Matricule','Client','Départ','Arrivée','Prix HT','Prix TTC','BL/OT'].map(h => (
                 <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
               ))}
@@ -2601,19 +2792,27 @@ const handleGenerateInvoicePDF = () => {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {suiviList.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-400">Aucune prestation disponible.</td></tr>
-            ) : suiviList.map(p => (
-              <tr key={p.id}
-                onClick={() => handleAutoFillFromPrestation(p)}
-                className="hover:bg-blue-50 cursor-pointer transition-colors">
-                <td className="px-3 py-2">{p.date}</td>
-                <td className="px-3 py-2 font-mono text-blue-600">{p.matricule || '—'}</td>
-                <td className="px-3 py-2 font-semibold">{p.client || '—'}</td>
-                <td className="px-3 py-2">{p.depart || '—'}</td>
-                <td className="px-3 py-2">{p.arrivee || '—'}</td>
-                <td className="px-3 py-2">{Number(p.prix_ht).toLocaleString('fr-MA')}</td>
-                <td className="px-3 py-2 font-bold">{Number(p.prix_ttc).toLocaleString('fr-MA')}</td>
-                <td className="px-3 py-2">{p.ot_bl_bs_be || '—'}</td>
+              <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-400">Aucune prestation disponible.</td></tr>
+            ) : suiviList.map((p: any) => (
+              <tr key={p.id} className="hover:bg-blue-50 transition-colors">
+                <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                  <input type="checkbox"
+                    checked={selectedPrestations.includes(p.id)}
+                    onChange={e => {
+                      setSelectedPrestations(prev =>
+                        e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id)
+                      );
+                    }}
+                    className="accent-blue-600" />
+                </td>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{p.date}</td>
+                <td className="px-3 py-2 font-mono text-blue-600 cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{p.matricule || '—'}</td>
+                <td className="px-3 py-2 font-semibold cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{p.client || '—'}</td>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{p.depart || '—'}</td>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{p.arrivee || '—'}</td>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{Number(p.prix_ht).toLocaleString('fr-MA')}</td>
+                <td className="px-3 py-2 font-bold cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{Number(p.prix_ttc).toLocaleString('fr-MA')}</td>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => handleAutoFillFromPrestation(p)}>{p.ot_bl_bs_be || '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -2622,6 +2821,147 @@ const handleGenerateInvoicePDF = () => {
           <button onClick={() => { setShowFactForm(true); setPrestationPickerOpen(false); setFactForm(emptyFactForm); }}
             className="text-xs text-blue-600 font-bold hover:underline cursor-pointer">
             → Créer une facture sans prestation
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Wizard Modal — step through prestations */}
+<AnimatePresence>
+  {wizardOpen && wizardForms.length > 0 && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+
+        {/* Progress bar */}
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">
+              Facture Groupée — Prestation {wizardStep + 1} / {wizardForms.length}
+            </h3>
+            <button onClick={() => { setWizardOpen(false); setWizardForms([]); }}
+              className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+          </div>
+          <div className="w-full bg-slate-200 rounded-full h-2">
+            <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${((wizardStep + 1) / wizardForms.length) * 100}%` }} />
+          </div>
+          {/* Step dots */}
+          <div className="flex gap-1 mt-2 justify-center">
+            {wizardForms.map((_: any, i: number) => (
+              <button key={i} onClick={() => setWizardStep(i)}
+                className={`w-6 h-6 rounded-full text-[9px] font-black cursor-pointer transition-all ${i === wizardStep ? 'bg-blue-600 text-white' : i < wizardStep ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Prestation info bar */}
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+          <div>
+            <span className="text-xs font-black text-slate-700">{wizardPrestations[wizardStep]?.client}</span>
+            <span className="text-xs text-slate-400 ml-2">{wizardPrestations[wizardStep]?.depart} → {wizardPrestations[wizardStep]?.arrivee}</span>
+          </div>
+          <span className="text-xs font-mono font-bold text-blue-600">{wizardPrestations[wizardStep]?.matricule}</span>
+        </div>
+
+        {/* Form fields — same as existing facture form */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[
+            { label: 'Date', key: 'date', type: 'date' },
+            { label: 'N° Facture', key: 'numero_facture', type: 'text' },
+            { label: 'Client', key: 'client', type: 'text' },
+            { label: 'Départ', key: 'depart', type: 'text' },
+            { label: 'Arrivée', key: 'arrivee', type: 'text' },
+            { label: 'BL / OT', key: 'bl_ot', type: 'text' },
+            { label: 'BC', key: 'bc', type: 'text' },
+            { label: 'Délai Paiement (J)', key: 'delai_paiement', type: 'number' },
+            { label: 'Date de Paiement', key: 'date_paiement', type: 'date' },
+            { label: 'Mode Paiement', key: 'mode_paiement', type: 'text' },
+          ].map(({ label, key, type }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type={type} value={wizardForms[wizardStep]?.[key] || ''}
+                onChange={e => {
+                  const updated = [...wizardForms];
+                  updated[wizardStep] = { ...updated[wizardStep], [key]: e.target.value };
+                  setWizardForms(updated);
+                }}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+
+          {/* Montant HT */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant HT (MAD)</label>
+            <input type="number" value={wizardForms[wizardStep]?.montant_ht || ''}
+              onChange={e => {
+                const updated = [...wizardForms];
+                const ht = parseFloat(e.target.value) || 0;
+                const rate = parseFloat(updated[wizardStep]?.tva_rate) || 0;
+                const tvaAmt = parseFloat((ht * rate / 100).toFixed(2));
+                updated[wizardStep] = { ...updated[wizardStep], montant_ht: e.target.value, tva: String(tvaAmt), montant_ttc: String((ht + tvaAmt).toFixed(2)) };
+                setWizardForms(updated);
+              }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+
+          {/* TVA */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (MAD) — auto</label>
+            <input type="number" readOnly value={wizardForms[wizardStep]?.tva || ''}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-100 bg-slate-50 px-3 text-sm text-slate-500 cursor-not-allowed" />
+          </div>
+
+          {/* TTC */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant TTC (MAD) — auto</label>
+            <input type="number" readOnly value={wizardForms[wizardStep]?.montant_ttc || ''}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 cursor-not-allowed" />
+          </div>
+
+          {/* Statut */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
+            <select value={wizardForms[wizardStep]?.statut || 'impayé'}
+              onChange={e => {
+                const updated = [...wizardForms];
+                updated[wizardStep] = { ...updated[wizardStep], statut: e.target.value };
+                setWizardForms(updated);
+              }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="impayé">Impayé</option>
+              <option value="payé">Payé</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Navigation buttons */}
+        <div className="flex gap-3 pt-5 border-t border-slate-200 mt-5">
+          <button onClick={() => setWizardStep(s => Math.max(0, s - 1))}
+            disabled={wizardStep === 0}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
+            ← Précédent
+          </button>
+
+          {wizardStep < wizardForms.length - 1 ? (
+            <button onClick={() => setWizardStep(s => s + 1)}
+              className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+              Suivant →
+            </button>
+          ) : (
+            <button onClick={handleSaveWizard} disabled={savingWizard}
+              className="flex-1 h-10 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-black rounded-lg cursor-pointer flex items-center justify-center gap-2">
+              {savingWizard ? <Loader2 size={14} className="animate-spin" /> : null}
+              {savingWizard ? 'Enregistrement...' : `✓ Enregistrer tout (${wizardForms.length} factures)`}
+            </button>
+          )}
+
+          <button onClick={() => { setWizardOpen(false); setWizardForms([]); }}
+            className="h-10 px-4 bg-white border border-slate-200 text-slate-500 text-sm font-bold rounded-lg cursor-pointer">
+            Annuler
           </button>
         </div>
       </motion.div>
