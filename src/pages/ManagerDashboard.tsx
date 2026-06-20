@@ -2144,26 +2144,70 @@ const handleGenerateInvoicePDF = () => {
             className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <RefreshCw className="w-3.5 h-3.5" /> Actualiser
           </button>
-          <button onClick={() => exportToXLS(filteredFacts.map(f => ({
-            'Date': f.date,
-            'N° Facture': f.numero_facture,
-            'Client': f.client,
-            'Départ': f.depart,
-            'Arrivée': f.arrivee,
-            'Montant HT': f.montant_ht,
-            'TVA': f.tva,
-            'Montant TTC': f.montant_ttc,
-            'BL/OT': f.bl_ot,
-            'BC': f.bc,
-            'Délai Paiement (J)': f.delai_paiement,
-            'Date Paiement': f.date_paiement,
-            'Écart Délai (J)': f.ecart_delai ?? calcEcartDelai(f.date, f.date_paiement, f.delai_paiement),
-            'Règlement Banque/Type': f.reglement_banque_type,
-            'Règlement N°': f.reglement_numero,
-            'Échéances': f.echeances,
-            'Mode Paiement': f.mode_paiement,
-            'Statut': f.statut,
-          })), 'suivi_facturation')}
+          <button onClick={() => {
+            if (!filteredFacts.length) return;
+            const groups: Record<string, any[]> = {};
+            const ungrouped: any[] = [];
+            filteredFacts.forEach((f: any) => {
+              if (f.invoice_group_id) {
+                if (!groups[f.invoice_group_id]) groups[f.invoice_group_id] = [];
+                groups[f.invoice_group_id].push(f);
+              } else {
+                ungrouped.push(f);
+              }
+            });
+            const rows: any[] = [];
+            Object.entries(groups).forEach(([gid, items]) => {
+              rows.push({
+                'Date': items[0]?.date || '',
+                'N° Facture': items[0]?.numero_facture || '',
+                'Client': items[0]?.client || '',
+                'Départ': items.map((i: any) => i.depart).filter(Boolean).join(' / '),
+                'Arrivée': items.map((i: any) => i.arrivee).filter(Boolean).join(' / '),
+                'Montant HT': items.reduce((s: number, i: any) => s + (parseFloat(i.montant_ht) || 0), 0),
+                'TVA': items.reduce((s: number, i: any) => s + (parseFloat(i.tva) || 0), 0),
+                'Montant TTC': items.reduce((s: number, i: any) => s + (parseFloat(i.montant_ttc) || 0), 0),
+                'BL/OT': items.map((i: any) => i.bl_ot).filter(Boolean).join(' / '),
+                'BC': items.map((i: any) => i.bc).filter(Boolean).join(' / '),
+                'Délai (J)': items[0]?.delai_paiement || '',
+                'Date Paiement': items[0]?.date_paiement || '',
+                'Écart Délai (J)': items[0]?.ecart_delai ?? '',
+                'Règlement Banque': items[0]?.reglement_banque_type || '',
+                'Règlement N°': items[0]?.reglement_numero || '',
+                'Échéances': items[0]?.echeances || '',
+                'Mode Paiement': items[0]?.mode_paiement || '',
+                'Statut': items.every((i: any) => i.statut === 'payé') ? 'payé' : 'impayé',
+                'Observation': items[0]?.observation || '',
+                'Type': 'Groupée (' + items.length + ')',
+              });
+            });
+            ungrouped.forEach((f: any) => {
+              rows.push({
+                'Date': f.date || '',
+                'N° Facture': f.numero_facture || '',
+                'Client': f.client || '',
+                'Départ': f.depart || '',
+                'Arrivée': f.arrivee || '',
+                'Montant HT': parseFloat(f.montant_ht) || 0,
+                'TVA': parseFloat(f.tva) || 0,
+                'Montant TTC': parseFloat(f.montant_ttc) || 0,
+                'BL/OT': f.bl_ot || '',
+                'BC': f.bc || '',
+                'Délai (J)': f.delai_paiement || '',
+                'Date Paiement': f.date_paiement || '',
+                'Écart Délai (J)': f.ecart_delai ?? calcEcartDelai(f.date, f.date_paiement, f.delai_paiement),
+                'Règlement Banque': f.reglement_banque_type || '',
+                'Règlement N°': f.reglement_numero || '',
+                'Échéances': f.echeances || '',
+                'Mode Paiement': f.mode_paiement || '',
+                'Statut': f.statut || '',
+                'Observation': f.observation || '',
+                'Type': 'Unique',
+              });
+            });
+            if (rows.length === 0) return;
+            exportToXLS(rows, 'suivi_facturation');
+          }}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Download size={14} /> Export XLS
           </button>
