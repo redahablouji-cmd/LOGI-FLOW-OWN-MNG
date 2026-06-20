@@ -717,6 +717,7 @@ const handleSaveFacturation = async () => {
     echeances:             factForm.echeances               || null,
     mode_paiement:         factForm.mode_paiement           || null,
     statut:                factForm.statut                  || 'impayé',
+    is_avoir:              (factForm as any).is_avoir       || false,
     observation:           (factForm as any).observation     || null,
     ecart_delai:           calcEcartDelai(
                              factForm.date,
@@ -1596,17 +1597,16 @@ const handleGenerateInvoicePDF = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mode</label>
-                  <select value={purchaseFilter.mode}
-                    onChange={e => setPurchaseFilter(p => ({ ...p, mode: e.target.value }))}
-                    className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
-                    <option value="">Tous</option>
-                    <option value="Effet">Effet</option>
-                    <option value="Chèque">Chèque</option>
-                    <option value="Virement">Virement</option>
-                    <option value="Espèces">Espèces</option>
-                  </select>
-                </div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
+                <select value={factFilter?.statut || ''}
+                  onChange={e => setFactFilter((p: any) => ({ ...p, statut: e.target.value }))}
+                  className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                  <option value="">Tous</option>
+                  <option value="impayé">Impayé</option>
+                  <option value="payé">Payé</option>
+                  <option value="avoir">Avoir</option>
+                </select>
+              </div>
                 <button onClick={() => setPurchaseFilter({ fournisseur: '', dateFrom: '', dateTo: '', category: '', matricule: '', banque: '', mode: '' })}
                   className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
                   Réinitialiser
@@ -2534,7 +2534,7 @@ const handleGenerateInvoicePDF = () => {
                           </span>
                           </td>
                           <td className="px-3 py-2">
-                            <button onClick={() => { setEditingFact(f); setFactForm({...f,montant_ht:String(f.montant_ht),tva:String(f.tva),montant_ttc:String(f.montant_ttc),delai_paiement:String(f.delai_paiement||60)}); setShowFactForm(true); }}
+                            <button onClick={() => { setEditingFact(f); setFactForm({...f, montant_ht: String(f.montant_ht), tva: String(f.tva), montant_ttc: String(f.montant_ttc), delai_paiement: String(f.delai_paiement || 60), is_avoir: f.is_avoir || false }); setShowFactForm(true); }}
                               className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider cursor-pointer">Modifier</button>
                           </td>
                         </tr>
@@ -3592,10 +3592,33 @@ const handleGenerateInvoicePDF = () => {
 
       </div>
       <div className="flex gap-3 pt-5">
-        <button onClick={handleSaveFacturation}
-          className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
-          {editingFact ? 'Enregistrer les modifications' : 'Ajouter la facture'}
-        </button>
+        {editingFact?.is_avoir ? (
+          <>
+            <button onClick={() => {
+              setFactForm((p: any) => ({ ...p, is_avoir: true, statut: 'avoir' }));
+              setTimeout(() => handleSaveFacturation(), 50);
+            }}
+              className="flex-1 h-10 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+              Enregistrer comme Avoir
+            </button>
+            <button onClick={() => {
+              setFactForm((p: any) => ({ ...p, is_avoir: false, statut: 'impayé',
+                montant_ht: String(Math.abs(parseFloat(p.montant_ht) || 0)),
+                tva: String(Math.abs(parseFloat(p.tva) || 0)),
+                montant_ttc: String(Math.abs(parseFloat(p.montant_ttc) || 0)),
+              }));
+              setTimeout(() => handleSaveFacturation(), 50);
+            }}
+              className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+              Convertir en Facture
+            </button>
+          </>
+        ) : (
+          <button onClick={handleSaveFacturation}
+            className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+            {editingFact ? 'Enregistrer les modifications' : 'Ajouter la facture'}
+          </button>
+        )}
         <button onClick={() => { setShowFactForm(false); setEditingFact(null); }}
           className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
           Annuler
