@@ -1002,8 +1002,22 @@ const handleGenerateInvoicePDF = () => {
       const thMatch = templateHtml.match(/<th[^>]*>[\s\S]*?<\/th>/gi);
       const thCount = thMatch ? thMatch.length : 0;
 
-      if (thCount >= 15) {
-        // Template has meta table (6 cols) + data table (9 cols) = 15+
+      if (thCount >= 16) {
+        // 10-column template (6 meta + 10 data)
+        columns = [
+          { header: 'Date', field: 'date', align: 'center' },
+          { header: 'Lieu de déchargement', field: 'arrivee', align: 'left' },
+          { header: 'Client', field: 'client', align: 'center' },
+          { header: 'N°BL', field: 'bl_ot', align: 'center' },
+          { header: 'N°EXP', field: 'numero_facture', align: 'center' },
+          { header: 'Type', field: 'type', align: 'center' },
+          { header: 'Quantité', field: 'quantity', align: 'center' },
+          { header: 'Prix unitaire HT', field: 'montant_ht', align: 'right', format: 'number' },
+          { header: 'TVA %', field: 'tva_rate', align: 'center' },
+          { header: 'Montant HT', field: 'montant_ht_total', align: 'right', format: 'number' },
+        ];
+      } else if (thCount >= 15) {
+        // 9-column template (6 meta + 9 data)
         columns = [
           { header: 'Date/Poste', field: 'date', align: 'center' },
           { header: 'Désignation', field: 'designation', align: 'left' },
@@ -1016,7 +1030,7 @@ const handleGenerateInvoicePDF = () => {
           { header: 'Montant HT', field: 'montant_ht_total', align: 'right', format: 'number' },
         ];
       } else if (thCount >= 12) {
-        // Meta (6) + data (6) = 12
+        // 6-column template (6 meta + 6 data)
         columns = [
           { header: 'Date/Poste', field: 'date', align: 'center' },
           { header: 'Désignation', field: 'designation', align: 'left' },
@@ -1026,7 +1040,7 @@ const handleGenerateInvoicePDF = () => {
           { header: 'Montant HT', field: 'montant_ht_total', align: 'right', format: 'number' },
         ];
       } else {
-        // Fallback: 6 basic columns
+        // Fallback
         columns = [
           { header: 'Date', field: 'date', align: 'center' },
           { header: 'Désignation', field: 'designation', align: 'left' },
@@ -1162,6 +1176,123 @@ const handleGenerateInvoicePDF = () => {
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
       <style>*{margin:0;padding:0;box-sizing:border-box}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}html,body{margin:0;padding:0}}</style>
       </head><body>${pagesHTML}</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+  };
+  const handleGenerateRelance = () => {
+    const selected = facturationList.filter((f: any) => selectedFacts.includes(f.id));
+    if (selected.length === 0) return;
+
+    // Only impayé invoices
+    const impaye = selected.filter((f: any) => f.statut !== 'payé');
+    if (impaye.length === 0) {
+      toast.error("Aucune facture impayée dans la sélection.");
+      return;
+    }
+
+    const clientName = impaye[0]?.client || '';
+    const clientData = clientsList.find((c: any) => c.nom === clientName);
+    const clientAddress = clientData?.adresse || '';
+    const clientICE = clientData?.ice || '';
+    const s = invoiceSettings;
+
+    const totalImpaye = impaye.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ttc) || 0), 0);
+    const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const today = new Date().toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Build invoice rows
+    const rowsHtml = impaye.map((f: any, i: number) => {
+      const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
+      return `<tr>
+        <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;font-size:11px;background:${bg}">${f.numero_facture || '—'}</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;font-size:11px;background:${bg}">${f.date || '—'}</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;text-align:right;font-size:11px;font-weight:700;background:${bg}">${fmt(parseFloat(f.montant_ttc) || 0)}</td>
+      </tr>`;
+    }).join('');
+
+    // Fill empty rows to complete the page
+    const maxRows = 25;
+    const emptyCount = Math.max(0, maxRows - impaye.length);
+    const emptyRowsHtml = Array.from({ length: emptyCount }, (_, i) => {
+      const idx = impaye.length + i;
+      const bg = idx % 2 === 1 ? '#F2F2F2' : '#fff';
+      return `<tr>
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
+      </tr>`;
+    }).join('');
+
+    // Total row
+    const totalRow = `<tr>
+      <td colspan="2" style="padding:8px 10px;border:1px solid #1F3864;font-size:12px;font-weight:900;text-align:right;background:#1F3864;color:#fff">TOTAL IMPAYÉ</td>
+      <td style="padding:8px 10px;border:1px solid #1F3864;font-size:13px;font-weight:900;text-align:right;background:#1F3864;color:#fff">${fmt(totalImpaye)} DHS</td>
+    </tr>`;
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:Arial,sans-serif;font-size:12px;color:#000}
+      @page{margin:0;size:A4}
+      @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+    </style>
+    </head><body>
+    <div style="width:210mm;min-height:297mm;padding:35mm 15mm 15mm 15mm;position:relative;font-family:Arial,sans-serif">
+
+      <!-- Client box — top right -->
+      <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+        <div style="border:2px solid #1F3864;padding:12px 18px;min-width:300px;border-radius:4px">
+          <div style="font-size:14px;font-weight:900;color:#1F3864">${clientName}</div>
+          ${clientAddress ? `<div style="font-size:11px;color:#555;margin-top:4px">${clientAddress}</div>` : ''}
+          ${clientICE ? `<div style="font-size:11px;color:#555;margin-top:3px">ICE: ${clientICE}</div>` : ''}
+        </div>
+      </div>
+
+      <!-- Date -->
+      <div style="text-align:right;font-size:12px;color:#333;margin-bottom:24px">
+        Casablanca le ${today}
+      </div>
+
+      <!-- Title -->
+      <div style="font-size:18px;font-weight:900;color:#1F3864;text-decoration:underline;margin-bottom:20px">
+        Relance
+      </div>
+
+      <!-- Intro -->
+      <div style="font-size:12px;line-height:1.8;color:#333;margin-bottom:16px">
+        <p>Madame, Monsieur,</p>
+        <br/>
+        <p>Sauf erreur ou omission de notre part, nous constatons que votre compte client présente à ce jour un solde débiteur de <strong style="color:#1F3864;font-size:13px">${fmt(totalImpaye)} DHS</strong>.</p>
+        <br/>
+        <p>Ce montant correspond à nos factures suivantes restées impayées :</p>
+      </div>
+
+      <!-- Table -->
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+        <thead>
+          <tr>
+            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:35%">N° Facture</th>
+            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:30%">Date Facture</th>
+            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:35%">Montant TTC</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          ${emptyRowsHtml}
+          ${totalRow}
+        </tbody>
+      </table>
+
+      <!-- Closing -->
+      <div style="font-size:12px;line-height:1.8;color:#333;margin-top:16px">
+        <p>L'échéance étant dépassée, nous vous demandons de bien vouloir régulariser cette situation dans les meilleurs délais.</p>
+        <br/>
+        <p>Vous remerciant par avance, nous vous prions d'agréer, Monsieur, l'expression de nos salutations distinguées.</p>
+      </div>
+
+    </div>
+    </body></html>`;
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
@@ -2224,6 +2355,10 @@ const handleGenerateInvoicePDF = () => {
                   <button onClick={handleGenerateInvoicePDF}
                     className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                     <FileText size={14} /> Générer PDF ({selectedFacts.length})
+                  </button>
+                  <button onClick={handleGenerateRelance}
+                    className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <FileText size={14} /> Relance Impayé
                   </button>
                 </div>
               )}
