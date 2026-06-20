@@ -1184,7 +1184,6 @@ const handleGenerateInvoicePDF = () => {
     const selected = facturationList.filter((f: any) => selectedFacts.includes(f.id));
     if (selected.length === 0) return;
 
-    // Only impayé invoices
     const impaye = selected.filter((f: any) => f.statut !== 'payé');
     if (impaye.length === 0) {
       toast.error("Aucune facture impayée dans la sélection.");
@@ -1195,104 +1194,114 @@ const handleGenerateInvoicePDF = () => {
     const clientData = clientsList.find((c: any) => c.nom === clientName);
     const clientAddress = clientData?.adresse || '';
     const clientICE = clientData?.ice || '';
-    const s = invoiceSettings;
 
     const totalImpaye = impaye.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ttc) || 0), 0);
     const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const today = new Date().toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    // Build invoice rows
-    const rowsHtml = impaye.map((f: any, i: number) => {
+    // Calculate how many rows fit on one page
+    // Fixed space: top margin(35mm) + client(25mm) + date(10mm) + title(12mm) + intro(35mm) + thead(10mm) + total row(10mm) + closing(35mm) + bottom(15mm) = ~187mm
+    // Available for rows on A4 (297mm): 297 - 187 = ~110mm → ~15 rows at 7mm each
+    const ROWS_PER_PAGE = 15;
+
+    // Paginate if needed
+    const pages: { rows: any[]; isFirst: boolean; isLast: boolean; num: number }[] = [];
+    const remaining = [...impaye];
+    let pageNum = 0;
+    const firstPageRows = ROWS_PER_PAGE;
+    const nextPageRows = ROWS_PER_PAGE + 12; // no intro/client on subsequent pages
+
+    while (remaining.length > 0) {
+      pageNum++;
+      const isFirst = pageNum === 1;
+      const capacity = isFirst ? firstPageRows : nextPageRows;
+      const pageRows = remaining.splice(0, capacity);
+      pages.push({ rows: pageRows, isFirst, isLast: remaining.length === 0, num: pageNum });
+    }
+    const totalPages = pages.length;
+
+    const buildRow = (f: any, i: number) => {
       const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
       return `<tr>
-        <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;font-size:11px;background:${bg}">${f.numero_facture || '—'}</td>
-        <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;font-size:11px;background:${bg}">${f.date || '—'}</td>
-        <td style="padding:7px 10px;border:1px solid #ddd;text-align:right;font-size:11px;font-weight:700;background:${bg}">${fmt(parseFloat(f.montant_ttc) || 0)}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;font-size:11px;background:${bg}">${f.numero_facture || '—'}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;font-size:11px;background:${bg}">${f.date || '—'}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-size:11px;font-weight:700;background:${bg}">${fmt(parseFloat(f.montant_ttc) || 0)}</td>
       </tr>`;
-    }).join('');
+    };
 
-    // Fill empty rows to complete the page
-    const maxRows = 25;
-    const emptyCount = Math.max(0, maxRows - impaye.length);
-    const emptyRowsHtml = Array.from({ length: emptyCount }, (_, i) => {
-      const idx = impaye.length + i;
-      const bg = idx % 2 === 1 ? '#F2F2F2' : '#fff';
-      return `<tr>
-        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
-        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
-        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
-      </tr>`;
-    }).join('');
+    const theadHTML = `<thead><tr>
+      <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:35%">N° Facture</th>
+      <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:30%">Date Facture</th>
+      <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:35%">Montant TTC</th>
+    </tr></thead>`;
 
-    // Total row
     const totalRow = `<tr>
       <td colspan="2" style="padding:8px 10px;border:1px solid #1F3864;font-size:12px;font-weight:900;text-align:right;background:#1F3864;color:#fff">TOTAL IMPAYÉ</td>
       <td style="padding:8px 10px;border:1px solid #1F3864;font-size:13px;font-weight:900;text-align:right;background:#1F3864;color:#fff">${fmt(totalImpaye)} DHS</td>
     </tr>`;
 
+    const pagesHTML = pages.map(p => {
+      const rowsHtml = p.rows.map((f: any, i: number) => buildRow(f, i)).join('');
+
+      // Fill empty rows to use remaining space
+      const maxOnPage = p.isFirst ? firstPageRows : nextPageRows;
+      const emptyCount = Math.max(0, maxOnPage - p.rows.length);
+      const emptyRowsHtml = Array.from({ length: emptyCount }, (_, i) => {
+        const idx = p.rows.length + i;
+        const bg = idx % 2 === 1 ? '#F2F2F2' : '#fff';
+        return `<tr>
+          <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
+          <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
+          <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;background:${bg}">&nbsp;</td>
+        </tr>`;
+      }).join('');
+
+      return `<div style="width:210mm;min-height:297mm;padding:${p.isFirst ? '35mm' : '15mm'} 15mm 15mm 15mm;position:relative;font-family:Arial,sans-serif;page-break-after:${p.isLast ? 'auto' : 'always'}">
+        <div style="position:absolute;top:8mm;right:15mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
+
+        ${p.isFirst ? `
+          <!-- Client box -->
+          <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+            <div style="border:2px solid #1F3864;padding:12px 18px;min-width:300px;border-radius:4px">
+              <div style="font-size:14px;font-weight:900;color:#1F3864">${clientName}</div>
+              ${clientAddress ? `<div style="font-size:11px;color:#555;margin-top:4px">${clientAddress}</div>` : ''}
+              ${clientICE ? `<div style="font-size:11px;color:#555;margin-top:3px">ICE: ${clientICE}</div>` : ''}
+            </div>
+          </div>
+          <div style="text-align:right;font-size:12px;color:#333;margin-bottom:20px">Casablanca le ${today}</div>
+          <div style="font-size:18px;font-weight:900;color:#1F3864;text-decoration:underline;margin-bottom:16px">Relance</div>
+          <div style="font-size:12px;line-height:1.8;color:#333;margin-bottom:14px">
+            <p>Madame, Monsieur,</p>
+            <br/>
+            <p>Sauf erreur ou omission de notre part, nous constatons que votre compte client présente à ce jour un solde débiteur de <strong style="color:#1F3864;font-size:13px">${fmt(totalImpaye)} DHS</strong>.</p>
+            <br/>
+            <p>Ce montant correspond à nos factures suivantes restées impayées :</p>
+          </div>
+        ` : ''}
+
+        <!-- Table -->
+        <table style="width:100%;border-collapse:collapse">
+          ${theadHTML}
+          <tbody>
+            ${rowsHtml}
+            ${emptyRowsHtml}
+            ${p.isLast ? totalRow : ''}
+          </tbody>
+        </table>
+
+        ${p.isLast ? `
+          <div style="font-size:12px;line-height:1.8;color:#333;margin-top:14px">
+            <p>L'échéance étant dépassée, nous vous demandons de bien vouloir régulariser cette situation dans les meilleurs délais.</p>
+            <br/>
+            <p>Vous remerciant par avance, nous vous prions d'agréer, Monsieur, l'expression de nos salutations distinguées.</p>
+          </div>
+        ` : ''}
+      </div>`;
+    }).join('');
+
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
-    <style>
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:Arial,sans-serif;font-size:12px;color:#000}
-      @page{margin:0;size:A4}
-      @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
-    </style>
-    </head><body>
-    <div style="width:210mm;min-height:297mm;padding:35mm 15mm 15mm 15mm;position:relative;font-family:Arial,sans-serif">
-
-      <!-- Client box — top right -->
-      <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
-        <div style="border:2px solid #1F3864;padding:12px 18px;min-width:300px;border-radius:4px">
-          <div style="font-size:14px;font-weight:900;color:#1F3864">${clientName}</div>
-          ${clientAddress ? `<div style="font-size:11px;color:#555;margin-top:4px">${clientAddress}</div>` : ''}
-          ${clientICE ? `<div style="font-size:11px;color:#555;margin-top:3px">ICE: ${clientICE}</div>` : ''}
-        </div>
-      </div>
-
-      <!-- Date -->
-      <div style="text-align:right;font-size:12px;color:#333;margin-bottom:24px">
-        Casablanca le ${today}
-      </div>
-
-      <!-- Title -->
-      <div style="font-size:18px;font-weight:900;color:#1F3864;text-decoration:underline;margin-bottom:20px">
-        Relance
-      </div>
-
-      <!-- Intro -->
-      <div style="font-size:12px;line-height:1.8;color:#333;margin-bottom:16px">
-        <p>Madame, Monsieur,</p>
-        <br/>
-        <p>Sauf erreur ou omission de notre part, nous constatons que votre compte client présente à ce jour un solde débiteur de <strong style="color:#1F3864;font-size:13px">${fmt(totalImpaye)} DHS</strong>.</p>
-        <br/>
-        <p>Ce montant correspond à nos factures suivantes restées impayées :</p>
-      </div>
-
-      <!-- Table -->
-      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-        <thead>
-          <tr>
-            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:35%">N° Facture</th>
-            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:30%">Date Facture</th>
-            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:35%">Montant TTC</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml}
-          ${emptyRowsHtml}
-          ${totalRow}
-        </tbody>
-      </table>
-
-      <!-- Closing -->
-      <div style="font-size:12px;line-height:1.8;color:#333;margin-top:16px">
-        <p>L'échéance étant dépassée, nous vous demandons de bien vouloir régulariser cette situation dans les meilleurs délais.</p>
-        <br/>
-        <p>Vous remerciant par avance, nous vous prions d'agréer, Monsieur, l'expression de nos salutations distinguées.</p>
-      </div>
-
-    </div>
-    </body></html>`;
+      <style>*{margin:0;padding:0;box-sizing:border-box}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style>
+      </head><body>${pagesHTML}</body></html>`;
 
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
