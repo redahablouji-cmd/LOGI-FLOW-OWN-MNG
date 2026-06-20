@@ -3594,20 +3594,46 @@ const handleGenerateInvoicePDF = () => {
       <div className="flex gap-3 pt-5">
         {editingFact?.is_avoir ? (
           <>
-            <button onClick={() => {
-              setFactForm((p: any) => ({ ...p, is_avoir: true, statut: 'avoir' }));
-              setTimeout(() => handleSaveFacturation(), 50);
+            <button onClick={async () => {
+              const { error } = await supabase.from('suivi_facturation').update({
+                date: factForm.date || null,
+                numero_facture: factForm.numero_facture || null,
+                client: factForm.client || null,
+                depart: factForm.depart || null,
+                arrivee: factForm.arrivee || null,
+                montant_ht: parseFloat(factForm.montant_ht) || 0,
+                tva: parseFloat(factForm.tva) || 0,
+                montant_ttc: parseFloat(factForm.montant_ttc) || 0,
+                bl_ot: factForm.bl_ot || null,
+                bc: factForm.bc || null,
+                observation: (factForm as any).observation || null,
+                is_avoir: true,
+                statut: 'avoir',
+              }).eq('id', editingFact.id);
+              if (!error) { toast.success("Avoir modifié."); setShowFactForm(false); setEditingFact(null); setFactForm(emptyFactForm); fetchFacturation(); }
+              else toast.error(`Erreur: ${error.message}`);
             }}
               className="flex-1 h-10 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg cursor-pointer">
               Enregistrer comme Avoir
             </button>
-            <button onClick={() => {
-              setFactForm((p: any) => ({ ...p, is_avoir: false, statut: 'impayé',
-                montant_ht: String(Math.abs(parseFloat(p.montant_ht) || 0)),
-                tva: String(Math.abs(parseFloat(p.tva) || 0)),
-                montant_ttc: String(Math.abs(parseFloat(p.montant_ttc) || 0)),
-              }));
-              setTimeout(() => handleSaveFacturation(), 50);
+            <button onClick={async () => {
+              const { error } = await supabase.from('suivi_facturation').update({
+                date: factForm.date || null,
+                numero_facture: factForm.numero_facture || null,
+                client: factForm.client || null,
+                depart: factForm.depart || null,
+                arrivee: factForm.arrivee || null,
+                montant_ht: Math.abs(parseFloat(factForm.montant_ht) || 0),
+                tva: Math.abs(parseFloat(factForm.tva) || 0),
+                montant_ttc: Math.abs(parseFloat(factForm.montant_ttc) || 0),
+                bl_ot: factForm.bl_ot || null,
+                bc: factForm.bc || null,
+                observation: (factForm as any).observation || null,
+                is_avoir: false,
+                statut: 'impayé',
+              }).eq('id', editingFact.id);
+              if (!error) { toast.success("Converti en facture."); setShowFactForm(false); setEditingFact(null); setFactForm(emptyFactForm); fetchFacturation(); }
+              else toast.error(`Erreur: ${error.message}`);
             }}
               className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
               Convertir en Facture
