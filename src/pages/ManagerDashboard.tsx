@@ -2420,11 +2420,12 @@ const handleGenerateInvoicePDF = () => {
           onChange={e => setFactFilter(p => ({ ...p, statut: e.target.value }))}
           className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
           <option value="">Tous</option>
-          <option value="payé">Payé</option>
-          <option value="impayé">Impayé</option>
-        </select>
-      </div>
-      <button onClick={() => setFactFilter({ client: '', dateFrom: '', dateTo: '', statut: '' })}
+           <option value="payé">Payé</option>
+           <option value="impayé">Impayé</option>
+           <option value="avoir">Avoir</option>
+         </select>
+       </div>
+       <button onClick={() => setFactFilter({ client: '', dateFrom: '', dateTo: '', statut: '' })}
         className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
         Réinitialiser
       </button>
