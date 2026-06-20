@@ -3393,15 +3393,20 @@ const handleGenerateInvoicePDF = () => {
             <input type="number" value={avoirForm.montant_ht} placeholder="500"
               onChange={e => {
                 const ht = parseFloat(e.target.value) || 0;
-                const tva = parseFloat((ht * 0.20).toFixed(2));
-                setAvoirForm(p => ({ ...p, montant_ht: e.target.value, tva: String(tva), montant_ttc: String((ht + tva).toFixed(2)) }));
+                const tva = parseFloat(avoirForm.tva) || 0;
+                setAvoirForm(p => ({ ...p, montant_ht: e.target.value, montant_ttc: String((ht + tva).toFixed(2)) }));
               }}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
           </div>
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (auto 20%)</label>
-            <input type="number" value={avoirForm.tva} readOnly
-              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-100 bg-slate-50 px-3 text-sm text-slate-500 cursor-not-allowed" />
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (MAD)</label>
+            <input type="number" value={avoirForm.tva} placeholder="0"
+              onChange={e => {
+                const tva = parseFloat(e.target.value) || 0;
+                const ht = parseFloat(avoirForm.montant_ht) || 0;
+                setAvoirForm(p => ({ ...p, tva: e.target.value, montant_ttc: String((ht + tva).toFixed(2)) }));
+              }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
           </div>
           <div className="sm:col-span-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant TTC (auto)</label>
