@@ -172,6 +172,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [wizardGroupId, setWizardGroupId] = useState('');
   const [savingWizard, setSavingWizard] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [showAvoirForm, setShowAvoirForm] = useState(false);
+  const [avoirForm, setAvoirForm] = useState({ date: new Date().toISOString().split('T')[0], numero_facture: '', client: '', depart: '', arrivee: '', montant_ht: '', tva: '', montant_ttc: '', observation: '' });
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -982,6 +984,8 @@ const handleGenerateInvoicePDF = () => {
     const totalTVA = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.tva) || 0), 0);
     const totalTTC = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ttc) || 0), 0);
     const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Detect if this is a facture d'avoir
+    const isAvoir = selected.some((f: any) => f.is_avoir);
 
     // Auto-fill client from clients table
     const clientName = selected[0]?.client || '';
@@ -1114,7 +1118,7 @@ const handleGenerateInvoicePDF = () => {
 
     const metaHTML = `<table style="width:100%;border-collapse:collapse;margin-bottom:14px">
       <tr>
-        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">N° Facture</th>
+        <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">${isAvoir ? 'N° Avoir' : 'N° Facture'}</th>
         <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">N°OT / N°BL</th>
         <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">Date</th>
         <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 8px;text-transform:uppercase;border:1px solid #1F3864">N°Commande</th>
@@ -1140,7 +1144,7 @@ const handleGenerateInvoicePDF = () => {
       </div>
     </div>
     <div style="margin-top:16px;font-size:11px;color:#7F7F7F;line-height:1.5">
-      <strong style="color:#333">Arrêtée la présente facture à la somme de :</strong>
+      <strong style="color:#333">Arrêtée la présente ${isAvoir ? "facture d'avoir" : 'facture'} à la somme de :</strong>
       ${numberToWords(totalTTC)}
     </div>`;
 
@@ -1166,6 +1170,7 @@ const handleGenerateInvoicePDF = () => {
 
       return `<div style="width:210mm;min-height:297mm;padding:${p.isFirst ? '35mm' : '15mm'} 12mm 15mm 12mm;position:relative;font-family:Arial,sans-serif;font-size:10px;color:#000;page-break-after:${p.isLast ? 'auto' : 'always'}">
         <div style="position:absolute;top:8mm;right:12mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
+        ${isAvoir && p.isFirst ? '<div style="font-size:16px;font-weight:900;color:#B91C1C;text-align:center;margin-bottom:10px;text-decoration:underline">AVOIR</div>' : ''}
         ${p.isFirst ? clientHTML : ''}
         ${p.isFirst ? metaHTML : ''}
         <table style="width:100%;border-collapse:collapse">${theadHTML}<tbody>${rowsHtml}${emptyRowsHtml}</tbody></table>
@@ -2376,6 +2381,10 @@ const handleGenerateInvoicePDF = () => {
             {uploadingFacts ? 'Importation...' : 'Importer XLS'}
             <input type="file" accept=".xlsx,.xls" onChange={handleFactXLSUpload} className="hidden" disabled={uploadingFacts} />
           </label>
+          <button onClick={() => setShowAvoirForm(true)}
+                  className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                  <FileText size={14} /> Facture d'Avoir
+                </button>
           <button onClick={() => { setPrestationPickerOpen(true); setEditingFact(null); setFactForm(emptyFactForm); }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Plus size={14} /> Nouvelle Facture
@@ -2520,7 +2529,10 @@ const handleGenerateInvoicePDF = () => {
                           <td className="px-3 py-2 font-mono text-xs text-slate-600">{Number(f.montant_ttc||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
                           <td className="px-3 py-2 text-xs text-slate-500">{f.bl_ot||'—'}</td>
                           <td className="px-3 py-2 text-xs text-slate-500">{f.bc||'—'}</td>
-                          <td className="px-3 py-2"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${f.statut==='payé'?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}`}>{f.statut}</span></td>
+                          <td className="px-3 py-2"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${f.statut === 'payé' ? 'bg-emerald-50 text-emerald-700' : f.statut === 'avoir' || f.is_avoir ? 'bg-purple-50 text-purple-700' : 'bg-rose-50 text-rose-700'}`}>
+                            {f.is_avoir ? 'AVOIR' : f.statut}
+                          </span>
+                          </td>
                           <td className="px-3 py-2">
                             <button onClick={() => { setEditingFact(f); setFactForm({...f,montant_ht:String(f.montant_ht),tva:String(f.tva),montant_ttc:String(f.montant_ttc),delai_paiement:String(f.delai_paiement||60)}); setShowFactForm(true); }}
                               className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider cursor-pointer">Modifier</button>
@@ -2545,7 +2557,7 @@ const handleGenerateInvoicePDF = () => {
                   <td className="px-3 py-3 text-xs text-slate-600">{f.arrivee || '—'}</td>
                   <td className="px-3 py-3 font-mono text-xs text-slate-700">{Number(f.montant_ht).toLocaleString('fr-MA')}</td>
                   <td className="px-3 py-3 font-mono text-xs text-amber-700">{Number(f.tva).toLocaleString('fr-MA')}</td>
-                  <td className="px-3 py-3 font-mono text-xs font-bold text-slate-900">{Number(f.montant_ttc).toLocaleString('fr-MA')}</td>
+                  <td className={`px-3 py-3 font-mono text-xs font-bold ${f.is_avoir ? 'text-rose-600' : 'text-slate-900'}`}>{Number(f.montant_ttc).toLocaleString('fr-MA')}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{f.bl_ot || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{f.bc || '—'}</td>
                   <td className="px-3 py-3 text-xs text-center text-slate-600">{f.delai_paiement} J</td>
@@ -3322,7 +3334,124 @@ const handleGenerateInvoicePDF = () => {
     </div>
   )}
 </AnimatePresence>
+{/* Avoir Form Modal */}
+<AnimatePresence>
+  {showAvoirForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-rose-600 flex items-center justify-center text-white">
+              <FileText size={20} />
+            </div>
+            <div>
+              <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Facture d'Avoir</h3>
+              <p className="text-[10px] text-slate-500 mt-0.5">Les montants seront enregistrés en négatif</p>
+            </div>
+          </div>
+          <button onClick={() => setShowAvoirForm(false)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</label>
+            <input type="date" value={avoirForm.date}
+              onChange={e => setAvoirForm(p => ({ ...p, date: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Avoir</label>
+            <input type="text" value={avoirForm.numero_facture} placeholder="AV-001"
+              onChange={e => setAvoirForm(p => ({ ...p, numero_facture: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
+          </div>
+          {/* Client dropdown */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+            <select value={avoirForm.client}
+              onChange={e => setAvoirForm(p => ({ ...p, client: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500">
+              <option value="">— Sélectionner —</option>
+              {clientsList.map((c: any) => (
+                <option key={c.id} value={c.nom}>{c.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation / Motif</label>
+            <input type="text" value={avoirForm.observation} placeholder="Retour marchandise, erreur facturation..."
+              onChange={e => setAvoirForm(p => ({ ...p, observation: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
+          </div>
+
+          {/* Montant HT → auto TVA + TTC */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant HT (positif, sera inversé)</label>
+            <input type="number" value={avoirForm.montant_ht} placeholder="500"
+              onChange={e => {
+                const ht = parseFloat(e.target.value) || 0;
+                const tva = parseFloat((ht * 0.20).toFixed(2));
+                setAvoirForm(p => ({ ...p, montant_ht: e.target.value, tva: String(tva), montant_ttc: String((ht + tva).toFixed(2)) }));
+              }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (auto 20%)</label>
+            <input type="number" value={avoirForm.tva} readOnly
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-100 bg-slate-50 px-3 text-sm text-slate-500 cursor-not-allowed" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant TTC (auto)</label>
+            <input type="number" value={avoirForm.montant_ttc} readOnly
+              className="w-full mt-1 h-9 rounded-lg border-2 border-rose-200 bg-rose-50 px-3 text-sm font-bold text-rose-700 cursor-not-allowed" />
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-800">
+          Sera enregistré comme : <strong>HT: -{avoirForm.montant_ht || '0'}</strong> | <strong>TVA: -{avoirForm.tva || '0'}</strong> | <strong>TTC: -{avoirForm.montant_ttc || '0'}</strong> MAD
+        </div>
+
+        <div className="flex gap-3 pt-5">
+          <button onClick={async () => {
+            const ht = parseFloat(avoirForm.montant_ht) || 0;
+            const tva = parseFloat(avoirForm.tva) || 0;
+            const ttc = parseFloat(avoirForm.montant_ttc) || 0;
+            if (ht <= 0) { toast.error("Saisissez un montant."); return; }
+            const { error } = await supabase.from('suivi_facturation').insert({
+              company_id: companyId,
+              manager_id: managerId || null,
+              date: avoirForm.date || null,
+              numero_facture: avoirForm.numero_facture || null,
+              client: avoirForm.client || null,
+              montant_ht: -ht,
+              tva: -tva,
+              montant_ttc: -ttc,
+              observation: avoirForm.observation || null,
+              is_avoir: true,
+              statut: 'avoir',
+            });
+            if (!error) {
+              toast.success("Facture d'avoir enregistrée.");
+              setShowAvoirForm(false);
+              setAvoirForm({ date: new Date().toISOString().split('T')[0], numero_facture: '', client: '', depart: '', arrivee: '', montant_ht: '', tva: '', montant_ttc: '', observation: '' });
+              fetchFacturation();
+            } else toast.error(`Erreur: ${error.message}`);
+          }}
+            className="flex-1 h-10 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+            Enregistrer l'avoir
+          </button>
+          <button onClick={() => setShowAvoirForm(false)}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">
+            Annuler
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
 {/* Facture Form Modal */}
 <AnimatePresence>
   {showFactForm && (
