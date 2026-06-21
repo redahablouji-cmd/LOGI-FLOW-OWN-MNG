@@ -2884,6 +2884,26 @@ const handleGenerateInvoicePDF = () => {
         </button>
       )}
     </div>
+    <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-6 items-center">
+      {(() => {
+        const source = selectedFacts.length > 0
+          ? facturationList.filter((f: any) => selectedFacts.includes(f.id))
+          : filteredFacts;
+        const tHT = source.reduce((s: number, f: any) => s + (parseFloat(f.montant_ht) || 0), 0);
+        const tTVA = source.reduce((s: number, f: any) => s + (parseFloat(f.tva) || 0), 0);
+        const tTTC = source.reduce((s: number, f: any) => s + (parseFloat(f.montant_ttc) || 0), 0);
+        const label = selectedFacts.length > 0 ? `${selectedFacts.length} sélectionnée(s)` : `${filteredFacts.length} facture(s)`;
+        const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return <>
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
+          <div className="flex gap-5">
+            <div><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Total HT</span><span className="text-sm font-bold text-slate-800">{fmt(tHT)} MAD</span></div>
+            <div><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">TVA</span><span className="text-sm font-bold text-amber-700">{fmt(tTVA)} MAD</span></div>
+            <div><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Total TTC</span><span className="text-sm font-black text-blue-700">{fmt(tTTC)} MAD</span></div>
+          </div>
+        </>;
+      })()}
+    </div>
     <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-medium">
       📋 Format import XLS — colonnes dans l'ordre :
       <span className="font-black ml-1">Date | N° Facture | Client | Départ | Arrivée | Montant HT | TVA | Montant TTC | BL/OT | BC | Délai (J) | Date Paiement | Statut | Mode Paiement</span>
