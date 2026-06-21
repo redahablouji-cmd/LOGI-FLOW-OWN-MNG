@@ -1061,7 +1061,7 @@ const handleGenerateInvoicePDF = () => {
     const getFieldValue = (f: any, field: string): string => {
       const ht = parseFloat(f.montant_ht) || 0;
       const tva = parseFloat(f.tva) || 0;
-      const tvaRate = ht > 0 ? ((tva / ht) * 100).toFixed(0) + '%' : '0%';
+      const tvaRate = ht !== 0 ? (Math.abs(tva / ht) * 100).toFixed(0) + '%' : '0%';
       switch (field) {
         case 'date': return f.date || '';
         case 'designation': return `${f.depart || ''} → ${f.arrivee || ''}`;
