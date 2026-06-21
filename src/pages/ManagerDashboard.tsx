@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp, FolderOpen, Check } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp, FolderOpen, Check, Landmark } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
@@ -23,7 +23,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements'| 'bank_rip' | 'bank_releve' | 'bank_base_rip' | 'bank_virement' | 'bank_etat_explicatif' | 'bank_tva';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -76,7 +76,8 @@ export default function ManagerDashboard() {
   const [companyId,        setCompanyId]        = useState('');
   const [managerId,        setManagerId]        = useState('');
   const [loadingCompany,   setLoadingCompany]   = useState(true);
-  const [activeTab,        setActiveTab]        = useState<ManagerTab>('staff');
+  const [activeTab, setActiveTab] = useState<ManagerTab>('dashboard');
+  const [bankOpen, setBankOpen] = useState(false);
   const [sidebarOpen,      setSidebarOpen]      = useState(false);
   const [fleetDrivers,     setFleetDrivers]     = useState<any[]>([]);
   const [loadingDrivers,   setLoadingDrivers]   = useState(false);
@@ -1836,21 +1837,30 @@ const handleGenerateInvoicePDF = () => {
   };
 
   const navItems = [
-  { id: 'staff',       label: 'Staff',               icon: Users },
-  { id: 'purchases',   label: 'Achats & Factures',    icon: ShoppingBag },
-  { id: 'fleetfix',    label: 'FleetFix',             icon: Wrench },
-  { id: 'suivi',       label: 'Suivi Prestation',     icon: FileText },
-  { id: 'chauffeurs',  label: 'Chauffeurs',           icon: Truck },
-  { id: 'cout_revient',label: 'Coût de Revient',      icon: TrendingUp },
-  { id: 'clients',     label: 'Clients',              icon: Users },
-  { id: 'fournisseurs',label: 'Fournisseurs',         icon: ShoppingBag },
-  { id: 'truck_docs',  label: 'Documents Camions',    icon: FolderOpen },
-  { id: 'facturation', label: 'Suivi Facturation',    icon: Receipt },
-  { id: 'devis',       label: 'Devis',                icon: FileText },
-  { id: 'bon_commande', label: 'Bon de Commande',     icon: FileText },
-  { id: 'reglements', label: 'Règlements',            icon: Check },
-  { id: 'settings', label: 'Paramètres Facture', icon: Settings },
+  { id: 'staff',         label: 'Staff',               icon: Users },
+  { id: 'purchases',     label: 'Achats & Factures',   icon: ShoppingBag },
+  { id: 'fleetfix',      label: 'FleetFix',            icon: Wrench },
+  { id: 'suivi',         label: 'Suivi Prestation',     icon: FileText },
+  { id: 'chauffeurs',    label: 'Chauffeurs',           icon: Truck },
+  { id: 'cout_revient',  label: 'Coût de Revient',     icon: TrendingUp },
+  { id: 'clients',       label: 'Clients',             icon: Users },
+  { id: 'fournisseurs',  label: 'Fournisseurs',        icon: ShoppingBag },
+  { id: 'truck_docs',    label: 'Documents Camions',   icon: FolderOpen },
+  { id: 'facturation',   label: 'Suivi Facturation',   icon: Receipt },
+  { id: 'devis',         label: 'Devis',               icon: FileText },
+  { id: 'bon_commande',  label: 'Bon de Commande',     icon: FileText },
+  { id: 'reglements',    label: 'Règlements',          icon: Check },
+  { id: 'settings',      label: 'Paramètres Facture',  icon: Settings },
 ] as const;
+
+const bankSubItems: { id: ManagerTab; label: string }[] = [
+  { id: 'bank_rip',             label: 'RIP' },
+  { id: 'bank_releve',          label: 'Relevé Bancaire' },
+  { id: 'bank_base_rip',        label: 'Base RIP FRN / PRT' },
+  { id: 'bank_virement',        label: 'Virement' },
+  { id: 'bank_etat_explicatif', label: 'État Explicatif' },
+  { id: 'bank_tva',             label: 'TVA' },
+];
 
   const suiviFields = [
     { label: 'Date',                  key: 'date',           type: 'date'   },
@@ -1931,16 +1941,47 @@ const handleGenerateInvoicePDF = () => {
                 </div>
                 <nav className="flex-1 p-3 space-y-1">
                   {navItems.map(item => {
-                    const Icon = item.icon;
-                    const isActive = activeTab === item.id;
-                    return (
-                      <button key={item.id}
-                        onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                        <Icon size={18} />{item.label}
-                      </button>
-                    );
-                  })}
+  if (item.id === 'settings') {
+    // Insert Bank group before Settings
+    return (
+      <div key="bank-group">
+        {/* Bank group header */}
+        <button onClick={() => setBankOpen(p => !p)}
+          className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${bankOpen || activeTab.startsWith('bank_') ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <div className="flex items-center gap-3">
+            <Landmark size={18} />
+            <span>Banque</span>
+          </div>
+          <span className="text-xs">{bankOpen ? '▼' : '▶'}</span>
+        </button>
+        {/* Bank sub-items */}
+        {(bankOpen || activeTab.startsWith('bank_')) && (
+          <div className="ml-6 mt-1 space-y-0.5">
+            {bankSubItems.map(sub => (
+              <button key={sub.id} onClick={() => { setActiveTab(sub.id); if (sidebarOpen) setSidebarOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === sub.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
+                {sub.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Settings item */}
+        <button key={item.id} onClick={() => { setActiveTab(item.id); if (sidebarOpen) setSidebarOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer mt-1 ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <item.icon size={18} />
+          <span>{item.label}</span>
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button key={item.id} onClick={() => { setActiveTab(item.id); if (sidebarOpen) setSidebarOpen(false); }}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50'}`}>
+      <item.icon size={18} />
+      <span>{item.label}</span>
+    </button>
+  );
+})}
                 </nav>
                 <div className="p-4 border-t border-slate-800">
                   <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Espace Gestionnaire</p>
