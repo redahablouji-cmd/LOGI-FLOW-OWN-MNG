@@ -23,7 +23,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -174,6 +174,21 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [savingWizard, setSavingWizard] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [showAvoirForm, setShowAvoirForm] = useState(false);
+  // Devis state
+  const [devisList, setDevisList] = useState<any[]>([]);
+  const [loadingDevis, setLoadingDevis] = useState(false);
+  const [showDevisForm, setShowDevisForm] = useState(false);
+  const [editingDevis, setEditingDevis] = useState<any>(null);
+  const [selectedDevis, setSelectedDevis] = useState<string[]>([]);
+  const [devisFilter, setDevisFilter] = useState({ client: '', dateFrom: '', dateTo: '', statut: '' });
+  const [devisTemplateId, setDevisTemplateId] = useState('');
+  const emptyDevisForm = {
+    numero_devis: '', date: new Date().toISOString().split('T')[0], client: '',
+    personne_contact: '', type_vehicule: '', designation: '', depart: '', arrivee: '',
+    quantite: '1', prix_unitaire_ht: '', tva_rate: '20', montant_ht: '', tva_amount: '', montant_ttc: '',
+    observation: '', statut: 'en_attente',
+  };
+  const [devisForm, setDevisForm] = useState<any>(emptyDevisForm);
   const [avoirForm, setAvoirForm] = useState({ date: new Date().toISOString().split('T')[0], numero_facture: '', client: '', depart: '', arrivee: '', montant_ht: '', tva: '', montant_ttc: '', observation: '' });
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
@@ -1314,6 +1329,171 @@ const handleGenerateInvoicePDF = () => {
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
   };
+  // ── Devis CRUD ──
+  const fetchDevis = async () => {
+    if (!companyId) return;
+    setLoadingDevis(true);
+    const { data } = await supabase.from('devis').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setDevisList(data || []);
+    setLoadingDevis(false);
+  };
+
+  const handleSaveDevis = async () => {
+    const ht = parseFloat(devisForm.prix_unitaire_ht) || 0;
+    const qty = parseFloat(devisForm.quantite) || 1;
+    const rate = parseFloat(devisForm.tva_rate) || 0;
+    const montantHT = ht * qty;
+    const tvaAmt = parseFloat((montantHT * rate / 100).toFixed(2));
+    const ttc = montantHT + tvaAmt;
+
+    const payload = {
+      company_id: companyId,
+      numero_devis: devisForm.numero_devis || null,
+      date: devisForm.date || null,
+      client: devisForm.client || null,
+      personne_contact: devisForm.personne_contact || null,
+      type_vehicule: devisForm.type_vehicule || null,
+      designation: devisForm.designation || null,
+      depart: devisForm.depart || null,
+      arrivee: devisForm.arrivee || null,
+      quantite: qty,
+      prix_unitaire_ht: ht,
+      tva_rate: rate,
+      montant_ht: montantHT,
+      tva_amount: tvaAmt,
+      montant_ttc: ttc,
+      observation: devisForm.observation || null,
+      statut: devisForm.statut || 'en_attente',
+    };
+
+    if (editingDevis) {
+      const { error } = await supabase.from('devis').update(payload).eq('id', editingDevis.id);
+      if (!error) { toast.success("Devis modifié."); setEditingDevis(null); }
+      else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from('devis').insert(payload);
+      if (!error) toast.success("Devis ajouté.");
+      else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowDevisForm(false);
+    setDevisForm(emptyDevisForm);
+    fetchDevis();
+  };
+
+  const handleDeleteDevis = async (id: string) => {
+    if (!confirm('Supprimer ce devis ?')) return;
+    await supabase.from('devis').delete().eq('id', id);
+    toast.success("Supprimé.");
+    fetchDevis();
+  };
+
+  const filteredDevis = devisList.filter((d: any) => {
+    if (devisFilter.client && !d.client?.toLowerCase().includes(devisFilter.client.toLowerCase())) return false;
+    if (devisFilter.statut && d.statut !== devisFilter.statut) return false;
+    if (devisFilter.dateFrom && (d.date || '') < devisFilter.dateFrom) return false;
+    if (devisFilter.dateTo && (d.date || '') > devisFilter.dateTo) return false;
+    return true;
+  });
+
+  const handleGenerateDevisPDF = () => {
+    const selected = devisList.filter((d: any) => selectedDevis.includes(d.id));
+    if (selected.length === 0) return;
+
+    const s = invoiceSettings;
+    const totalHT = selected.reduce((sum: number, d: any) => sum + (parseFloat(d.montant_ht) || 0), 0);
+    const totalTVA = selected.reduce((sum: number, d: any) => sum + (parseFloat(d.tva_amount) || 0), 0);
+    const totalTTC = selected.reduce((sum: number, d: any) => sum + (parseFloat(d.montant_ttc) || 0), 0);
+    const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const clientName = selected[0]?.client || '';
+    const clientData = clientsList.find((c: any) => c.nom === clientName);
+    const clientAddress = clientData?.adresse || '';
+    const clientICE = clientData?.ice || '';
+
+    const ROWS_PER_PAGE = 15;
+    const pages: { rows: any[]; isFirst: boolean; isLast: boolean; num: number }[] = [];
+    const remaining = [...selected];
+    let pageNum = 0;
+    while (remaining.length > 0) {
+      pageNum++;
+      const isFirst = pageNum === 1;
+      const pageRows = remaining.splice(0, ROWS_PER_PAGE);
+      pages.push({ rows: pageRows, isFirst, isLast: remaining.length === 0, num: pageNum });
+    }
+    const totalPages = pages.length;
+
+    const theadHTML = `<thead><tr>
+      <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 6px;text-transform:uppercase;border:1px solid #1F3864;width:10%">Type</th>
+      <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 6px;text-transform:uppercase;border:1px solid #1F3864;width:28%">Désignation</th>
+      <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 6px;text-transform:uppercase;border:1px solid #1F3864;width:10%">Quantité</th>
+      <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 6px;text-transform:uppercase;border:1px solid #1F3864;width:18%">Prix unitaire HT</th>
+      <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 6px;text-transform:uppercase;border:1px solid #1F3864;width:10%">TVA %</th>
+      <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 6px;text-transform:uppercase;border:1px solid #1F3864;width:16%">Montant HT</th>
+    </tr></thead>`;
+
+    const pagesHTML = pages.map(p => {
+      const rowsHtml = p.rows.map((d: any, i: number) => {
+        const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
+        return `<tr>
+          <td style="padding:6px 8px;border:1px solid #e5e5e5;text-align:center;font-size:11px;background:${bg}">${d.type_vehicule || ''}</td>
+          <td style="padding:6px 8px;border:1px solid #e5e5e5;text-align:left;font-size:11px;background:${bg}">${d.designation || `${d.depart||''} → ${d.arrivee||''}`}</td>
+          <td style="padding:6px 8px;border:1px solid #e5e5e5;text-align:center;font-size:11px;background:${bg}">${d.quantite || 1}</td>
+          <td style="padding:6px 8px;border:1px solid #e5e5e5;text-align:right;font-size:11px;background:${bg}">${fmt(parseFloat(d.prix_unitaire_ht)||0)}</td>
+          <td style="padding:6px 8px;border:1px solid #e5e5e5;text-align:center;font-size:11px;background:${bg}">${d.tva_rate||0}%</td>
+          <td style="padding:6px 8px;border:1px solid #e5e5e5;text-align:right;font-size:11px;background:${bg}">${fmt(parseFloat(d.montant_ht)||0)}</td>
+        </tr>`;
+      }).join('');
+      const maxRows = p.isFirst ? ROWS_PER_PAGE : ROWS_PER_PAGE + 6;
+      const emptyCount = Math.max(0, (p.isLast ? maxRows - 4 : maxRows) - p.rows.length);
+      const emptyHtml = Array.from({ length: emptyCount }, (_, i) => {
+        const bg = (p.rows.length + i) % 2 === 1 ? '#F2F2F2' : '#fff';
+        return `<tr>${Array(6).fill(`<td style="padding:6px 8px;border:1px solid #e5e5e5;font-size:11px;background:${bg}">&nbsp;</td>`).join('')}</tr>`;
+      }).join('');
+
+      return `<div style="width:210mm;min-height:297mm;padding:${p.isFirst?'35mm':'15mm'} 12mm 15mm 12mm;position:relative;font-family:Arial,sans-serif;page-break-after:${p.isLast?'auto':'always'}">
+        <div style="position:absolute;top:8mm;right:12mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
+        ${p.isFirst ? `
+          <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+            <div style="border:1px solid #bbb;border-left:4px solid #D4A017;padding:12px 18px;min-width:300px;background:#FAFAFA;border-radius:0 4px 4px 0">
+              <div style="font-size:13px;font-weight:700;color:#1e293b">${clientName}</div>
+              ${clientAddress?`<div style="font-size:10px;color:#555;margin-top:3px">${clientAddress}</div>`:''}
+              ${clientICE?`<div style="font-size:10px;color:#555;margin-top:2px">ICE: ${clientICE}</div>`:''}
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+            <tr>
+              <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 8px;border:1px solid #1F3864">Devis N°</th>
+              <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 8px;border:1px solid #1F3864">Date</th>
+              <th style="background:#1F3864;color:#fff;font-size:10px;font-weight:700;text-align:center;padding:7px 8px;border:1px solid #1F3864">Personne à contacter</th>
+            </tr>
+            <tr>
+              <td style="text-align:center;padding:7px 8px;font-size:11px;border:1px solid #ddd">${selected[0]?.numero_devis||''}</td>
+              <td style="text-align:center;padding:7px 8px;font-size:11px;border:1px solid #ddd">${selected[0]?.date||''}</td>
+              <td style="text-align:center;padding:7px 8px;font-size:11px;border:1px solid #ddd">${selected[0]?.personne_contact||''}</td>
+            </tr>
+          </table>
+        `:''}
+        <table style="width:100%;border-collapse:collapse">${theadHTML}<tbody>${rowsHtml}${emptyHtml}</tbody></table>
+        ${p.isLast?`
+          <div style="display:flex;justify-content:flex-end;margin-top:0">
+            <div style="width:280px;border:1px solid #ddd">
+              <div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:11px;font-weight:700;border-bottom:1px solid #eee"><span>Sous-total HT</span><span>${fmt(totalHT)} MAD</span></div>
+              <div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:11px;font-weight:700;border-bottom:1px solid #eee"><span>TVA</span><span>${fmt(totalTVA)} MAD</span></div>
+              <div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:11px;font-weight:700;border-bottom:1px solid #eee"><span>Remise</span><span>0,00 MAD</span></div>
+              <div style="display:flex;justify-content:space-between;padding:7px 12px;font-size:13px;font-weight:900;background:#1F3864;color:#fff"><span>TOTAL TTC</span><span>${fmt(totalTTC)} MAD</span></div>
+            </div>
+          </div>
+          <div style="margin-top:14px;font-size:10px;color:#7F7F7F"><strong style="color:#333">Arrêté le présent devis à la somme de :</strong> ${numberToWords(totalTTC)}</div>
+        `:''}
+      </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+      <style>*{margin:0;padding:0;box-sizing:border-box}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style>
+      </head><body>${pagesHTML}</body></html>`;
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -1326,6 +1506,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'clients' && companyId) fetchClients();
     if (activeTab === 'fournisseurs' && companyId) fetchFournisseurs();
     if (activeTab === 'purchases') { fetchPurchases(); if (companyId) fetchFournisseurs(); }
+    if (activeTab === 'devis' && companyId) { fetchDevis(); fetchClients(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
       supabase.from('invoice_templates').select('*')
@@ -1376,6 +1557,7 @@ const handleGenerateInvoicePDF = () => {
   { id: 'fournisseurs',label: 'Fournisseurs',         icon: ShoppingBag },
   { id: 'truck_docs',  label: 'Documents Camions',    icon: FolderOpen },
   { id: 'facturation', label: 'Suivi Facturation',    icon: Receipt },
+  { id: 'devis',       label: 'Devis',                icon: FileText },
   { id: 'settings', label: 'Paramètres Facture', icon: Settings },
 ] as const;
 
@@ -2632,6 +2814,90 @@ const handleGenerateInvoicePDF = () => {
     )}
   </div>
 )}
+{activeTab === 'devis' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-amber-500 text-white mb-2">
+                    <FileText className="w-3.5 h-3.5" /> Devis
+                  </span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Gestion des Devis</h1>
+                  <p className="text-sm text-slate-400 mt-1">{filteredDevis.length} devis — {selectedDevis.length} sélectionnés</p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={fetchDevis} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => { if (!filteredDevis.length) return; exportToXLS(filteredDevis.map((d:any) => ({ 'Date':d.date,'N° Devis':d.numero_devis,'Client':d.client,'Contact':d.personne_contact,'Type':d.type_vehicule,'Désignation':d.designation,'Départ':d.depart,'Arrivée':d.arrivee,'Qté':d.quantite,'Prix Unit. HT':d.prix_unitaire_ht,'TVA %':d.tva_rate,'Montant HT':d.montant_ht,'TVA':d.tva_amount,'TTC':d.montant_ttc,'Observation':d.observation,'Statut':d.statut })),'devis'); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                  {selectedDevis.length > 0 && (
+                    <button onClick={handleGenerateDevisPDF}
+                      className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF ({selectedDevis.length})</button>
+                  )}
+                  <button onClick={() => { setDevisForm(emptyDevisForm); setEditingDevis(null); setShowDevisForm(true); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau Devis</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+                <input type="text" placeholder="Filtrer..." value={devisFilter.client} onChange={e => setDevisFilter(p => ({...p, client: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
+                <input type="date" value={devisFilter.dateFrom} onChange={e => setDevisFilter(p => ({...p, dateFrom: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
+                <input type="date" value={devisFilter.dateTo} onChange={e => setDevisFilter(p => ({...p, dateTo: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
+                <select value={devisFilter.statut} onChange={e => setDevisFilter(p => ({...p, statut: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                  <option value="">Tous</option><option value="en_attente">En attente</option><option value="accepté">Accepté</option><option value="refusé">Refusé</option>
+                </select></div>
+              <button onClick={() => setDevisFilter({ client: '', dateFrom: '', dateTo: '', statut: '' })} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+            </div>
+
+            {/* Table */}
+            {loadingDevis ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[1200px]">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-3 w-8"><input type="checkbox" checked={selectedDevis.length === filteredDevis.length && filteredDevis.length > 0} onChange={e => setSelectedDevis(e.target.checked ? filteredDevis.map((d:any)=>d.id) : [])} className="accent-blue-600" /></th>
+                        {['Date','N° Devis','Client','Contact','Type','Désignation','Qté','Prix Unit. HT','TVA %','Montant HT','TTC','Statut','Actions'].map(h => (
+                          <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredDevis.length === 0 ? (
+                        <tr><td colSpan={14} className="px-4 py-10 text-center text-sm text-slate-400">Aucun devis.</td></tr>
+                      ) : filteredDevis.map((d: any) => (
+                        <tr key={d.id} className={`hover:bg-slate-50 transition-colors ${selectedDevis.includes(d.id) ? 'bg-blue-50/50' : ''}`}>
+                          <td className="px-3 py-3"><input type="checkbox" checked={selectedDevis.includes(d.id)} onChange={e => setSelectedDevis(prev => e.target.checked ? [...prev, d.id] : prev.filter(x=>x!==d.id))} className="accent-blue-600" /></td>
+                          <td className="px-3 py-2 text-xs text-slate-700">{d.date || '—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-blue-600">{d.numero_devis || '—'}</td>
+                          <td className="px-3 py-2 text-xs font-semibold text-slate-700">{d.client || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-600">{d.personne_contact || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-600">{d.type_vehicule || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-600 max-w-[150px] truncate">{d.designation || `${d.depart||''} → ${d.arrivee||''}`}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-600">{d.quantite}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-700">{Number(d.prix_unitaire_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-500">{d.tva_rate}%</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-700">{Number(d.montant_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                          <td className="px-3 py-2 font-mono text-xs font-bold text-slate-900">{Number(d.montant_ttc||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                          <td className="px-3 py-2"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${d.statut==='accepté'?'bg-emerald-50 text-emerald-700':d.statut==='refusé'?'bg-rose-50 text-rose-700':'bg-amber-50 text-amber-700'}`}>{d.statut}</span></td>
+                          <td className="px-3 py-2 flex gap-1">
+                            <button onClick={() => { setEditingDevis(d); setDevisForm({...d, quantite:String(d.quantite), prix_unitaire_ht:String(d.prix_unitaire_ht), tva_rate:String(d.tva_rate)}); setShowDevisForm(true); }} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase cursor-pointer"><Pencil size={13} /></button>
+                            <button onClick={() => handleDeleteDevis(d.id)} className="text-[10px] font-bold text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={13} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
         )}
@@ -3332,6 +3598,102 @@ const handleGenerateInvoicePDF = () => {
             className="h-10 px-4 bg-white border border-slate-200 text-slate-500 text-sm font-bold rounded-lg cursor-pointer">
             Annuler
           </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Devis Form Modal */}
+<AnimatePresence>
+  {showDevisForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingDevis ? 'Modifier le Devis' : 'Nouveau Devis'}</h3>
+          <button onClick={() => { setShowDevisForm(false); setEditingDevis(null); setDevisForm(emptyDevisForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[
+            { label: 'Date', key: 'date', type: 'date' },
+            { label: 'N° Devis', key: 'numero_devis', type: 'text' },
+            { label: 'Personne à contacter', key: 'personne_contact', type: 'text' },
+            { label: 'Départ', key: 'depart', type: 'text' },
+            { label: 'Arrivée', key: 'arrivee', type: 'text' },
+            { label: 'Type véhicule', key: 'type_vehicule', type: 'text' },
+            { label: 'Désignation', key: 'designation', type: 'text' },
+          ].map(({ label, key, type }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type={type} value={devisForm[key] || ''} onChange={e => setDevisForm((p: any) => ({ ...p, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+          {/* Client dropdown */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+            <select value={devisForm.client || ''} onChange={e => setDevisForm((p: any) => ({ ...p, client: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">— Sélectionner —</option>
+              {clientsList.map((c: any) => (<option key={c.id} value={c.nom}>{c.nom}</option>))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantité</label>
+            <input type="number" value={devisForm.quantite || '1'} onChange={e => setDevisForm((p: any) => ({ ...p, quantite: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prix unitaire HT</label>
+            <input type="number" value={devisForm.prix_unitaire_ht || ''} placeholder="0"
+              onChange={e => {
+                const ht = parseFloat(e.target.value) || 0;
+                const qty = parseFloat(devisForm.quantite) || 1;
+                const rate = parseFloat(devisForm.tva_rate) || 0;
+                const montant = ht * qty;
+                const tva = parseFloat((montant * rate / 100).toFixed(2));
+                setDevisForm((p: any) => ({ ...p, prix_unitaire_ht: e.target.value, montant_ht: String(montant.toFixed(2)), tva_amount: String(tva), montant_ttc: String((montant + tva).toFixed(2)) }));
+              }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (%)</label>
+            <input type="number" value={devisForm.tva_rate || ''} placeholder="20"
+              onChange={e => {
+                const rate = parseFloat(e.target.value) || 0;
+                const ht = parseFloat(devisForm.prix_unitaire_ht) || 0;
+                const qty = parseFloat(devisForm.quantite) || 1;
+                const montant = ht * qty;
+                const tva = parseFloat((montant * rate / 100).toFixed(2));
+                setDevisForm((p: any) => ({ ...p, tva_rate: e.target.value, tva_amount: String(tva), montant_ttc: String((montant + tva).toFixed(2)) }));
+              }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant TTC (auto)</label>
+            <input type="number" value={devisForm.montant_ttc || ''} readOnly
+              className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 cursor-not-allowed" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</label>
+            <select value={devisForm.statut || 'en_attente'} onChange={e => setDevisForm((p: any) => ({ ...p, statut: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="en_attente">En attente</option><option value="accepté">Accepté</option><option value="refusé">Refusé</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation</label>
+            <input type="text" value={devisForm.observation || ''} onChange={e => setDevisForm((p: any) => ({ ...p, observation: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveDevis} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+            {editingDevis ? 'Enregistrer' : 'Ajouter le devis'}
+          </button>
+          <button onClick={() => { setShowDevisForm(false); setEditingDevis(null); setDevisForm(emptyDevisForm); }}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
         </div>
       </motion.div>
     </div>
