@@ -1064,7 +1064,7 @@ const handleGenerateInvoicePDF = () => {
       const tvaRate = ht !== 0 ? (Math.abs(tva / ht) * 100).toFixed(0) + '%' : '0%';
       switch (field) {
         case 'date': return f.date || '';
-        case 'designation': return `${f.depart || ''} → ${f.arrivee || ''}`;
+        case 'designation': return isAvoir && f.observation ? f.observation : `${f.depart || ''} → ${f.arrivee || ''}`;
         case 'type': return f.type || '';
         case 'bl_ot': return f.bl_ot || f.ot_bl_bs_be || '';
         case 'bc': return f.bc || '';
@@ -1151,7 +1151,7 @@ const handleGenerateInvoicePDF = () => {
 
     const pagesHTML = pages.map(p => {
       // Observation row (first row, first page only, spans all columns)
-      const obsText = p.isFirst && selected[0]?.observation ? selected[0].observation : '';
+      const obsText = p.isFirst && !isAvoir && selected[0]?.observation ? selected[0].observation : '';
       const obsRow = obsText
         ? `<tr><td colspan="${columns.length}" style="padding:8px 10px;border:1px solid #ddd;font-size:11px;font-weight:700;font-style:italic;background:#fff;text-align:center">${obsText}</td></tr>`
         : '';
