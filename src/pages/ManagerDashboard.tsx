@@ -2883,6 +2883,13 @@ const handleGenerateInvoicePDF = () => {
           className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-48" />
       </div>
       <div>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Facture</label>
+        <input type="text" placeholder="Rechercher..."
+          value={(factFilter as any).numero || ''}
+          onChange={e => setFactFilter(p => ({ ...p, numero: e.target.value }))}
+          className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" />
+      </div>
+      <div>
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
         <input type="date" value={factFilter.dateFrom}
           onChange={e => setFactFilter(p => ({ ...p, dateFrom: e.target.value }))}
@@ -3207,12 +3214,6 @@ const handleGenerateInvoicePDF = () => {
                   value={factFilter.client}
                   onChange={e => setFactFilter(p => ({ ...p, client: e.target.value }))}
                   className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-48" />
-              </div>
-              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Facture</label>
-                <input type="text" placeholder="Rechercher..."
-                  value={(factFilter as any).numero || ''}
-                  onChange={e => setFactFilter(p => ({ ...p, numero: e.target.value }))}
-                  className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" />
               </div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
                 <input type="date" value={devisFilter.dateFrom} onChange={e => setDevisFilter(p => ({...p, dateFrom: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
