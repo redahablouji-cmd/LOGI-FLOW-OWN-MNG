@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp, FolderOpen } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp, FolderOpen, Check } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
@@ -23,7 +23,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -204,6 +204,17 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     observation: '', statut: 'en_attente',
   };
   const [bcForm, setBcForm] = useState<any>(emptyBCForm);
+  // Règlement state
+  const [reglementsList, setReglementsList] = useState<any[]>([]);
+  const [loadingReglements, setLoadingReglements] = useState(false);
+  const [showReglementForm, setShowReglementForm] = useState(false);
+  const [reglementFilter, setReglementFilter] = useState({ type: '', banque: '', dateFrom: '', dateTo: '' });
+  const [expandedReglement, setExpandedReglement] = useState<string | null>(null);
+  const [savingReglement, setSavingReglement] = useState(false);
+  const [reglementForm, setReglementForm] = useState<any>({
+    type_reglement: 'cheque', date_reglement: new Date().toISOString().split('T')[0],
+    numero: '', banque: '', date_echeance: '', recu_par: '', reference_virement: '', observation: '', scanFile: null,
+  });
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -1653,6 +1664,88 @@ const handleGenerateInvoicePDF = () => {
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
   };
+  // ── Règlement CRUD ──
+  const fetchReglements = async () => {
+    if (!companyId) return;
+    setLoadingReglements(true);
+    const { data } = await supabase.from('reglements').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setReglementsList(data || []);
+    setLoadingReglements(false);
+  };
+
+  const handleSaveReglement = async () => {
+    const selected = facturationList.filter((f: any) => selectedFacts.includes(f.id));
+    if (selected.length === 0) return;
+    setSavingReglement(true);
+
+    try {
+      // Upload scan if provided
+      let scanUrl = '';
+      let scanPath = '';
+      if (reglementForm.scanFile) {
+        const ext = reglementForm.scanFile.name.split('.').pop();
+        scanPath = `${companyId}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('reglements').upload(scanPath, reglementForm.scanFile);
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('reglements').getPublicUrl(scanPath);
+          scanUrl = urlData?.publicUrl || '';
+        }
+      }
+
+      const totalMontant = selected.reduce((s: number, f: any) => s + (parseFloat(f.montant_ttc) || 0), 0);
+      const factIds = selected.map((f: any) => f.id);
+      const factNums = selected.map((f: any) => f.numero_facture || '—');
+
+      // Insert reglement
+      const { error } = await supabase.from('reglements').insert({
+        company_id: companyId,
+        date_reglement: reglementForm.date_reglement || null,
+        type_reglement: reglementForm.type_reglement,
+        numero: reglementForm.numero || null,
+        banque: reglementForm.banque || null,
+        date_echeance: reglementForm.date_echeance || null,
+        montant_total: totalMontant,
+        recu_par: reglementForm.recu_par || null,
+        reference_virement: reglementForm.reference_virement || null,
+        observation: reglementForm.observation || null,
+        scan_url: scanUrl || null,
+        scan_path: scanPath || null,
+        facture_ids: factIds,
+        facture_numbers: factNums,
+      });
+
+      if (error) { toast.error(`Erreur: ${error.message}`); return; }
+
+      // Update all selected invoices to payé
+      for (const id of factIds) {
+        await supabase.from('suivi_facturation').update({
+          statut: 'payé',
+          date_paiement: reglementForm.date_reglement || new Date().toISOString().split('T')[0],
+          mode_paiement: reglementForm.type_reglement,
+          reglement_banque_type: reglementForm.banque || reglementForm.type_reglement,
+          reglement_numero: reglementForm.numero || reglementForm.reference_virement || '',
+        }).eq('id', id);
+      }
+
+      toast.success(`${factIds.length} facture(s) réglée(s) !`);
+      setShowReglementForm(false);
+      setSelectedFacts([]);
+      setReglementForm({ type_reglement: 'cheque', date_reglement: new Date().toISOString().split('T')[0], numero: '', banque: '', date_echeance: '', recu_par: '', reference_virement: '', observation: '', scanFile: null });
+      fetchFacturation();
+    } catch (err: any) {
+      toast.error(`Erreur: ${err.message}`);
+    } finally {
+      setSavingReglement(false);
+    }
+  };
+
+  const filteredReglements = reglementsList.filter((r: any) => {
+    if (reglementFilter.type && r.type_reglement !== reglementFilter.type) return false;
+    if (reglementFilter.banque && !r.banque?.toLowerCase().includes(reglementFilter.banque.toLowerCase())) return false;
+    if (reglementFilter.dateFrom && (r.date_reglement || '') < reglementFilter.dateFrom) return false;
+    if (reglementFilter.dateTo && (r.date_reglement || '') > reglementFilter.dateTo) return false;
+    return true;
+  });
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -1667,6 +1760,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'purchases') { fetchPurchases(); if (companyId) fetchFournisseurs(); }
     if (activeTab === 'devis' && companyId) { fetchDevis(); fetchClients(); }
     if (activeTab === 'bon_commande' && companyId) { fetchBC(); fetchFournisseurs(); }
+    if (activeTab === 'reglements' && companyId) { fetchReglements(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
       supabase.from('invoice_templates').select('*')
@@ -1719,6 +1813,7 @@ const handleGenerateInvoicePDF = () => {
   { id: 'facturation', label: 'Suivi Facturation',    icon: Receipt },
   { id: 'devis',       label: 'Devis',                icon: FileText },
   { id: 'bon_commande', label: 'Bon de Commande',     icon: FileText },
+  { id: 'reglements', label: 'Règlements',            icon: Check },
   { id: 'settings', label: 'Paramètres Facture', icon: Settings },
 ] as const;
 
@@ -2201,6 +2296,27 @@ const handleGenerateInvoicePDF = () => {
               </div>
             </div>
           )}
+          {/* Totals Bar */}
+            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-6 items-center">
+              {(() => {
+                const source = selectedFacts.length > 0
+                  ? facturationList.filter((f: any) => selectedFacts.includes(f.id))
+                  : filteredFacts;
+                const tHT = source.reduce((s: number, f: any) => s + (parseFloat(f.montant_ht) || 0), 0);
+                const tTVA = source.reduce((s: number, f: any) => s + (parseFloat(f.tva) || 0), 0);
+                const tTTC = source.reduce((s: number, f: any) => s + (parseFloat(f.montant_ttc) || 0), 0);
+                const label = selectedFacts.length > 0 ? `${selectedFacts.length} sélectionnée(s)` : `${filteredFacts.length} facture(s)`;
+                const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return <>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
+                  <div className="flex gap-5">
+                    <div><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Total HT</span><span className="text-sm font-bold text-slate-800">{fmt(tHT)} MAD</span></div>
+                    <div><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">TVA</span><span className="text-sm font-bold text-amber-700">{fmt(tTVA)} MAD</span></div>
+                    <div><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Total TTC</span><span className="text-sm font-black text-blue-700">{fmt(tTTC)} MAD</span></div>
+                  </div>
+                </>;
+              })()}
+            </div>
 
           {/* TAB: SUIVI FACTURATION */}
           {activeTab === 'suivi' && (
@@ -2719,6 +2835,10 @@ const handleGenerateInvoicePDF = () => {
                     className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                     <FileText size={14} /> Relance Impayé
                   </button>
+                  <button onClick={() => setShowReglementForm(true)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Check size={14} /> Réglé
+                  </button>
                 </div>
               )}
           <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingFacts ? 'bg-slate-600 opacity-60' : 'bg-amber-600 hover:bg-amber-700'} text-white`}>
@@ -3214,6 +3334,108 @@ const handleGenerateInvoicePDF = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+        {activeTab === 'reglements' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-emerald-500 text-white mb-2">
+                    <Check className="w-3.5 h-3.5" /> Règlements
+                  </span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Suivi des Règlements</h1>
+                  <p className="text-sm text-slate-400 mt-1">{filteredReglements.length} règlements</p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={fetchReglements} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => { if (!filteredReglements.length) return; exportToXLS(filteredReglements.map((r:any) => ({
+                    'Date': r.date_reglement, 'Type': r.type_reglement, 'N°': r.numero,
+                    'Banque': r.banque, 'Échéance': r.date_echeance, 'Montant TTC': r.montant_total,
+                    'Reçu par': r.recu_par, 'Réf. Virement': r.reference_virement,
+                    'Factures': (r.facture_numbers||[]).join(', '), 'Observation': r.observation,
+                  })), 'reglements'); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                </div>
+              </div>
+            </div>
+            {/* Filters */}
+            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</label>
+                <select value={reglementFilter.type} onChange={e => setReglementFilter(p => ({...p,type:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                  <option value="">Tous</option><option value="cheque">Chèque</option><option value="effet">Effet</option><option value="virement">Virement</option><option value="espece">Espèce</option>
+                </select></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
+                <input type="text" placeholder="Filtrer..." value={reglementFilter.banque} onChange={e => setReglementFilter(p => ({...p,banque:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
+                <input type="date" value={reglementFilter.dateFrom} onChange={e => setReglementFilter(p => ({...p,dateFrom:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
+                <input type="date" value={reglementFilter.dateTo} onChange={e => setReglementFilter(p => ({...p,dateTo:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+              <button onClick={() => setReglementFilter({type:'',banque:'',dateFrom:'',dateTo:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+            </div>
+            {/* Table */}
+            {loadingReglements ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+              <div className="space-y-3">
+                {filteredReglements.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">Aucun règlement.</div>
+                ) : filteredReglements.map((r: any) => (
+                  <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    {/* Header row — click to expand */}
+                    <div onClick={() => setExpandedReglement(prev => prev === r.id ? null : r.id)}
+                      className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${r.type_reglement==='cheque'?'bg-blue-50 text-blue-700':r.type_reglement==='effet'?'bg-amber-50 text-amber-700':r.type_reglement==='virement'?'bg-purple-50 text-purple-700':'bg-emerald-50 text-emerald-700'}`}>
+                          {r.type_reglement}
+                        </span>
+                        <div>
+                          <span className="text-sm font-bold text-slate-800">{r.numero || r.reference_virement || '—'}</span>
+                          <span className="text-xs text-slate-400 ml-2">{r.banque || r.recu_par || ''}</span>
+                        </div>
+                        <span className="text-xs text-slate-500">{r.date_reglement}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm font-black text-emerald-700">{Number(r.montant_total||0).toLocaleString('fr-MA',{minimumFractionDigits:2})} MAD</span>
+                        <span className="text-xs text-slate-400">{(r.facture_numbers||[]).length} facture(s)</span>
+                        <span className="text-slate-400">{expandedReglement === r.id ? '▼' : '▶'}</span>
+                      </div>
+                    </div>
+                    {/* Expanded details */}
+                    {expandedReglement === r.id && (
+                      <div className="px-5 pb-5 border-t border-slate-100">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 mb-4">
+                          {r.date_echeance && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Échéance</span><span className="text-xs font-bold text-slate-700">{r.date_echeance}</span></div>}
+                          {r.banque && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Banque</span><span className="text-xs font-bold text-slate-700">{r.banque}</span></div>}
+                          {r.recu_par && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Reçu par</span><span className="text-xs font-bold text-slate-700">{r.recu_par}</span></div>}
+                          {r.observation && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Observation</span><span className="text-xs text-slate-700">{r.observation}</span></div>}
+                        </div>
+                        {/* Scan */}
+                        {r.scan_url && (
+                          <div className="mb-4">
+                            <span className="text-[9px] font-black text-slate-400 uppercase block mb-2">Scan du règlement</span>
+                            {r.scan_url.endsWith('.pdf') ? (
+                              <a href={r.scan_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 font-bold hover:underline">📄 Ouvrir le PDF</a>
+                            ) : (
+                              <img src={r.scan_url} alt="Scan" className="max-w-sm rounded-lg border border-slate-200 shadow-sm" />
+                            )}
+                          </div>
+                        )}
+                        {/* Factures linked */}
+                        <div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase block mb-2">Factures réglées</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(r.facture_numbers||[]).map((num: string, i: number) => (
+                              <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                                {num}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -4095,6 +4317,154 @@ const handleGenerateInvoicePDF = () => {
             {editingDevis ? 'Enregistrer' : 'Ajouter le devis'}
           </button>
           <button onClick={() => { setShowDevisForm(false); setEditingDevis(null); setDevisForm(emptyDevisForm); }}
+            className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Règlement Form Modal */}
+<AnimatePresence>
+  {showReglementForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center text-white"><Check size={20} /></div>
+            <div>
+              <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Règlement</h3>
+              <p className="text-[10px] text-slate-500 mt-0.5">{selectedFacts.length} facture(s) sélectionnée(s) — {facturationList.filter((f:any) => selectedFacts.includes(f.id)).reduce((s:number,f:any) => s+(parseFloat(f.montant_ttc)||0), 0).toLocaleString('fr-MA',{minimumFractionDigits:2})} MAD</p>
+            </div>
+          </div>
+          <button onClick={() => setShowReglementForm(false)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Type de règlement */}
+          <div className="sm:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type de règlement</label>
+            <div className="flex gap-2 mt-1">
+              {[
+                { value: 'cheque', label: 'Chèque' },
+                { value: 'effet', label: 'Effet' },
+                { value: 'virement', label: 'Virement' },
+                { value: 'espece', label: 'Espèce' },
+              ].map(t => (
+                <button key={t.value} onClick={() => setReglementForm((p: any) => ({ ...p, type_reglement: t.value }))}
+                  className={`flex-1 h-9 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer border-2 transition-all ${reglementForm.type_reglement === t.value ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Date */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de règlement</label>
+            <input type="date" value={reglementForm.date_reglement}
+              onChange={e => setReglementForm((p: any) => ({ ...p, date_reglement: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          {/* Chèque / Effet fields */}
+          {(reglementForm.type_reglement === 'cheque' || reglementForm.type_reglement === 'effet') && (
+            <>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  N° {reglementForm.type_reglement === 'cheque' ? 'Chèque' : 'Effet'}
+                </label>
+                <input type="text" value={reglementForm.numero} placeholder="N°..."
+                  onChange={e => setReglementForm((p: any) => ({ ...p, numero: e.target.value }))}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
+                <input type="text" value={reglementForm.banque} placeholder="Attijariwafa, BMCE..."
+                  onChange={e => setReglementForm((p: any) => ({ ...p, banque: e.target.value }))}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+              </div>
+            </>
+          )}
+
+          {/* Effet: date d'échéance */}
+          {reglementForm.type_reglement === 'effet' && (
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date d'échéance</label>
+              <input type="date" value={reglementForm.date_echeance}
+                onChange={e => setReglementForm((p: any) => ({ ...p, date_echeance: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+            </div>
+          )}
+
+          {/* Virement fields */}
+          {reglementForm.type_reglement === 'virement' && (
+            <>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence virement</label>
+                <input type="text" value={reglementForm.reference_virement}
+                  onChange={e => setReglementForm((p: any) => ({ ...p, reference_virement: e.target.value }))}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
+                <input type="text" value={reglementForm.banque}
+                  onChange={e => setReglementForm((p: any) => ({ ...p, banque: e.target.value }))}
+                  className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+              </div>
+            </>
+          )}
+
+          {/* Espèce fields */}
+          {reglementForm.type_reglement === 'espece' && (
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reçu par</label>
+              <input type="text" value={reglementForm.recu_par}
+                onChange={e => setReglementForm((p: any) => ({ ...p, recu_par: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+            </div>
+          )}
+
+          {/* Observation */}
+          <div className="sm:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation</label>
+            <input type="text" value={reglementForm.observation}
+              onChange={e => setReglementForm((p: any) => ({ ...p, observation: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          {/* Scan upload */}
+          <div className="sm:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Scan du règlement (image ou PDF)</label>
+            <input type="file" accept="image/*,.pdf"
+              onChange={e => setReglementForm((p: any) => ({ ...p, scanFile: e.target.files?.[0] || null }))}
+              className="w-full mt-1 text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" />
+            {reglementForm.scanFile && (
+              <p className="mt-1 text-[10px] text-emerald-600 font-bold">{reglementForm.scanFile.name}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Factures being paid */}
+        <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+          <p className="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-2">Factures à régler :</p>
+          <div className="flex flex-wrap gap-1.5">
+            {facturationList.filter((f:any) => selectedFacts.includes(f.id)).map((f:any) => (
+              <span key={f.id} className="text-[10px] bg-white border border-emerald-200 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                {f.numero_facture || '—'} — {f.client} — {Number(f.montant_ttc||0).toLocaleString('fr-MA',{minimumFractionDigits:2})} MAD
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveReglement} disabled={savingReglement}
+            className="flex-1 h-10 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-black rounded-lg cursor-pointer flex items-center justify-center gap-2">
+            {savingReglement ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {savingReglement ? 'Enregistrement...' : 'Régler les factures'}
+          </button>
+          <button onClick={() => setShowReglementForm(false)}
             className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
         </div>
       </motion.div>
