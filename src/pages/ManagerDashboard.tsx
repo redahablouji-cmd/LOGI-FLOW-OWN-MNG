@@ -1939,7 +1939,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="p-4 border-b border-slate-800">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Navigation</p>
                 </div>
-                <nav className="flex-1 p-3 space-y-1">
+                <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
                   {navItems.map(item => {
   if (item.id === 'settings') {
     // Insert Bank group before Settings
