@@ -2827,6 +2827,51 @@ const handleGenerateInvoicePDF = () => {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={fetchDevis} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Upload size={14} /> Importer XLS
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const buffer = await file.arrayBuffer();
+                        const wb = XLSX.read(buffer, { type: 'array' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        const dataRows = rawRows.slice(1).filter((r: any[]) => r.length > 0 && (r[0] || r[1] || r[2]));
+                        const records = dataRows.map((r: any[]) => {
+                          const qty = parseFloat(r[8]) || 1;
+                          const prixHT = parseFloat(r[9]) || 0;
+                          const tvaRate = parseFloat(r[10]) || 0;
+                          const montantHT = qty * prixHT;
+                          const tvaAmt = parseFloat((montantHT * tvaRate / 100).toFixed(2));
+                          return {
+                            company_id: companyId,
+                            date: r[0] ? String(r[0]) : null,
+                            numero_devis: String(r[1] || '').trim() || null,
+                            client: String(r[2] || '').trim() || null,
+                            personne_contact: String(r[3] || '').trim() || null,
+                            type_vehicule: String(r[4] || '').trim() || null,
+                            designation: String(r[5] || '').trim() || null,
+                            depart: String(r[6] || '').trim() || null,
+                            arrivee: String(r[7] || '').trim() || null,
+                            quantite: qty,
+                            prix_unitaire_ht: prixHT,
+                            tva_rate: tvaRate,
+                            montant_ht: montantHT,
+                            tva_amount: tvaAmt,
+                            montant_ttc: montantHT + tvaAmt,
+                            observation: String(r[11] || '').trim() || null,
+                            statut: String(r[12] || 'en_attente').trim(),
+                          };
+                        });
+                        if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
+                        const { error } = await supabase.from('devis').insert(records);
+                        if (!error) { toast.success(`${records.length} devis importés.`); fetchDevis(); }
+                        else toast.error(`Erreur: ${error.message}`);
+                      } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                      e.target.value = '';
+                    }} />
+                  </label>
                   <button onClick={() => { if (!filteredDevis.length) return; exportToXLS(filteredDevis.map((d:any) => ({ 'Date':d.date,'N° Devis':d.numero_devis,'Client':d.client,'Contact':d.personne_contact,'Type':d.type_vehicule,'Désignation':d.designation,'Départ':d.depart,'Arrivée':d.arrivee,'Qté':d.quantite,'Prix Unit. HT':d.prix_unitaire_ht,'TVA %':d.tva_rate,'Montant HT':d.montant_ht,'TVA':d.tva_amount,'TTC':d.montant_ttc,'Observation':d.observation,'Statut':d.statut })),'devis'); }}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                   {selectedDevis.length > 0 && (
@@ -2852,6 +2897,10 @@ const handleGenerateInvoicePDF = () => {
                   <option value="">Tous</option><option value="en_attente">En attente</option><option value="accepté">Accepté</option><option value="refusé">Refusé</option>
                 </select></div>
               <button onClick={() => setDevisFilter({ client: '', dateFrom: '', dateTo: '', statut: '' })} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+            </div>
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
+              📋 Format import XLS — colonnes dans l'ordre :
+              <span className="font-black ml-1">Date | N° Devis | Client | Contact | Type | Désignation | Départ | Arrivée | Qté | Prix Unit. HT | TVA % | Observation | Statut</span>
             </div>
 
             {/* Table */}
