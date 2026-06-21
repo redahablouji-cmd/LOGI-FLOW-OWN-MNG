@@ -210,6 +210,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [showReglementForm, setShowReglementForm] = useState(false);
   const [reglementFilter, setReglementFilter] = useState({ type: '', banque: '', dateFrom: '', dateTo: '' });
   const [expandedReglement, setExpandedReglement] = useState<string | null>(null);
+  const [editingReglement, setEditingReglement] = useState<any>(null);
+  const [showEditReglementForm, setShowEditReglementForm] = useState(false);
   const [savingReglement, setSavingReglement] = useState(false);
   const [reglementForm, setReglementForm] = useState<any>({
     type_reglement: 'cheque', date_reglement: new Date().toISOString().split('T')[0],
@@ -992,7 +994,8 @@ const handleSaveInvoiceSettings = async () => {
 };
 const filteredFacts = facturationList.filter(f => {
   if (factFilter.client  && !f.client?.toLowerCase().includes(factFilter.client.toLowerCase())) return false;
-  if (factFilter.statut  && f.statut !== factFilter.statut) return false;
+    if ((factFilter as any).numero && !f.numero_facture?.toLowerCase().includes((factFilter as any).numero.toLowerCase())) return false;
+    if (factFilter.statut  && f.statut !== factFilter.statut) return false;
   if (factFilter.dateFrom && f.date < factFilter.dateFrom) return false;
   if (factFilter.dateTo   && f.date > factFilter.dateTo)   return false;
   return true;
@@ -1744,11 +1747,40 @@ const handleGenerateInvoicePDF = () => {
 
   const filteredReglements = reglementsList.filter((r: any) => {
     if (reglementFilter.type && r.type_reglement !== reglementFilter.type) return false;
+    if ((reglementFilter as any).client && !r.client?.toLowerCase().includes((reglementFilter as any).client.toLowerCase())) return false;
+    if ((reglementFilter as any).tva_mois && r.tva_mois !== (reglementFilter as any).tva_mois) return false;
     if (reglementFilter.banque && !r.banque?.toLowerCase().includes(reglementFilter.banque.toLowerCase())) return false;
     if (reglementFilter.dateFrom && (r.date_reglement || '') < reglementFilter.dateFrom) return false;
     if (reglementFilter.dateTo && (r.date_reglement || '') > reglementFilter.dateTo) return false;
     return true;
   });
+  const handleDeleteReglement = async (r: any) => {
+    if (!confirm('Supprimer ce règlement ? Les factures liées repasseront en impayé.')) return;
+    // Revert linked invoices to impayé
+    for (const fId of (r.facture_ids || [])) {
+      await supabase.from('suivi_facturation').update({ statut: 'impayé', date_paiement: null, mode_paiement: null, reglement_banque_type: null, reglement_numero: null }).eq('id', fId);
+    }
+    await supabase.from('reglements').delete().eq('id', r.id);
+    toast.success("Règlement supprimé, factures repassées en impayé.");
+    fetchReglements(); fetchFacturation();
+  };
+
+  const handleUpdateReglement = async () => {
+    if (!editingReglement) return;
+    const { error } = await supabase.from('reglements').update({
+      date_reglement: editingReglement.date_reglement || null,
+      type_reglement: editingReglement.type_reglement,
+      numero: editingReglement.numero || null,
+      banque: editingReglement.banque || null,
+      date_echeance: editingReglement.date_echeance || null,
+      recu_par: editingReglement.recu_par || null,
+      reference_virement: editingReglement.reference_virement || null,
+      observation: editingReglement.observation || null,
+      tva_mois: editingReglement.tva_mois || null,
+    }).eq('id', editingReglement.id);
+    if (!error) { toast.success("Règlement modifié."); setShowEditReglementForm(false); setEditingReglement(null); fetchReglements(); }
+    else toast.error(`Erreur: ${error.message}`);
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -2873,7 +2905,7 @@ const handleGenerateInvoicePDF = () => {
            <option value="avoir">Avoir</option>
          </select>
        </div>
-       <button onClick={() => setFactFilter({ client: '', dateFrom: '', dateTo: '', statut: '' })}
+       <button onClick={() => setFactFilter({ client: '', numero: '', dateFrom: '', dateTo: '', statut: '' } as any)}
         className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
         Réinitialiser
       </button>
@@ -3171,7 +3203,17 @@ const handleGenerateInvoicePDF = () => {
             {/* Filters */}
             <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
-                <input type="text" placeholder="Filtrer..." value={devisFilter.client} onChange={e => setDevisFilter(p => ({...p, client: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" /></div>
+                <input type="text" placeholder="Filtrer par client..."
+                  value={factFilter.client}
+                  onChange={e => setFactFilter(p => ({ ...p, client: e.target.value }))}
+                  className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-48" />
+              </div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Facture</label>
+                <input type="text" placeholder="Rechercher..."
+                  value={(factFilter as any).numero || ''}
+                  onChange={e => setFactFilter(p => ({ ...p, numero: e.target.value }))}
+                  className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" />
+              </div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
                 <input type="date" value={devisFilter.dateFrom} onChange={e => setDevisFilter(p => ({...p, dateFrom: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
@@ -3390,13 +3432,17 @@ const handleGenerateInvoicePDF = () => {
                 <select value={reglementFilter.type} onChange={e => setReglementFilter(p => ({...p,type:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
                   <option value="">Tous</option><option value="cheque">Chèque</option><option value="effet">Effet</option><option value="virement">Virement</option><option value="espece">Espèce</option><option value="compensation">Compensation</option>
                 </select></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+                <input type="text" placeholder="Filtrer..." value={(reglementFilter as any).client || ''} onChange={e => setReglementFilter(p => ({...p,client:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA Mois</label>
+                <input type="month" value={(reglementFilter as any).tva_mois || ''} onChange={e => setReglementFilter(p => ({...p,tva_mois:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
                 <input type="text" placeholder="Filtrer..." value={reglementFilter.banque} onChange={e => setReglementFilter(p => ({...p,banque:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" /></div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
                 <input type="date" value={reglementFilter.dateFrom} onChange={e => setReglementFilter(p => ({...p,dateFrom:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
                 <input type="date" value={reglementFilter.dateTo} onChange={e => setReglementFilter(p => ({...p,dateTo:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
-              <button onClick={() => setReglementFilter({type:'',banque:'',dateFrom:'',dateTo:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+              <button onClick={() => setReglementFilter({type:'',client:'',tva_mois:'',banque:'',dateFrom:'',dateTo:''} as any)} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
             </div>
             {/* Table */}
             {loadingReglements ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
@@ -3446,6 +3492,17 @@ const handleGenerateInvoicePDF = () => {
                             )}
                           </div>
                         )}
+                        {/* Actions */}
+                        <div className="mb-4 flex gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); setEditingReglement({...r}); setShowEditReglementForm(true); }}
+                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-black uppercase rounded-lg cursor-pointer flex items-center gap-1">
+                            <Pencil size={12} /> Modifier
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteReglement(r); }}
+                            className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black uppercase rounded-lg cursor-pointer flex items-center gap-1">
+                            <Trash2 size={12} /> Supprimer
+                          </button>
+                        </div>
                         {/* Factures linked */}
                         <div>
                           <span className="text-[9px] font-black text-slate-400 uppercase block mb-2">Factures réglées</span>
@@ -4510,6 +4567,74 @@ const handleGenerateInvoicePDF = () => {
           </button>
           <button onClick={() => setShowReglementForm(false)}
             className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Edit Règlement Modal */}
+<AnimatePresence>
+  {showEditReglementForm && editingReglement && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Modifier le Règlement</h3>
+          <button onClick={() => { setShowEditReglementForm(false); setEditingReglement(null); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</label>
+            <select value={editingReglement.type_reglement} onChange={e => setEditingReglement((p: any) => ({...p, type_reglement: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="cheque">Chèque</option><option value="effet">Effet</option><option value="virement">Virement</option><option value="espece">Espèce</option><option value="compensation">Compensation</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</label>
+            <input type="date" value={editingReglement.date_reglement || ''} onChange={e => setEditingReglement((p: any) => ({...p, date_reglement: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N°</label>
+            <input type="text" value={editingReglement.numero || ''} onChange={e => setEditingReglement((p: any) => ({...p, numero: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
+            <input type="text" value={editingReglement.banque || ''} onChange={e => setEditingReglement((p: any) => ({...p, banque: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date d'échéance</label>
+            <input type="date" value={editingReglement.date_echeance || ''} onChange={e => setEditingReglement((p: any) => ({...p, date_echeance: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA Mois</label>
+            <input type="month" value={editingReglement.tva_mois || ''} onChange={e => setEditingReglement((p: any) => ({...p, tva_mois: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Réf. Virement</label>
+            <input type="text" value={editingReglement.reference_virement || ''} onChange={e => setEditingReglement((p: any) => ({...p, reference_virement: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reçu par</label>
+            <input type="text" value={editingReglement.recu_par || ''} onChange={e => setEditingReglement((p: any) => ({...p, recu_par: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation</label>
+            <input type="text" value={editingReglement.observation || ''} onChange={e => setEditingReglement((p: any) => ({...p, observation: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleUpdateReglement} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">Enregistrer</button>
+          <button onClick={() => { setShowEditReglementForm(false); setEditingReglement(null); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
         </div>
       </motion.div>
     </div>
