@@ -1146,7 +1146,7 @@ const handleGenerateInvoicePDF = () => {
     </div>
     <div style="margin-top:16px;font-size:11px;color:#7F7F7F;line-height:1.5">
       <strong style="color:#333">Arrêtée la présente ${isAvoir ? "facture d'avoir" : 'facture'} à la somme de :</strong>
-      ${numberToWords(totalTTC)}
+      ${numberToWords(Math.abs(totalTTC))}
     </div>`;
 
     const pagesHTML = pages.map(p => {
@@ -1173,7 +1173,7 @@ const handleGenerateInvoicePDF = () => {
         <div style="position:absolute;top:8mm;right:12mm;font-size:8px;color:#999">Page ${p.num} / ${totalPages}</div>
         ${isAvoir && p.isFirst ? '<div style="font-size:16px;font-weight:900;color:#B91C1C;text-align:center;margin-bottom:10px;text-decoration:underline">AVOIR</div>' : ''}
         ${p.isFirst ? clientHTML : ''}
-        ${p.isFirst ? metaHTML : ''}
+        ${p.isFirst && !isAvoir ? metaHTML : ''}
         <table style="width:100%;border-collapse:collapse">${theadHTML}<tbody>${rowsHtml}${emptyRowsHtml}</tbody></table>
         ${p.isLast ? totalsHTML : ''}
       </div>`;
