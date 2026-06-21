@@ -213,7 +213,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [savingReglement, setSavingReglement] = useState(false);
   const [reglementForm, setReglementForm] = useState<any>({
     type_reglement: 'cheque', date_reglement: new Date().toISOString().split('T')[0],
-    numero: '', banque: '', date_echeance: '', recu_par: '', reference_virement: '', observation: '', scanFile: null,
+    numero: '', banque: '', date_echeance: '', recu_par: '', reference_virement: '', observation: '', scanFile: null, tva_mois: '', client: '',
   });
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
@@ -1691,6 +1691,7 @@ const handleGenerateInvoicePDF = () => {
           scanUrl = urlData?.publicUrl || '';
         }
       }
+      const clientName = [...new Set(selected.map((f: any) => f.client).filter(Boolean))].join(', ');
 
       const totalMontant = selected.reduce((s: number, f: any) => s + (parseFloat(f.montant_ttc) || 0), 0);
       const factIds = selected.map((f: any) => f.id);
@@ -1712,6 +1713,8 @@ const handleGenerateInvoicePDF = () => {
         scan_path: scanPath || null,
         facture_ids: factIds,
         facture_numbers: factNums,
+        client: clientName,
+        tva_mois: reglementForm.tva_mois || null,
       });
 
       if (error) { toast.error(`Erreur: ${error.message}`); return; }
@@ -3372,7 +3375,7 @@ const handleGenerateInvoicePDF = () => {
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={fetchReglements} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                   <button onClick={() => { if (!filteredReglements.length) return; exportToXLS(filteredReglements.map((r:any) => ({
-                    'Date': r.date_reglement, 'Type': r.type_reglement, 'N°': r.numero,
+                    'Date': r.date_reglement, 'Type': r.type_reglement, 'Client': r.client, 'TVA Mois': r.tva_mois, 'N°': r.numero,
                     'Banque': r.banque, 'Échéance': r.date_echeance, 'Montant TTC': r.montant_total,
                     'Reçu par': r.recu_par, 'Réf. Virement': r.reference_virement,
                     'Factures': (r.facture_numbers||[]).join(', '), 'Observation': r.observation,
@@ -3385,7 +3388,7 @@ const handleGenerateInvoicePDF = () => {
             <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</label>
                 <select value={reglementFilter.type} onChange={e => setReglementFilter(p => ({...p,type:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
-                  <option value="">Tous</option><option value="cheque">Chèque</option><option value="effet">Effet</option><option value="virement">Virement</option><option value="espece">Espèce</option>
+                  <option value="">Tous</option><option value="cheque">Chèque</option><option value="effet">Effet</option><option value="virement">Virement</option><option value="espece">Espèce</option><option value="compensation">Compensation</option>
                 </select></div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
                 <input type="text" placeholder="Filtrer..." value={reglementFilter.banque} onChange={e => setReglementFilter(p => ({...p,banque:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-36" /></div>
@@ -3425,6 +3428,8 @@ const handleGenerateInvoicePDF = () => {
                     {expandedReglement === r.id && (
                       <div className="px-5 pb-5 border-t border-slate-100">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 mb-4">
+                          {r.client && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Client</span><span className="text-xs font-bold text-slate-700">{r.client}</span></div>}
+                          {r.tva_mois && <div><span className="text-[9px] font-black text-slate-400 uppercase block">TVA Mois</span><span className="text-xs font-bold text-slate-700">{r.tva_mois}</span></div>}
                           {r.date_echeance && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Échéance</span><span className="text-xs font-bold text-slate-700">{r.date_echeance}</span></div>}
                           {r.banque && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Banque</span><span className="text-xs font-bold text-slate-700">{r.banque}</span></div>}
                           {r.recu_par && <div><span className="text-[9px] font-black text-slate-400 uppercase block">Reçu par</span><span className="text-xs font-bold text-slate-700">{r.recu_par}</span></div>}
@@ -4371,6 +4376,7 @@ const handleGenerateInvoicePDF = () => {
                 { value: 'effet', label: 'Effet' },
                 { value: 'virement', label: 'Virement' },
                 { value: 'espece', label: 'Espèce' },
+                { value: 'compensation', label: 'Compensation' },
               ].map(t => (
                 <button key={t.value} onClick={() => setReglementForm((p: any) => ({ ...p, type_reglement: t.value }))}
                   className={`flex-1 h-9 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer border-2 transition-all ${reglementForm.type_reglement === t.value ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'}`}>
@@ -4385,6 +4391,24 @@ const handleGenerateInvoicePDF = () => {
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de règlement</label>
             <input type="date" value={reglementForm.date_reglement}
               onChange={e => setReglementForm((p: any) => ({ ...p, date_reglement: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+          </div>
+          {/* Client — auto-filled */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client (auto)</label>
+            <input type="text" readOnly value={(() => {
+              const sel = facturationList.filter((f:any) => selectedFacts.includes(f.id));
+              const clients = [...new Set(sel.map((f:any) => f.client).filter(Boolean))];
+              return clients.join(', ');
+            })()}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-100 bg-slate-50 px-3 text-sm font-bold text-slate-700 cursor-not-allowed" />
+          </div>
+
+          {/* TVA Mois */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA Mois</label>
+            <input type="month" value={reglementForm.tva_mois || ''}
+              onChange={e => setReglementForm((p: any) => ({ ...p, tva_mois: e.target.value }))}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
           </div>
 
