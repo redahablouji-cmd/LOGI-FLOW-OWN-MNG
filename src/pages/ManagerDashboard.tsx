@@ -3383,6 +3383,18 @@ const handleGenerateInvoicePDF = () => {
             </select>
           </div>
           <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Départ</label>
+            <input type="text" value={avoirForm.depart} placeholder="Casablanca"
+              onChange={e => setAvoirForm(p => ({ ...p, depart: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Arrivée</label>
+            <input type="text" value={avoirForm.arrivee} placeholder="Agadir"
+              onChange={e => setAvoirForm(p => ({ ...p, arrivee: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
+          </div>
+          <div>
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation / Motif</label>
             <input type="text" value={avoirForm.observation} placeholder="Retour marchandise, erreur facturation..."
               onChange={e => setAvoirForm(p => ({ ...p, observation: e.target.value, designation: e.target.value }))}
@@ -3437,6 +3449,8 @@ const handleGenerateInvoicePDF = () => {
               date: avoirForm.date || null,
               numero_facture: avoirForm.numero_facture || null,
               client: avoirForm.client || null,
+              depart: avoirForm.depart || null,
+              arrivee: avoirForm.arrivee || null,
               montant_ht: -ht,
               tva: -tvaAmount,
               montant_ttc: -ttc,
