@@ -55,6 +55,7 @@ const emptyFactForm = {
   reglement_numero: '', echeances: '', mode_paiement: '',
   statut: 'impayé',
   observation: '',
+  designation: '',
 };
 
 
@@ -719,6 +720,7 @@ const handleSaveFacturation = async () => {
     statut:                factForm.statut                  || 'impayé',
     is_avoir:              (factForm as any).is_avoir       || false,
     observation:           (factForm as any).observation     || null,
+    designation:           (factForm as any).designation     || null,
     ecart_delai:           calcEcartDelai(
                              factForm.date,
                              factForm.date_paiement,
@@ -3383,7 +3385,7 @@ const handleGenerateInvoicePDF = () => {
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation / Motif</label>
             <input type="text" value={avoirForm.observation} placeholder="Retour marchandise, erreur facturation..."
-              onChange={e => setAvoirForm(p => ({ ...p, observation: e.target.value }))}
+              onChange={e => setAvoirForm(p => ({ ...p, observation: e.target.value, designation: e.target.value }))}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
           </div>
 
@@ -3440,7 +3442,9 @@ const handleGenerateInvoicePDF = () => {
               montant_ttc: -ttc,
               observation: avoirForm.observation || null,
               is_avoir: true,
+              was_avoir: true,
               statut: 'avoir',
+              designation: avoirForm.observation || null,
             });
             if (!error) {
               toast.success("Facture d'avoir enregistrée.");
@@ -3579,6 +3583,14 @@ const handleGenerateInvoicePDF = () => {
             readOnly
             className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 cursor-not-allowed" />
         </div>
+        {/* Désignation */}
+        <div className="sm:col-span-2">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation</label>
+          <input type="text" value={(factForm as any).designation || ''}
+            onChange={e => setFactForm((p: any) => ({ ...p, designation: e.target.value }))}
+            placeholder="ex: Transport matériaux, Avoir sur facture..."
+            className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+        </div>
         {/* Observation */}
         <div className="sm:col-span-2 lg:col-span-3">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation (1ère ligne de la facture)</label>
@@ -3605,19 +3617,12 @@ const handleGenerateInvoicePDF = () => {
           <>
             <button onClick={async () => {
               const { error } = await supabase.from('suivi_facturation').update({
-                date: factForm.date || null,
-                numero_facture: factForm.numero_facture || null,
-                client: factForm.client || null,
-                depart: factForm.depart || null,
-                arrivee: factForm.arrivee || null,
-                montant_ht: parseFloat(factForm.montant_ht) || 0,
-                tva: parseFloat(factForm.tva) || 0,
-                montant_ttc: parseFloat(factForm.montant_ttc) || 0,
-                bl_ot: factForm.bl_ot || null,
-                bc: factForm.bc || null,
-                observation: (factForm as any).observation || null,
-                is_avoir: true,
-                statut: 'avoir',
+                date: factForm.date || null, numero_facture: factForm.numero_facture || null,
+                client: factForm.client || null, depart: factForm.depart || null, arrivee: factForm.arrivee || null,
+                montant_ht: parseFloat(factForm.montant_ht) || 0, tva: parseFloat(factForm.tva) || 0,
+                montant_ttc: parseFloat(factForm.montant_ttc) || 0, bl_ot: factForm.bl_ot || null, bc: factForm.bc || null,
+                observation: (factForm as any).observation || null, designation: (factForm as any).designation || null,
+                is_avoir: true, was_avoir: true, statut: 'avoir',
               }).eq('id', editingFact.id);
               if (!error) { toast.success("Avoir modifié."); setShowFactForm(false); setEditingFact(null); setFactForm(emptyFactForm); fetchFacturation(); }
               else toast.error(`Erreur: ${error.message}`);
@@ -3627,25 +3632,40 @@ const handleGenerateInvoicePDF = () => {
             </button>
             <button onClick={async () => {
               const { error } = await supabase.from('suivi_facturation').update({
-                date: factForm.date || null,
-                numero_facture: factForm.numero_facture || null,
-                client: factForm.client || null,
-                depart: factForm.depart || null,
-                arrivee: factForm.arrivee || null,
-                montant_ht: Math.abs(parseFloat(factForm.montant_ht) || 0),
-                tva: Math.abs(parseFloat(factForm.tva) || 0),
-                montant_ttc: Math.abs(parseFloat(factForm.montant_ttc) || 0),
-                bl_ot: factForm.bl_ot || null,
-                bc: factForm.bc || null,
-                observation: (factForm as any).observation || null,
-                is_avoir: false,
-                statut: 'impayé',
+                date: factForm.date || null, numero_facture: factForm.numero_facture || null,
+                client: factForm.client || null, depart: factForm.depart || null, arrivee: factForm.arrivee || null,
+                montant_ht: Math.abs(parseFloat(factForm.montant_ht) || 0), tva: Math.abs(parseFloat(factForm.tva) || 0),
+                montant_ttc: Math.abs(parseFloat(factForm.montant_ttc) || 0), bl_ot: factForm.bl_ot || null, bc: factForm.bc || null,
+                observation: (factForm as any).observation || null, designation: (factForm as any).designation || null,
+                is_avoir: false, was_avoir: true, statut: 'impayé',
               }).eq('id', editingFact.id);
               if (!error) { toast.success("Converti en facture."); setShowFactForm(false); setEditingFact(null); setFactForm(emptyFactForm); fetchFacturation(); }
               else toast.error(`Erreur: ${error.message}`);
             }}
               className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
               Convertir en Facture
+            </button>
+          </>
+        ) : editingFact?.was_avoir && !editingFact?.is_avoir ? (
+          <>
+            <button onClick={handleSaveFacturation}
+              className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+              Enregistrer les modifications
+            </button>
+            <button onClick={async () => {
+              const { error } = await supabase.from('suivi_facturation').update({
+                date: factForm.date || null, numero_facture: factForm.numero_facture || null,
+                client: factForm.client || null, depart: factForm.depart || null, arrivee: factForm.arrivee || null,
+                montant_ht: -(Math.abs(parseFloat(factForm.montant_ht) || 0)), tva: -(Math.abs(parseFloat(factForm.tva) || 0)),
+                montant_ttc: -(Math.abs(parseFloat(factForm.montant_ttc) || 0)), bl_ot: factForm.bl_ot || null, bc: factForm.bc || null,
+                observation: (factForm as any).observation || null, designation: (factForm as any).designation || null,
+                is_avoir: true, was_avoir: true, statut: 'avoir',
+              }).eq('id', editingFact.id);
+              if (!error) { toast.success("Revenu en avoir."); setShowFactForm(false); setEditingFact(null); setFactForm(emptyFactForm); fetchFacturation(); }
+              else toast.error(`Erreur: ${error.message}`);
+            }}
+              className="flex-1 h-10 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+              Revenir en Avoir
             </button>
           </>
         ) : (
