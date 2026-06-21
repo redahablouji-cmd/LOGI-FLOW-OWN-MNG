@@ -3393,18 +3393,20 @@ const handleGenerateInvoicePDF = () => {
             <input type="number" value={avoirForm.montant_ht} placeholder="500"
               onChange={e => {
                 const ht = parseFloat(e.target.value) || 0;
-                const tva = parseFloat(avoirForm.tva) || 0;
-                setAvoirForm(p => ({ ...p, montant_ht: e.target.value, montant_ttc: String((ht + tva).toFixed(2)) }));
+                const rate = parseFloat(avoirForm.tva) || 0;
+                const tvaAmount = parseFloat((ht * rate / 100).toFixed(2));
+                setAvoirForm(p => ({ ...p, montant_ht: e.target.value, montant_ttc: String((ht + tvaAmount).toFixed(2)) }));
               }}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
           </div>
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (MAD)</label>
-            <input type="number" value={avoirForm.tva} placeholder="0"
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (%)</label>
+            <input type="number" value={avoirForm.tva} placeholder="20"
               onChange={e => {
-                const tva = parseFloat(e.target.value) || 0;
+                const rate = parseFloat(e.target.value) || 0;
                 const ht = parseFloat(avoirForm.montant_ht) || 0;
-                setAvoirForm(p => ({ ...p, tva: e.target.value, montant_ttc: String((ht + tva).toFixed(2)) }));
+                const tvaAmount = parseFloat((ht * rate / 100).toFixed(2));
+                setAvoirForm(p => ({ ...p, tva: e.target.value, montant_ttc: String((ht + tvaAmount).toFixed(2)) }));
               }}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-rose-500" />
           </div>
@@ -3417,14 +3419,15 @@ const handleGenerateInvoicePDF = () => {
 
         {/* Preview */}
         <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-800">
-          Sera enregistré comme : <strong>HT: -{avoirForm.montant_ht || '0'}</strong> | <strong>TVA: -{avoirForm.tva || '0'}</strong> | <strong>TTC: -{avoirForm.montant_ttc || '0'}</strong> MAD
+          {(() => { const ht = parseFloat(avoirForm.montant_ht)||0; const rate = parseFloat(avoirForm.tva)||0; const tvaAmt = parseFloat((ht*rate/100).toFixed(2)); return `Sera enregistré comme : HT: -${ht.toFixed(2)} | TVA (${rate}%): -${tvaAmt.toFixed(2)} | TTC: -${avoirForm.montant_ttc || '0'} MAD`; })()}
         </div>
 
         <div className="flex gap-3 pt-5">
           <button onClick={async () => {
             const ht = parseFloat(avoirForm.montant_ht) || 0;
-            const tva = parseFloat(avoirForm.tva) || 0;
-            const ttc = parseFloat(avoirForm.montant_ttc) || 0;
+            const rate = parseFloat(avoirForm.tva) || 0;
+              const tvaAmount = parseFloat((ht * rate / 100).toFixed(2));
+              const ttc = ht + tvaAmount;
             if (ht <= 0) { toast.error("Saisissez un montant."); return; }
             const { error } = await supabase.from('suivi_facturation').insert({
               company_id: companyId,
@@ -3433,7 +3436,7 @@ const handleGenerateInvoicePDF = () => {
               numero_facture: avoirForm.numero_facture || null,
               client: avoirForm.client || null,
               montant_ht: -ht,
-              tva: -tva,
+              tva: -tvaAmount,
               montant_ttc: -ttc,
               observation: avoirForm.observation || null,
               is_avoir: true,
