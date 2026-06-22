@@ -1940,6 +1940,7 @@ const handleGenerateInvoicePDF = () => {
           </tbody>
         </table>
         <div style="margin-top:20px;font-size:10px;color:#7F7F7F"><strong style="color:#333">Arrêté le présent ordre de virement à la somme de :</strong> ${numberToWords(total)}</div>
+        <div style="margin-top:40px;display:flex;justify-content:flex-end"><div style="width:200px;text-align:center;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:6px">Signature & Cachet</div></div>
       </div>
       </body></html>`;
     const win = window.open('', '_blank');
