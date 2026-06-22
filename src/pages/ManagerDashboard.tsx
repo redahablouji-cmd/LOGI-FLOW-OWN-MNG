@@ -216,7 +216,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [savingReglement, setSavingReglement] = useState(false);
   const [reglementForm, setReglementForm] = useState<any>({
     type_reglement: 'cheque', date_reglement: new Date().toISOString().split('T')[0],
-    numero: '', banque: '', date_echeance: '', recu_par: '', reference_virement: '', observation: '', scanFile: null, tva_mois: '', client: '',
+    numero: '', banque: '', date_echeance: '', recu_par: '', reference_virement: '', observation: '', scanFile: null, tva_mois: '', client: '', code_reglement: '',
   });
   // Bank RIP state
   const [ripList, setRipList] = useState<any[]>([]);
@@ -251,7 +251,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [showReleveForm, setShowReleveForm] = useState(false);
   const [editingReleve, setEditingReleve] = useState<any>(null);
   const [releveFilter, setReleveFilter] = useState({ mois: '', libelle: '', category: '' });
-  const emptyReleveForm = { code: '', date_operation: '', libelle: '', date_valeur: '', debit: '', credit: '', category: 'virement', destination: '', note_operation: '', ref_reglement: '', observation: '' };
+  const emptyReleveForm = { code: '', date_operation: '', libelle: '', date_valeur: '', debit: '', credit: '', category: 'virement', destination: '', note_operation: '', ref_reglement: '', observation: '', code_reglement: '' };
   const [releveForm, setReleveForm] = useState<any>(emptyReleveForm);
   const [etatExpandedSections, setEtatExpandedSections] = useState<string[]>(['virement','emission_cheque','emission_effets','remise_cheque','remise_lc','frais_bancaire']);
   // ── Fetch company ──────────────────────────────────────────────────────
@@ -1755,6 +1755,7 @@ const handleGenerateInvoicePDF = () => {
         facture_numbers: factNums,
         client: clientName,
         tva_mois: reglementForm.tva_mois || null,
+        code_reglement: reglementForm.code_reglement || null,
       });
 
       if (error) { toast.error(`Erreur: ${error.message}`); return; }
@@ -1814,6 +1815,7 @@ const handleGenerateInvoicePDF = () => {
       reference_virement: editingReglement.reference_virement || null,
       observation: editingReglement.observation || null,
       tva_mois: editingReglement.tva_mois || null,
+      code_reglement: editingReglement.code_reglement || null,
     }).eq('id', editingReglement.id);
     if (!error) { toast.success("Règlement modifié."); setShowEditReglementForm(false); setEditingReglement(null); fetchReglements(); }
     else toast.error(`Erreur: ${error.message}`);
@@ -2110,6 +2112,7 @@ const handleGenerateInvoicePDF = () => {
       credit: parseFloat(releveForm.credit) || 0, category: releveForm.category || 'virement',
       destination: releveForm.destination || null, note_operation: releveForm.note_operation || null,
       ref_reglement: releveForm.ref_reglement || null, observation: releveForm.observation || null,
+      code_reglement: releveForm.code_reglement || null,
     };
     if (editingReleve) {
       const { error } = await supabase.from('bank_releve').update(payload).eq('id', editingReleve.id);
@@ -3864,6 +3867,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                         </span>
                         <div>
                           <span className="text-sm font-bold text-slate-800">{r.numero || r.reference_virement || '—'}</span>
+                        {r.code_reglement && <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{r.code_reglement}</span>}
                           <span className="text-xs text-slate-400 ml-2">{r.banque || r.recu_par || ''}</span>
                         </div>
                         <span className="text-xs text-slate-500">{r.date_reglement}</span>
@@ -4304,7 +4308,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                     <div className="overflow-x-auto">
                       <table className="w-full text-left min-w-[900px]">
                         <thead className="bg-slate-50 border-b border-slate-200">
-                          <tr>{['Date','Libellé','Destination','Note','Décaissement','Encaissement','Réf.','Obs.',''].map(h => (
+                          <tr>{['Date','Libellé','Code Rèq.','Destination','Note','Décaissement','Encaissement','Réf.','Obs.',''].map(h => (
                             <th key={h} className="px-3 py-1.5 text-[8px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
                           ))}</tr>
                         </thead>
@@ -4313,6 +4317,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                             <tr key={r.id} className="hover:bg-slate-50">
                               <td className="px-3 py-1.5 text-[10px] text-slate-600">{r.date_operation}</td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-700 max-w-[200px] truncate">{r.libelle}</td>
+                              <td className="px-3 py-1.5 font-mono text-[9px] text-amber-600 font-bold">{r.code_reglement||'—'}</td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.destination||'—'}</td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.note_operation||'—'}</td>
                               <td className="px-3 py-1.5 font-mono text-[10px] text-rose-600 font-bold">{parseFloat(r.debit)>0?Number(r.debit).toLocaleString('fr-MA',{minimumFractionDigits:2}):''}</td>
@@ -4545,12 +4550,58 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
           <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note Opération</label>
             <input type="text" value={releveForm.note_operation||''} onChange={e => setReleveForm((p:any)=>({...p,note_operation:e.target.value}))}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Code Règlement</label>
+            <input type="text" value={editingReglement.code_reglement || ''} onChange={e => setEditingReglement((p: any) => ({...p, code_reglement: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
           <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Réf. Règlement</label>
             <input type="text" value={releveForm.ref_reglement||''} onChange={e => setReleveForm((p:any)=>({...p,ref_reglement:e.target.value}))}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
           <div className="sm:col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation</label>
             <input type="text" value={releveForm.observation||''} onChange={e => setReleveForm((p:any)=>({...p,observation:e.target.value}))}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+              <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Code Règlement (auto-remplit Destination + Note)</label>
+            <div className="flex gap-2 mt-1">
+              <input type="text" value={releveForm.code_reglement || ''} placeholder="Tapez le code..."
+                onChange={e => setReleveForm((p: any) => ({ ...p, code_reglement: e.target.value }))}
+                className="flex-1 h-9 rounded-lg border-2 border-amber-200 bg-amber-50 px-3 text-sm font-mono font-bold text-amber-800 focus:outline-none focus:border-amber-500" />
+              <button type="button" onClick={async () => {
+                const code = releveForm.code_reglement?.trim();
+                if (!code) { toast.error("Saisissez un code."); return; }
+                // Lookup in reglements
+                const { data: regData } = await supabase.from('reglements').select('*').eq('company_id', companyId).eq('code_reglement', code).limit(1);
+                if (regData && regData.length > 0) {
+                  const reg = regData[0];
+                  const factNums = (reg.facture_numbers || []).join(', ');
+                  setReleveForm((p: any) => ({
+                    ...p,
+                    destination: reg.client || p.destination || '',
+                    note_operation: factNums ? `Facture(s): ${factNums}` : p.note_operation || '',
+                    ref_reglement: reg.numero || reg.reference_virement || p.ref_reglement || '',
+                  }));
+                  toast.success(`Trouvé: ${reg.client} — ${reg.type_reglement}`);
+                  return;
+                }
+                // Lookup in purchases
+                const { data: purchData } = await supabase.from('purchases').select('*').eq('company_id', companyId).eq('code_reglement', code);
+                if (purchData && purchData.length > 0) {
+                  const fournisseur = purchData[0].fournisseur || purchData[0].supplier || '';
+                  const details = purchData.map((p: any) => p.description || p.categorie || '').filter(Boolean).join(', ');
+                  setReleveForm((p: any) => ({
+                    ...p,
+                    destination: fournisseur || p.destination || '',
+                    note_operation: details || p.note_operation || '',
+                  }));
+                  toast.success(`Trouvé: ${fournisseur} — ${purchData.length} achat(s)`);
+                  return;
+                }
+                toast.error("Aucun règlement ou achat trouvé avec ce code.");
+              }}
+                className="h-9 px-4 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-lg cursor-pointer whitespace-nowrap">
+                Rechercher
+              </button>
+            </div>
+          </div>
         </div>
         <div className="flex gap-3 pt-5">
           <button onClick={handleSaveReleve} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingReleve?'Enregistrer':'Ajouter'}</button>
@@ -5558,6 +5609,13 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
             </div>
           )}
+          {/* Code Règlement */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Code Règlement</label>
+            <input type="text" value={reglementForm.code_reglement || ''} placeholder="REG-001"
+              onChange={e => setReglementForm((p: any) => ({ ...p, code_reglement: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+          </div>
 
           {/* Observation */}
           <div className="sm:col-span-2">
