@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp, FolderOpen, Check, Landmark } from 'lucide-react';
+import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp, FolderOpen, Check, Landmark, Search } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { Company } from '../lib/auth';
@@ -3867,7 +3867,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                         </span>
                         <div>
                           <span className="text-sm font-bold text-slate-800">{r.numero || r.reference_virement || '—'}</span>
-                        {r.code_reglement && <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{r.code_reglement}</span>}
+                        {r?.code_reglement && <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{r.code_reglement}</span>}
                           <span className="text-xs text-slate-400 ml-2">{r.banque || r.recu_par || ''}</span>
                         </div>
                         <span className="text-xs text-slate-500">{r.date_reglement}</span>
@@ -4317,7 +4317,47 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                             <tr key={r.id} className="hover:bg-slate-50">
                               <td className="px-3 py-1.5 text-[10px] text-slate-600">{r.date_operation}</td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-700 max-w-[200px] truncate">{r.libelle}</td>
-                              <td className="px-3 py-1.5 font-mono text-[9px] text-amber-600 font-bold">{r.code_reglement||'—'}</td>
+                              <td className="px-3 py-1.5">
+                                <div className="flex items-center gap-1">
+                                  <input type="text" value={r.code_reglement || ''} placeholder="—"
+                                    onChange={async (e) => {
+                                      const val = e.target.value;
+                                      await supabase.from('bank_releve').update({ code_reglement: val || null }).eq('id', r.id);
+                                      setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, code_reglement: val } : x));
+                                    }}
+                                    className="w-16 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono font-bold text-amber-700 focus:outline-none focus:border-amber-500" />
+                                  <button onClick={async () => {
+                                    const code = r.code_reglement?.trim();
+                                    if (!code) return;
+                                    const { data: regData } = await supabase.from('reglements').select('*').eq('company_id', companyId).eq('code_reglement', code).limit(1);
+                                    if (regData && regData.length > 0) {
+                                      const reg = regData[0];
+                                      const factNums = (reg.facture_numbers || []).join(', ');
+                                      await supabase.from('bank_releve').update({
+                                        destination: reg.client || null,
+                                        note_operation: factNums ? `Fact: ${factNums}` : null,
+                                        ref_reglement: reg.numero || reg.reference_virement || null,
+                                      }).eq('id', r.id);
+                                      setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, destination: reg.client, note_operation: factNums ? `Fact: ${factNums}` : '', ref_reglement: reg.numero || reg.reference_virement || '' } : x));
+                                      toast.success(`${reg.client}`);
+                                      return;
+                                    }
+                                    const { data: purchData } = await supabase.from('purchases').select('*').eq('company_id', companyId).eq('code_reglement', code);
+                                    if (purchData && purchData.length > 0) {
+                                      const fournisseur = purchData[0].fournisseur || purchData[0].supplier || '';
+                                      const details = purchData.map((p: any) => p.description || p.categorie || '').filter(Boolean).join(', ');
+                                      await supabase.from('bank_releve').update({
+                                        destination: fournisseur || null,
+                                        note_operation: details || null,
+                                      }).eq('id', r.id);
+                                      setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, destination: fournisseur, note_operation: details } : x));
+                                      toast.success(`${fournisseur}`);
+                                      return;
+                                    }
+                                    toast.error("Code non trouvé.");
+                                  }} className="text-amber-400 hover:text-amber-600 cursor-pointer"><Search size={10} /></button>
+                                </div>
+                              </td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.destination||'—'}</td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.note_operation||'—'}</td>
                               <td className="px-3 py-1.5 font-mono text-[10px] text-rose-600 font-bold">{parseFloat(r.debit)>0?Number(r.debit).toLocaleString('fr-MA',{minimumFractionDigits:2}):''}</td>
