@@ -218,6 +218,21 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     type_reglement: 'cheque', date_reglement: new Date().toISOString().split('T')[0],
     numero: '', banque: '', date_echeance: '', recu_par: '', reference_virement: '', observation: '', scanFile: null, tva_mois: '', client: '',
   });
+  // Bank RIP state
+  const [ripList, setRipList] = useState<any[]>([]);
+  const [loadingRip, setLoadingRip] = useState(false);
+  const [showRipForm, setShowRipForm] = useState(false);
+  const [editingRip, setEditingRip] = useState<any>(null);
+  const emptyRipForm = { banque: '', agence: '', code_banque: '', code_ville: '', numero_compte: '', cle_rip: '', code_swift: '' };
+  const [ripForm, setRipForm] = useState<any>(emptyRipForm);
+
+  // Bank Base RIP state
+  const [baseRipList, setBaseRipList] = useState<any[]>([]);
+  const [loadingBaseRip, setLoadingBaseRip] = useState(false);
+  const [showBaseRipForm, setShowBaseRipForm] = useState(false);
+  const [editingBaseRip, setEditingBaseRip] = useState<any>(null);
+  const emptyBaseRipForm = { raison_social: '', rib: '' };
+  const [baseRipForm, setBaseRipForm] = useState<any>(emptyBaseRipForm);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -1782,6 +1797,51 @@ const handleGenerateInvoicePDF = () => {
     if (!error) { toast.success("Règlement modifié."); setShowEditReglementForm(false); setEditingReglement(null); fetchReglements(); }
     else toast.error(`Erreur: ${error.message}`);
   };
+  // ── Bank RIP CRUD ──
+  const fetchRip = async () => {
+    if (!companyId) return; setLoadingRip(true);
+    const { data } = await supabase.from('bank_rip').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setRipList(data || []); setLoadingRip(false);
+  };
+  const handleSaveRip = async () => {
+    const payload = { company_id: companyId, ...ripForm };
+    if (editingRip) {
+      const { error } = await supabase.from('bank_rip').update(payload).eq('id', editingRip.id);
+      if (!error) { toast.success("RIP modifié."); setEditingRip(null); } else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from('bank_rip').insert(payload);
+      if (!error) toast.success("RIP ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowRipForm(false); setRipForm(emptyRipForm); fetchRip();
+  };
+  const handleDeleteRip = async (id: string) => {
+    if (!confirm('Supprimer ce RIP ?')) return;
+    await supabase.from('bank_rip').delete().eq('id', id);
+    toast.success("Supprimé."); fetchRip();
+  };
+
+  // ── Bank Base RIP CRUD ──
+  const fetchBaseRip = async () => {
+    if (!companyId) return; setLoadingBaseRip(true);
+    const { data } = await supabase.from('bank_base_rip').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setBaseRipList(data || []); setLoadingBaseRip(false);
+  };
+  const handleSaveBaseRip = async () => {
+    const payload = { company_id: companyId, ...baseRipForm };
+    if (editingBaseRip) {
+      const { error } = await supabase.from('bank_base_rip').update(payload).eq('id', editingBaseRip.id);
+      if (!error) { toast.success("Base RIP modifié."); setEditingBaseRip(null); } else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from('bank_base_rip').insert(payload);
+      if (!error) toast.success("Base RIP ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowBaseRipForm(false); setBaseRipForm(emptyBaseRipForm); fetchBaseRip();
+  };
+  const handleDeleteBaseRip = async (id: string) => {
+    if (!confirm('Supprimer ?')) return;
+    await supabase.from('bank_base_rip').delete().eq('id', id);
+    toast.success("Supprimé."); fetchBaseRip();
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -1797,6 +1857,8 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'devis' && companyId) { fetchDevis(); fetchClients(); }
     if (activeTab === 'bon_commande' && companyId) { fetchBC(); fetchFournisseurs(); }
     if (activeTab === 'reglements' && companyId) { fetchReglements(); }
+    if (activeTab === 'bank_rip' && companyId) fetchRip();
+    if (activeTab === 'bank_base_rip' && companyId) fetchBaseRip();
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
       supabase.from('invoice_templates').select('*')
@@ -3564,12 +3626,222 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
             )}
           </div>
         )}
+        {activeTab === 'bank_rip' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-blue-500 text-white mb-2"><Landmark className="w-3.5 h-3.5" /> RIP</span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Relevé d'Identité Bancaire</h1>
+                  <p className="text-sm text-slate-400 mt-1">{ripList.length} comptes</p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={fetchRip} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Upload size={14} /> Importer XLS
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      try {
+                        const buffer = await file.arrayBuffer(); const wb = XLSX.read(buffer, { type: 'array' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        const headerIdx = rawRows.findIndex((r: any[]) => r.some((c: any) => String(c).toLowerCase().includes('banque')));
+                        const dataRows = rawRows.slice(headerIdx >= 0 ? headerIdx + 1 : 1).filter((r: any[]) => r.length > 0 && (r[0]||r[1]));
+                        const records = dataRows.map((r: any[]) => ({
+                          company_id: companyId, banque: String(r[0]||'').trim()||null, agence: String(r[1]||'').trim()||null,
+                          code_banque: String(r[2]||'').trim()||null, code_ville: String(r[3]||'').trim()||null,
+                          numero_compte: String(r[4]||'').trim()||null, cle_rip: String(r[5]||'').trim()||null, code_swift: String(r[6]||'').trim()||null,
+                        }));
+                        if (!records.length) { toast.error("Aucune donnée."); return; }
+                        const { error } = await supabase.from('bank_rip').insert(records);
+                        if (!error) { toast.success(`${records.length} RIP importés.`); fetchRip(); } else toast.error(`Erreur: ${error.message}`);
+                      } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                      e.target.value = '';
+                    }} />
+                  </label>
+                  <button onClick={() => { if (!ripList.length) return; exportToXLS(ripList.map((r:any) => ({ 'Banque':r.banque,'Agence':r.agence,'Code Banque':r.code_banque,'Code Ville':r.code_ville,'N° Compte':r.numero_compte,'Clé RIP':r.cle_rip,'Code SWIFT':r.code_swift })),'rip'); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                  <button onClick={() => { setRipForm(emptyRipForm); setEditingRip(null); setShowRipForm(true); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau</button>
+                </div>
+              </div>
+            </div>
+            {loadingRip ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        {['Banque','Agence','Code Banque','Code Ville','N° Compte','Clé RIP','Code SWIFT','Actions'].map(h => (
+                          <th key={h} className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ripList.length === 0 ? (
+                        <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Aucun RIP.</td></tr>
+                      ) : ripList.map((r: any) => (
+                        <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-700">{r.banque||'—'}</td>
+                          <td className="px-4 py-3 text-xs text-slate-600">{r.agence||'—'}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-600">{r.code_banque||'—'}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-600">{r.code_ville||'—'}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-blue-600 font-bold">{r.numero_compte||'—'}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-600">{r.cle_rip||'—'}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-600">{r.code_swift||'—'}</td>
+                          <td className="px-4 py-3 flex gap-1">
+                            <button onClick={() => { setEditingRip(r); setRipForm({...r}); setShowRipForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={13} /></button>
+                            <button onClick={() => handleDeleteRip(r.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={13} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {activeTab === 'bank_base_rip' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-purple-500 text-white mb-2"><Landmark className="w-3.5 h-3.5" /> Base RIP</span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Base RIP Fournisseurs / Particuliers</h1>
+                  <p className="text-sm text-slate-400 mt-1">{baseRipList.length} enregistrements</p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={fetchBaseRip} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Upload size={14} /> Importer XLS
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      try {
+                        const buffer = await file.arrayBuffer(); const wb = XLSX.read(buffer, { type: 'array' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        const dataRows = rawRows.slice(1).filter((r: any[]) => r.length > 0 && (r[0]||r[2]));
+                        const records = dataRows.map((r: any[]) => ({
+                          company_id: companyId, raison_social: String(r[0]||'').trim()||null, rib: String(r[2]||r[1]||'').trim()||null,
+                        }));
+                        if (!records.length) { toast.error("Aucune donnée."); return; }
+                        const { error } = await supabase.from('bank_base_rip').insert(records);
+                        if (!error) { toast.success(`${records.length} Base RIP importés.`); fetchBaseRip(); } else toast.error(`Erreur: ${error.message}`);
+                      } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                      e.target.value = '';
+                    }} />
+                  </label>
+                  <button onClick={() => { if (!baseRipList.length) return; exportToXLS(baseRipList.map((r:any) => ({ 'Raison Sociale':r.raison_social, 'RIB':r.rib })),'base_rip'); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                  <button onClick={() => { setBaseRipForm(emptyBaseRipForm); setEditingBaseRip(null); setShowBaseRipForm(true); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau</button>
+                </div>
+              </div>
+            </div>
+            {loadingBaseRip ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        {['Raison Sociale','RIB','Actions'].map(h => (
+                          <th key={h} className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {baseRipList.length === 0 ? (
+                        <tr><td colSpan={3} className="px-4 py-10 text-center text-sm text-slate-400">Aucune donnée.</td></tr>
+                      ) : baseRipList.map((r: any) => (
+                        <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-700">{r.raison_social||'—'}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-blue-600 font-bold">{r.rib||'—'}</td>
+                          <td className="px-4 py-3 flex gap-1">
+                            <button onClick={() => { setEditingBaseRip(r); setBaseRipForm({...r}); setShowBaseRipForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={13} /></button>
+                            <button onClick={() => handleDeleteBaseRip(r.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={13} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
         )}
         </main>
       </div>
+      {/* RIP Form */}
+<AnimatePresence>
+  {showRipForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingRip ? 'Modifier RIP' : 'Nouveau RIP'}</h3>
+          <button onClick={() => { setShowRipForm(false); setEditingRip(null); setRipForm(emptyRipForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[
+            { label: 'Banque', key: 'banque' },
+            { label: 'Agence', key: 'agence' },
+            { label: 'Code Banque', key: 'code_banque' },
+            { label: 'Code Ville', key: 'code_ville' },
+            { label: 'N° Compte', key: 'numero_compte' },
+            { label: 'Clé RIP', key: 'cle_rip' },
+            { label: 'Code SWIFT', key: 'code_swift' },
+          ].map(({ label, key }) => (
+            <div key={key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type="text" value={ripForm[key] || ''} onChange={e => setRipForm((p: any) => ({ ...p, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveRip} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingRip ? 'Enregistrer' : 'Ajouter'}</button>
+          <button onClick={() => { setShowRipForm(false); setEditingRip(null); setRipForm(emptyRipForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+
+{/* Base RIP Form */}
+<AnimatePresence>
+  {showBaseRipForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingBaseRip ? 'Modifier' : 'Nouveau Base RIP'}</h3>
+          <button onClick={() => { setShowBaseRipForm(false); setEditingBaseRip(null); setBaseRipForm(emptyBaseRipForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Raison Sociale</label>
+            <input type="text" value={baseRipForm.raison_social || ''} onChange={e => setBaseRipForm((p: any) => ({ ...p, raison_social: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RIB</label>
+            <input type="text" value={baseRipForm.rib || ''} onChange={e => setBaseRipForm((p: any) => ({ ...p, rib: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveBaseRip} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingBaseRip ? 'Enregistrer' : 'Ajouter'}</button>
+          <button onClick={() => { setShowBaseRipForm(false); setEditingBaseRip(null); setBaseRipForm(emptyBaseRipForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
 
       {/* Suivi Form Modal */}
       <AnimatePresence>
