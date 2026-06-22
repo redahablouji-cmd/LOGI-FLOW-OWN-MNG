@@ -2550,7 +2550,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                                 </span>
                               ) : '—'}
                             </td>
-                            <td className="px-3 py-2 font-mono text-[10px] text-amber-600 font-bold">{p.code_reglement || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-[10px] text-amber-600 font-bold">{p?.code_reglement || '—'}</td>
                             <td className="px-3 py-3">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => setEditingPurchase(p)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={13} /></button>
@@ -3867,9 +3867,9 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
             {/* Table */}
             {loadingReglements ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
               <div className="space-y-3">
-                {filteredReglements.length === 0 ? (
+                {filteredReglements.filter(Boolean).length === 0 ? (
                   <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">Aucun règlement.</div>
-                ) : filteredReglements.map((r: any) => (
+                ) : filteredReglements.filter(Boolean).map((r: any) => (
                   <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                     {/* Header row — click to expand */}
                     <div onClick={() => setExpandedReglement(prev => prev === r.id ? null : r.id)}
@@ -3880,7 +3880,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                         </span>
                         <div>
                           <span className="text-sm font-bold text-slate-800">{r.numero || r.reference_virement || '—'}</span>
-                        {r?.code_reglement && <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{r.code_reglement}</span>}
+                        {r && r.code_reglement && <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{r.code_reglement}</span>}
                           <span className="text-xs text-slate-400 ml-2">{r.banque || r.recu_par || ''}</span>
                         </div>
                         <span className="text-xs text-slate-500">{r.date_reglement}</span>
@@ -4190,7 +4190,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="flex gap-2 flex-wrap items-center">
                   <input type="month" value={releveMois} onChange={e => setReleveMois(e.target.value)}
                     className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
-                  <button onClick={fetchReleve} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => { setReleveFilter({mois:'',libelle:'',category:''}); fetchReleve(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                   <label className={`${parsingPDF ? 'bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'} text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer`}>
                     {parsingPDF ? <><Loader2 size={14} className="animate-spin" /> Extraction...</> : <><Upload size={14} /> Importer PDF</>}
                     <input type="file" accept=".pdf" className="hidden" disabled={parsingPDF} onChange={e => { const f = e.target.files?.[0]; if (f) parseBankPDF(f); e.target.value=''; }} />
@@ -4332,39 +4332,47 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                               <td className="px-3 py-1.5 text-[10px] text-slate-700 max-w-[200px] truncate">{r.libelle}</td>
                               <td className="px-3 py-1.5">
                                 <div className="flex items-center gap-1">
-                                  <input type="text" value={r.code_reglement || ''} placeholder="—"
-                                    onChange={async (e) => {
+                                  <input type="text" value={r?.code_reglement || ''} placeholder="—"
+                                    onChange={e => {
                                       const val = e.target.value;
-                                      await supabase.from('bank_releve').update({ code_reglement: val || null }).eq('id', r.id);
                                       setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, code_reglement: val } : x));
+                                    }}
+                                    onBlur={async (e) => {
+                                      await supabase.from('bank_releve').update({ code_reglement: e.target.value || null }).eq('id', r.id);
                                     }}
                                     className="w-16 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono font-bold text-amber-700 focus:outline-none focus:border-amber-500" />
                                   <button onClick={async () => {
-                                    const code = r.code_reglement?.trim();
-                                    if (!code) return;
+                                    const code = r?.code_reglement?.trim();
+                                    if (!code) { toast.error("Saisissez un code."); return; }
+                                    // Save code first
+                                    await supabase.from('bank_releve').update({ code_reglement: code }).eq('id', r.id);
+                                    // Search in reglements
                                     const { data: regData } = await supabase.from('reglements').select('*').eq('company_id', companyId).eq('code_reglement', code).limit(1);
                                     if (regData && regData.length > 0) {
                                       const reg = regData[0];
                                       const factNums = (reg.facture_numbers || []).join(', ');
-                                      await supabase.from('bank_releve').update({
+                                      const updates = {
                                         destination: reg.client || null,
                                         note_operation: factNums ? `Fact: ${factNums}` : null,
                                         ref_reglement: reg.numero || reg.reference_virement || null,
-                                      }).eq('id', r.id);
-                                      setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, destination: reg.client, note_operation: factNums ? `Fact: ${factNums}` : '', ref_reglement: reg.numero || reg.reference_virement || '' } : x));
-                                      toast.success(`${reg.client}`);
+                                      };
+                                      await supabase.from('bank_releve').update(updates).eq('id', r.id);
+                                      setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, ...updates, code_reglement: code } : x));
+                                      toast.success(`Trouvé: ${reg.client}`);
                                       return;
                                     }
+                                    // Search in purchases
                                     const { data: purchData } = await supabase.from('purchases').select('*').eq('company_id', companyId).eq('code_reglement', code);
                                     if (purchData && purchData.length > 0) {
-                                      const fournisseur = purchData[0].fournisseur || purchData[0].supplier || '';
-                                      const details = purchData.map((p: any) => p.description || p.categorie || '').filter(Boolean).join(', ');
-                                      await supabase.from('bank_releve').update({
-                                        destination: fournisseur || null,
+                                      const fourn = purchData[0].fournisseur || purchData[0].supplier || '';
+                                      const details = purchData.map((p: any) => p.numero_facture || p.invoice_number || '').filter(Boolean).join(', ');
+                                      const updates = {
+                                        destination: fourn || null,
                                         note_operation: details || null,
-                                      }).eq('id', r.id);
-                                      setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, destination: fournisseur, note_operation: details } : x));
-                                      toast.success(`${fournisseur}`);
+                                      };
+                                      await supabase.from('bank_releve').update(updates).eq('id', r.id);
+                                      setReleveList(prev => prev.map(x => x.id === r.id ? { ...x, ...updates, code_reglement: code } : x));
+                                      toast.success(`Trouvé: ${fourn}`);
                                       return;
                                     }
                                     toast.error("Code non trouvé.");
@@ -4639,7 +4647,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 const { data: purchData } = await supabase.from('purchases').select('*').eq('company_id', companyId).eq('code_reglement', code);
                 if (purchData && purchData.length > 0) {
                   const fournisseur = purchData[0].fournisseur || purchData[0].supplier || '';
-                  const details = purchData.map((p: any) => p.description || p.categorie || '').filter(Boolean).join(', ');
+                  const details = purchData.map((p: any) => p.numero_facture || p.invoice_number || '').filter(Boolean).join(', ');
                   setReleveForm((p: any) => ({
                     ...p,
                     destination: fournisseur || p.destination || '',
