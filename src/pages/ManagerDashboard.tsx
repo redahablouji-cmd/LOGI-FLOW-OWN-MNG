@@ -4274,7 +4274,17 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="flex gap-2 flex-wrap items-center">
                   <input type="month" value={releveFilter.mois || ''} onChange={e => setReleveFilter(p => ({...p,mois:e.target.value}))}
                     className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
-                  <button onClick={fetchReleve} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => { setReleveFilter({mois:'',libelle:'',category:''}); fetchReleve(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => {
+                    if (checkedReleve.length === filteredReleve.length && filteredReleve.length > 0) {
+                      setCheckedReleve([]);
+                    } else {
+                      setCheckedReleve(filteredReleve.map((r: any) => r.id));
+                    }
+                  }}
+                    className="bg-white/10 hover:bg-white/15 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    {checkedReleve.length === filteredReleve.length && filteredReleve.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
+                  </button>
                   {checkedReleve.length > 0 && (
                     <button onClick={async () => {
                       const checked = releveList.filter((r: any) => checkedReleve.includes(r.id));
