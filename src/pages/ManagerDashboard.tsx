@@ -233,6 +233,16 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [editingBaseRip, setEditingBaseRip] = useState<any>(null);
   const emptyBaseRipForm = { raison_social: '', rib: '' };
   const [baseRipForm, setBaseRipForm] = useState<any>(emptyBaseRipForm);
+
+  // Bank Virement state
+  const [virementList, setVirementList] = useState<any[]>([]);
+  const [loadingVirement, setLoadingVirement] = useState(false);
+  const [showVirementForm, setShowVirementForm] = useState(false);
+  const [editingVirement, setEditingVirement] = useState<any>(null);
+  const [selectedVirements, setSelectedVirements] = useState<string[]>([]);
+  const [virementFilter, setVirementFilter] = useState({ raison: '', dateFrom: '', dateTo: '' });
+  const emptyVirementForm = { date_virement: new Date().toISOString().split('T')[0], raison_social: '', rib: '', montant: '', justification: '', tva_mois: '', compte_id: '', banque: '', agence: '', numero_compte: '' };
+  const [virementForm, setVirementForm] = useState<any>(emptyVirementForm);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -1842,6 +1852,99 @@ const handleGenerateInvoicePDF = () => {
     await supabase.from('bank_base_rip').delete().eq('id', id);
     toast.success("Supprimé."); fetchBaseRip();
   };
+
+  // ── Bank Virement CRUD ──
+  const fetchVirement = async () => {
+    if (!companyId) return; setLoadingVirement(true);
+    const { data } = await supabase.from('bank_virement').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setVirementList(data || []); setLoadingVirement(false);
+  };
+  const handleSaveVirement = async () => {
+    const payload = {
+      company_id: companyId, date_virement: virementForm.date_virement || null,
+      raison_social: virementForm.raison_social || null, rib: virementForm.rib || null,
+      montant: parseFloat(virementForm.montant) || 0, justification: virementForm.justification || null,
+      tva_mois: virementForm.tva_mois || null, compte_id: virementForm.compte_id || null,
+      banque: virementForm.banque || null, agence: virementForm.agence || null, numero_compte: virementForm.numero_compte || null,
+    };
+    if (editingVirement) {
+      const { error } = await supabase.from('bank_virement').update(payload).eq('id', editingVirement.id);
+      if (!error) { toast.success("Virement modifié."); setEditingVirement(null); } else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from('bank_virement').insert(payload);
+      if (!error) toast.success("Virement ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowVirementForm(false); setVirementForm(emptyVirementForm); fetchVirement();
+  };
+  const handleDeleteVirement = async (id: string) => {
+    if (!confirm('Supprimer ?')) return;
+    await supabase.from('bank_virement').delete().eq('id', id);
+    toast.success("Supprimé."); fetchVirement();
+  };
+  const filteredVirements = virementList.filter((v: any) => {
+    if (virementFilter.raison && !v.raison_social?.toLowerCase().includes(virementFilter.raison.toLowerCase())) return false;
+    if (virementFilter.dateFrom && (v.date_virement || '') < virementFilter.dateFrom) return false;
+    if (virementFilter.dateTo && (v.date_virement || '') > virementFilter.dateTo) return false;
+    return true;
+  });
+
+  const handleGenerateVirementPDF = () => {
+    const selected = virementList.filter((v: any) => selectedVirements.includes(v.id));
+    if (selected.length === 0) return;
+    const total = selected.reduce((s: number, v: any) => s + (parseFloat(v.montant) || 0), 0);
+    const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const acct = selected[0];
+
+    const rowsHtml = selected.map((v: any, i: number) => {
+      const bg = i % 2 === 1 ? '#F2F2F2' : '#fff';
+      return `<tr>
+        <td style="padding:8px 10px;border:1px solid #ddd;font-size:11px;background:${bg};font-weight:700">${v.raison_social || '—'}</td>
+        <td style="padding:8px 10px;border:1px solid #ddd;font-size:11px;font-family:monospace;background:${bg}">${v.rib || '—'}</td>
+        <td style="padding:8px 10px;border:1px solid #ddd;font-size:11px;text-align:right;font-weight:700;background:${bg}">${fmt(parseFloat(v.montant) || 0)}</td>
+      </tr>`;
+    }).join('');
+
+    const emptyCount = Math.max(0, 10 - selected.length);
+    const emptyHtml = Array.from({ length: emptyCount }, (_, i) => {
+      const bg = (selected.length + i) % 2 === 1 ? '#F2F2F2' : '#fff';
+      return `<tr><td style="padding:8px 10px;border:1px solid #ddd;background:${bg}">&nbsp;</td><td style="padding:8px 10px;border:1px solid #ddd;background:${bg}">&nbsp;</td><td style="padding:8px 10px;border:1px solid #ddd;background:${bg}">&nbsp;</td></tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+      <style>*{margin:0;padding:0;box-sizing:border-box}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style>
+      </head><body>
+      <div style="width:210mm;min-height:297mm;padding:35mm 15mm 15mm 15mm;font-family:Arial,sans-serif;position:relative">
+        <div style="position:absolute;top:8mm;right:15mm;font-size:8px;color:#999">Page 1 / 1</div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+          <div style="border:2px solid #1F3864;border-radius:4px;padding:8px 16px;min-width:220px;background:#FFFDE7">
+            <div style="font-size:10px;font-weight:700;color:#1F3864">BANQUE : <span style="font-weight:400">${acct.banque || '—'}</span></div>
+            <div style="font-size:10px;font-weight:700;color:#1F3864;margin-top:3px">Agence : <span style="font-weight:400">${acct.agence || '—'}</span></div>
+          </div>
+        </div>
+        <div style="font-size:18px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:20px;text-decoration:underline">ORDRE DE VIREMENT</div>
+        <div style="font-size:12px;line-height:1.8;color:#333;margin-bottom:10px">Madame, Monsieur,</div>
+        <div style="font-size:12px;line-height:1.8;color:#333;margin-bottom:10px">Par le débit de mon compte n° <strong style="color:#1F3864">${acct.numero_compte || '—'}</strong></div>
+        <div style="font-size:12px;line-height:1.8;color:#333;margin-bottom:16px">Nous vous prions de bien vouloir effectuer le virement suivant :</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:0">
+          <thead><tr>
+            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:35%">Raison Sociale</th>
+            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:40%">RIB</th>
+            <th style="background:#1F3864;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:8px 10px;border:1px solid #1F3864;width:25%">Montant</th>
+          </tr></thead>
+          <tbody>
+            ${rowsHtml}${emptyHtml}
+            <tr>
+              <td colspan="2" style="padding:8px 10px;border:1px solid #1F3864;font-size:12px;font-weight:900;text-align:right;background:#1F3864;color:#fff">TOTAL</td>
+              <td style="padding:8px 10px;border:1px solid #1F3864;font-size:13px;font-weight:900;text-align:right;background:#1F3864;color:#fff">${fmt(total)} MAD</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="margin-top:20px;font-size:10px;color:#7F7F7F"><strong style="color:#333">Arrêté le présent ordre de virement à la somme de :</strong> ${numberToWords(total)}</div>
+      </div>
+      </body></html>`;
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -1859,6 +1962,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'reglements' && companyId) { fetchReglements(); }
     if (activeTab === 'bank_rip' && companyId) fetchRip();
     if (activeTab === 'bank_base_rip' && companyId) fetchBaseRip();
+    if (activeTab === 'bank_virement' && companyId) { fetchVirement(); fetchRip(); fetchBaseRip(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
       supabase.from('invoice_templates').select('*')
@@ -3770,6 +3874,97 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
             )}
           </div>
         )}
+        {activeTab === 'bank_virement' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-indigo-500 text-white mb-2"><Landmark className="w-3.5 h-3.5" /> Virement</span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Ordres de Virement</h1>
+                  <p className="text-sm text-slate-400 mt-1">{filteredVirements.length} virements — {selectedVirements.length} sélectionnés</p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={fetchVirement} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Upload size={14} /> Importer XLS
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      try {
+                        const buffer = await file.arrayBuffer(); const wb = XLSX.read(buffer, { type: 'array' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        const dataRows = rawRows.slice(2).filter((r: any[]) => r.length > 0 && (r[0]||r[1]));
+                        const records = dataRows.map((r: any[]) => ({
+                          company_id: companyId, date_virement: r[0]?String(r[0]):null, raison_social: String(r[1]||'').trim()||null,
+                          montant: parseFloat(r[2]) || 0, justification: String(r[3]||'').trim()||null, tva_mois: String(r[4]||'').trim()||null,
+                        }));
+                        if (!records.length) { toast.error("Aucune donnée."); return; }
+                        const { error } = await supabase.from('bank_virement').insert(records);
+                        if (!error) { toast.success(`${records.length} virements importés.`); fetchVirement(); } else toast.error(`Erreur: ${error.message}`);
+                      } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                      e.target.value = '';
+                    }} />
+                  </label>
+                  <button onClick={() => { if (!filteredVirements.length) return; exportToXLS(filteredVirements.map((v:any) => ({ 'Date':v.date_virement,'Raison Sociale':v.raison_social,'RIB':v.rib,'Montant':v.montant,'Justification':v.justification,'TVA/Mois':v.tva_mois,'Banque':v.banque,'Agence':v.agence,'N° Compte':v.numero_compte })),'virements'); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                  {selectedVirements.length > 0 && (
+                    <button onClick={handleGenerateVirementPDF} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF ({selectedVirements.length})</button>
+                  )}
+                  <button onClick={() => { setVirementForm(emptyVirementForm); setEditingVirement(null); setShowVirementForm(true); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau</button>
+                </div>
+              </div>
+            </div>
+            {/* Filters */}
+            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Raison Sociale</label>
+                <input type="text" placeholder="Filtrer..." value={virementFilter.raison} onChange={e => setVirementFilter(p => ({...p,raison:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date de</label>
+                <input type="date" value={virementFilter.dateFrom} onChange={e => setVirementFilter(p => ({...p,dateFrom:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date à</label>
+                <input type="date" value={virementFilter.dateTo} onChange={e => setVirementFilter(p => ({...p,dateTo:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+              <button onClick={() => setVirementFilter({raison:'',dateFrom:'',dateTo:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+            </div>
+            {/* Table */}
+            {loadingVirement ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[900px]">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-3 w-8"><input type="checkbox" checked={selectedVirements.length === filteredVirements.length && filteredVirements.length > 0} onChange={e => setSelectedVirements(e.target.checked ? filteredVirements.map((v:any)=>v.id) : [])} className="accent-blue-600" /></th>
+                        {['Date','Raison Sociale','RIB','Montant','Justification','TVA/Mois','Banque','Agence','Actions'].map(h => (
+                          <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredVirements.length === 0 ? (
+                        <tr><td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-400">Aucun virement.</td></tr>
+                      ) : filteredVirements.map((v: any) => (
+                        <tr key={v.id} className={`hover:bg-slate-50 transition-colors ${selectedVirements.includes(v.id)?'bg-blue-50/50':''}`}>
+                          <td className="px-3 py-3"><input type="checkbox" checked={selectedVirements.includes(v.id)} onChange={e => setSelectedVirements(prev => e.target.checked ? [...prev,v.id] : prev.filter(x=>x!==v.id))} className="accent-blue-600" /></td>
+                          <td className="px-3 py-2 text-xs text-slate-700">{v.date_virement||'—'}</td>
+                          <td className="px-3 py-2 text-xs font-semibold text-slate-700">{v.raison_social||'—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-blue-600">{v.rib||'—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs font-bold text-slate-900">{Number(v.montant||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
+                          <td className="px-3 py-2 text-xs text-slate-600">{v.justification||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{v.tva_mois||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{v.banque||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{v.agence||'—'}</td>
+                          <td className="px-3 py-2 flex gap-1">
+                            <button onClick={() => { setEditingVirement(v); setVirementForm({...v, montant: String(v.montant)}); setShowVirementForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={13} /></button>
+                            <button onClick={() => handleDeleteVirement(v.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={13} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
@@ -3837,6 +4032,89 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
         <div className="flex gap-3 pt-5">
           <button onClick={handleSaveBaseRip} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingBaseRip ? 'Enregistrer' : 'Ajouter'}</button>
           <button onClick={() => { setShowBaseRipForm(false); setEditingBaseRip(null); setBaseRipForm(emptyBaseRipForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Virement Form */}
+<AnimatePresence>
+  {showVirementForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingVirement ? 'Modifier Virement' : 'Nouveau Virement'}</h3>
+          <button onClick={() => { setShowVirementForm(false); setEditingVirement(null); setVirementForm(emptyVirementForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</label>
+            <input type="date" value={virementForm.date_virement || ''} onChange={e => setVirementForm((p: any) => ({...p, date_virement: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+
+          {/* Raison Sociale — auto-fill from Base RIP */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Raison Sociale</label>
+            <select value={virementForm.raison_social || ''} onChange={e => {
+              const selected = baseRipList.find((b: any) => b.raison_social === e.target.value);
+              setVirementForm((p: any) => ({...p, raison_social: e.target.value, rib: selected?.rib || p.rib }));
+            }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">— Sélectionner —</option>
+              {baseRipList.map((b: any) => (<option key={b.id} value={b.raison_social}>{b.raison_social}</option>))}
+            </select>
+          </div>
+
+          {/* RIB — auto-filled */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RIB (auto)</label>
+            <input type="text" value={virementForm.rib || ''} onChange={e => setVirementForm((p: any) => ({...p, rib: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-mono text-blue-700 focus:outline-none focus:border-blue-500" />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant (MAD)</label>
+            <input type="number" value={virementForm.montant || ''} onChange={e => setVirementForm((p: any) => ({...p, montant: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Justification</label>
+            <input type="text" value={virementForm.justification || ''} onChange={e => setVirementForm((p: any) => ({...p, justification: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA / Mois</label>
+            <input type="month" value={virementForm.tva_mois || ''} onChange={e => setVirementForm((p: any) => ({...p, tva_mois: e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+
+          {/* Compte N° — select from RIP */}
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Compte débiteur (RIP société)</label>
+            <select value={virementForm.compte_id || ''} onChange={e => {
+              const acct = ripList.find((r: any) => r.id === e.target.value);
+              setVirementForm((p: any) => ({...p, compte_id: e.target.value, banque: acct?.banque || '', agence: acct?.agence || '', numero_compte: acct?.numero_compte || '' }));
+            }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500">
+              <option value="">— Sélectionner un compte —</option>
+              {ripList.map((r: any) => (<option key={r.id} value={r.id}>{r.banque} — {r.agence} — {r.numero_compte}</option>))}
+            </select>
+          </div>
+
+          {/* Auto-filled from account */}
+          {virementForm.banque && (
+            <div className="sm:col-span-2 lg:col-span-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex gap-6">
+              <div><span className="text-[9px] font-black text-amber-600 uppercase block">Banque</span><span className="text-xs font-bold text-amber-800">{virementForm.banque}</span></div>
+              <div><span className="text-[9px] font-black text-amber-600 uppercase block">Agence</span><span className="text-xs font-bold text-amber-800">{virementForm.agence}</span></div>
+              <div><span className="text-[9px] font-black text-amber-600 uppercase block">N° Compte</span><span className="text-xs font-mono font-bold text-amber-800">{virementForm.numero_compte}</span></div>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveVirement} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingVirement ? 'Enregistrer' : 'Ajouter'}</button>
+          <button onClick={() => { setShowVirementForm(false); setEditingVirement(null); setVirementForm(emptyVirementForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
         </div>
       </motion.div>
     </div>
