@@ -1939,7 +1939,7 @@ const handleGenerateInvoicePDF = () => {
             </tr>
           </tbody>
         </table>
-        <div style="margin-top:20px;font-size:10px;color:#7F7F7F"><strong style="color:#333">Arrêté le présent ordre de virement à la somme de :</strong> ${total > 0 ? numberToWords(total) : '—'}</div>
+        <div style="margin-top:20px;font-size:10px;color:#7F7F7F"><strong style="color:#333">Arrêté le présent ordre de virement à la somme de :</strong> ${numberToWords(total)}</div>
         <div style="margin-top:30px;text-align:right;font-size:11px;color:#333">Casablanca le ${new Date().toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
         <div style="margin-top:20px;display:flex;justify-content:flex-end"><div style="width:200px;text-align:center;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:6px">Signature & Cachet</div></div>
       </div>
