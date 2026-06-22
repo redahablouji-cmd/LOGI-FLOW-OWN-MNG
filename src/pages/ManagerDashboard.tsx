@@ -243,6 +243,15 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [virementFilter, setVirementFilter] = useState({ raison: '', dateFrom: '', dateTo: '' });
   const emptyVirementForm = { date_virement: new Date().toISOString().split('T')[0], raison_social: '', rib: '', montant: '', justification: '', tva_mois: '', compte_id: '', banque: '', agence: '', numero_compte: '' };
   const [virementForm, setVirementForm] = useState<any>(emptyVirementForm);
+  // TVA state
+  const [tvaList, setTvaList] = useState<any[]>([]);
+  const [loadingTva, setLoadingTva] = useState(false);
+  const [showTvaForm, setShowTvaForm] = useState(false);
+  const [editingTva, setEditingTva] = useState<any>(null);
+  const [tvaMois, setTvaMois] = useState(new Date().toISOString().slice(0, 7));
+  const emptyTvaForm = { numero_facture: '', date_facture: '', nom_fournisseur: '', if_fournisseur: '', ice_fournisseur: '', designation: '', montant_ht: '', taux_tva: '20', montant_tva: '', montant_ttc: '', date_paiement: '', mode_paiement: '' };
+  const [tvaForm, setTvaForm] = useState<any>(emptyTvaForm);
+  const [tvaEncaiss, setTvaEncaiss] = useState({ t14: '', t13: '', t12: '', t10: '', t20: '' });
   // Relevé Bancaire + État Explicatif state
   const [releveList, setReleveList] = useState<any[]>([]);
   const [loadingReleve, setLoadingReleve] = useState(false);
@@ -2157,6 +2166,38 @@ const handleGenerateInvoicePDF = () => {
     { id: 'remise_lc', label: 'Remise de LC', color: 'cyan' },
     { id: 'frais_bancaire', label: 'Frais Bancaire', color: 'rose' },
   ];
+  // ── TVA CRUD ──
+  const fetchTva = async () => {
+    if (!companyId) return; setLoadingTva(true);
+    const { data } = await supabase.from('bank_tva').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setTvaList(data || []); setLoadingTva(false);
+  };
+  const handleSaveTva = async () => {
+    const ht = parseFloat(tvaForm.montant_ht) || 0;
+    const rate = parseFloat(tvaForm.taux_tva) || 0;
+    const tvaAmt = parseFloat((ht * rate / 100).toFixed(2));
+    const payload = {
+      company_id: companyId, mois: tvaMois,
+      numero_facture: tvaForm.numero_facture || null, date_facture: tvaForm.date_facture || null,
+      nom_fournisseur: tvaForm.nom_fournisseur || null, if_fournisseur: tvaForm.if_fournisseur || null,
+      ice_fournisseur: tvaForm.ice_fournisseur || null, designation: tvaForm.designation || null,
+      montant_ht: ht, taux_tva: rate, montant_tva: tvaAmt, montant_ttc: ht + tvaAmt,
+      date_paiement: tvaForm.date_paiement || null, mode_paiement: tvaForm.mode_paiement || null,
+    };
+    if (editingTva) {
+      const { error } = await supabase.from('bank_tva').update(payload).eq('id', editingTva.id);
+      if (!error) { toast.success("Modifié."); setEditingTva(null); } else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from('bank_tva').insert(payload);
+      if (!error) toast.success("Ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowTvaForm(false); setTvaForm(emptyTvaForm); fetchTva();
+  };
+  const handleDeleteTva = async (id: string) => {
+    if (!confirm('Supprimer ?')) return;
+    await supabase.from('bank_tva').delete().eq('id', id);
+    toast.success("Supprimé."); fetchTva();
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -2175,6 +2216,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'bank_rip' && companyId) fetchRip();
     if (activeTab === 'bank_base_rip' && companyId) fetchBaseRip();
     if (activeTab === 'bank_virement' && companyId) { fetchVirement(); fetchRip(); fetchBaseRip(); }
+    if (activeTab === 'bank_tva' && companyId) fetchTva();
     if ((activeTab === 'bank_releve' || activeTab === 'bank_etat_explicatif') && companyId) fetchReleve();
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
@@ -4544,6 +4586,153 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
             })()}
           </div>
         )}
+        {activeTab === 'bank_tva' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-rose-500 text-white mb-2"><Landmark className="w-3.5 h-3.5" /> TVA</span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Déclaration TVA</h1>
+                  <p className="text-sm text-slate-400 mt-1">{tvaList.length} lignes</p>
+                </div>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <input type="month" value={tvaMois} onChange={e => setTvaMois(e.target.value)}
+                    className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
+                  <button onClick={fetchTva} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => { if (!tvaList.length) return; exportToXLS(tvaList.map((t:any) => ({ 'N° Facture':t.numero_facture,'Date':t.date_facture,'Fournisseur':t.nom_fournisseur,'IF':t.if_fournisseur,'ICE':t.ice_fournisseur,'Désignation':t.designation,'HT':t.montant_ht,'Taux TVA':t.taux_tva,'TVA':t.montant_tva,'TTC':t.montant_ttc,'Date Paie.':t.date_paiement,'Mode':t.mode_paiement })),'tva'); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                  <button onClick={() => { setTvaForm(emptyTvaForm); setEditingTva(null); setShowTvaForm(true); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau</button>
+                </div>
+              </div>
+            </div>
+
+            {/* 3 Formula Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+              {/* Encaissements */}
+              <div className="bg-white rounded-xl border border-emerald-200 p-4">
+                <h3 className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-3">Encaissements (TVA Collectée)</h3>
+                <div className="space-y-2">
+                  {[
+                    { key: 't14', label: '14%', rate: 0.14 },
+                    { key: 't13', label: '13%', rate: 0.13 },
+                    { key: 't12', label: '12%', rate: 0.12 },
+                    { key: 't10', label: '10%', rate: 0.10 },
+                    { key: 't20', label: '20%', rate: 0.20 },
+                  ].map(({ key, label, rate }) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className="text-[9px] font-black text-slate-400 w-8">{label}</span>
+                      <input type="number" placeholder="CA HT" value={(tvaEncaiss as any)[key] || ''}
+                        onChange={e => setTvaEncaiss(p => ({ ...p, [key]: e.target.value }))}
+                        className="flex-1 h-7 rounded border border-slate-200 px-2 text-xs focus:outline-none focus:border-emerald-500" />
+                      <span className="text-xs font-mono font-bold text-emerald-700 w-20 text-right">
+                        {((parseFloat((tvaEncaiss as any)[key]) || 0) * rate).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t border-emerald-200 flex justify-between">
+                    <span className="text-[10px] font-black text-emerald-800">Total TVA Collectée</span>
+                    <span className="font-mono text-sm font-bold text-emerald-700">
+                      {(() => {
+                        const rates = [0.14, 0.13, 0.12, 0.10, 0.20];
+                        const keys = ['t14', 't13', 't12', 't10', 't20'];
+                        return keys.reduce((s, k, i) => s + (parseFloat((tvaEncaiss as any)[k]) || 0) * rates[i], 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Décaissements — auto from table */}
+              <div className="bg-white rounded-xl border border-rose-200 p-4">
+                <h3 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3">Décaissements (TVA Déductible)</h3>
+                <div className="space-y-2">
+                  {[0, 7, 10, 12, 13, 14, 20].map(rate => {
+                    const total = tvaList.filter((t: any) => Math.round(parseFloat(t.taux_tva) || 0) === rate).reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
+                    return total > 0 ? (
+                      <div key={rate} className="flex justify-between">
+                        <span className="text-[9px] font-black text-slate-400">{rate}%</span>
+                        <span className="font-mono text-xs font-bold text-rose-700">{total.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ) : null;
+                  })}
+                  <div className="pt-2 border-t border-rose-200 flex justify-between">
+                    <span className="text-[10px] font-black text-rose-800">Total TVA Déductible</span>
+                    <span className="font-mono text-sm font-bold text-rose-700">
+                      {tvaList.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* TVA Due / Crédit */}
+              <div className="bg-white rounded-xl border border-blue-200 p-4">
+                <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">Résultat TVA</h3>
+                {(() => {
+                  const rates = [0.14, 0.13, 0.12, 0.10, 0.20];
+                  const keys = ['t14', 't13', 't12', 't10', 't20'];
+                  const collectee = keys.reduce((s, k, i) => s + (parseFloat((tvaEncaiss as any)[k]) || 0) * rates[i], 0);
+                  const deductible = tvaList.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
+                  const result = collectee - deductible;
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex justify-between"><span className="text-xs text-slate-600">TVA Collectée</span><span className="font-mono text-xs font-bold text-emerald-700">{collectee.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span></div>
+                      <div className="flex justify-between"><span className="text-xs text-slate-600">TVA Déductible</span><span className="font-mono text-xs font-bold text-rose-700">{deductible.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span></div>
+                      <div className={`pt-3 border-t-2 flex justify-between ${result >= 0 ? 'border-rose-300' : 'border-emerald-300'}`}>
+                        <span className="text-sm font-black">{result >= 0 ? 'TVA Due' : 'Crédit TVA'}</span>
+                        <span className={`font-mono text-lg font-black ${result >= 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                          {Math.abs(result).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Relevé des déductions — Table */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4 mb-2">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Relevé des Déductions</h3>
+            </div>
+            {loadingTva ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[1200px]">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>{['N° Facture','Date','Fournisseur','IF','ICE','Désignation','HT','Taux TVA','TVA','TTC','Date Paie.','Mode','Actions'].map(h => (
+                        <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {tvaList.length === 0 ? (
+                        <tr><td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">Aucune ligne.</td></tr>
+                      ) : tvaList.map((t: any) => (
+                        <tr key={t.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-mono text-xs text-blue-600">{t.numero_facture || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-700">{t.date_facture || '—'}</td>
+                          <td className="px-3 py-2 text-xs font-semibold text-slate-700">{t.nom_fournisseur || '—'}</td>
+                          <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{t.if_fournisseur || '—'}</td>
+                          <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{t.ice_fournisseur || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-600 max-w-[150px] truncate">{t.designation || '—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-700">{Number(t.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-500">{t.taux_tva}%</td>
+                          <td className="px-3 py-2 font-mono text-xs text-amber-700 font-bold">{Number(t.montant_tva || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-2 font-mono text-xs font-bold text-slate-900">{Number(t.montant_ttc || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{t.date_paiement || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{t.mode_paiement || '—'}</td>
+                          <td className="px-3 py-2 flex gap-1">
+                            <button onClick={() => { setEditingTva(t); setTvaForm({ ...t, montant_ht: String(t.montant_ht), taux_tva: String(t.taux_tva) }); setShowTvaForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
+                            <button onClick={() => handleDeleteTva(t.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
@@ -4795,6 +4984,101 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
         <div className="flex gap-3 pt-5">
           <button onClick={handleSaveReleve} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingReleve?'Enregistrer':'Ajouter'}</button>
           <button onClick={() => { setShowReleveForm(false); setEditingReleve(null); setReleveForm(emptyReleveForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* TVA Form */}
+<AnimatePresence>
+  {showTvaForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingTva ? 'Modifier' : 'Nouvelle Ligne TVA'}</h3>
+          <button onClick={() => { setShowTvaForm(false); setEditingTva(null); setTvaForm(emptyTvaForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Facture</label>
+            <input type="text" value={tvaForm.numero_facture || ''} onChange={e => setTvaForm((p: any) => ({ ...p, numero_facture: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date Facture</label>
+            <input type="date" value={tvaForm.date_facture || ''} onChange={e => setTvaForm((p: any) => ({ ...p, date_facture: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          {/* Fournisseur dropdown */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fournisseur</label>
+            <select value={tvaForm.nom_fournisseur || ''} onChange={e => {
+              const f = fournisseursList.find((f: any) => f.nom === e.target.value);
+              setTvaForm((p: any) => ({ ...p, nom_fournisseur: e.target.value, if_fournisseur: f?.identifiant_fiscal || f?.if_number || p.if_fournisseur || '', ice_fournisseur: f?.ice || p.ice_fournisseur || '' }));
+            }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">— Sélectionner —</option>
+              {fournisseursList.map((f: any) => (<option key={f.id} value={f.nom}>{f.nom}</option>))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">IF Fournisseur</label>
+            <input type="text" value={tvaForm.if_fournisseur || ''} onChange={e => setTvaForm((p: any) => ({ ...p, if_fournisseur: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ICE Fournisseur</label>
+            <input type="text" value={tvaForm.ice_fournisseur || ''} onChange={e => setTvaForm((p: any) => ({ ...p, ice_fournisseur: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation</label>
+            <input type="text" value={tvaForm.designation || ''} onChange={e => setTvaForm((p: any) => ({ ...p, designation: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant HT</label>
+            <input type="number" value={tvaForm.montant_ht || ''} onChange={e => {
+              const ht = parseFloat(e.target.value) || 0;
+              const rate = parseFloat(tvaForm.taux_tva) || 0;
+              const tva = parseFloat((ht * rate / 100).toFixed(2));
+              setTvaForm((p: any) => ({ ...p, montant_ht: e.target.value, montant_tva: String(tva), montant_ttc: String((ht + tva).toFixed(2)) }));
+            }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taux TVA (%)</label>
+            <input type="number" value={tvaForm.taux_tva || ''} onChange={e => {
+              const rate = parseFloat(e.target.value) || 0;
+              const ht = parseFloat(tvaForm.montant_ht) || 0;
+              const tva = parseFloat((ht * rate / 100).toFixed(2));
+              setTvaForm((p: any) => ({ ...p, taux_tva: e.target.value, montant_tva: String(tva), montant_ttc: String((ht + tva).toFixed(2)) }));
+            }}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant TTC (auto)</label>
+            <input type="number" value={tvaForm.montant_ttc || ''} readOnly
+              className="w-full mt-1 h-9 rounded-lg border-2 border-blue-100 bg-blue-50 px-3 text-sm font-bold text-blue-700 cursor-not-allowed" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date Paiement</label>
+            <input type="date" value={tvaForm.date_paiement || ''} onChange={e => setTvaForm((p: any) => ({ ...p, date_paiement: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mode Paiement</label>
+            <select value={tvaForm.mode_paiement || ''} onChange={e => setTvaForm((p: any) => ({ ...p, mode_paiement: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              <option value="">— Sélectionner —</option>
+              <option value="cheque">Chèque</option><option value="effet">Effet</option><option value="virement">Virement</option><option value="espece">Espèce</option><option value="compensation">Compensation</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveTva} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingTva ? 'Enregistrer' : 'Ajouter'}</button>
+          <button onClick={() => { setShowTvaForm(false); setEditingTva(null); setTvaForm(emptyTvaForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
         </div>
       </motion.div>
     </div>
