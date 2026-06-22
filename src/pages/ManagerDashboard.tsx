@@ -4354,7 +4354,16 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                         await supabase.from('bank_releve').update({ printed: true }).eq('id', id);
                       }
                       setReleveList(prev => prev.map(r => checkedReleve.includes(r.id) ? { ...r, printed: true } : r));
+                      <button onClick={() => {
+                    if (checkedReleve.length === filteredReleve.length) {
                       setCheckedReleve([]);
+                    } else {
+                      setCheckedReleve(filteredReleve.map((r: any) => r.id));
+                    }
+                  }}
+                    className="bg-white/10 hover:bg-white/15 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    {checkedReleve.length === filteredReleve.length && filteredReleve.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
+                  </button>
                       toast.success(`${checkedReleve.length} lignes imprimées.`);
                     }}
                       className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
