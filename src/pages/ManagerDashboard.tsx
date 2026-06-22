@@ -254,6 +254,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const emptyReleveForm = { code: '', date_operation: '', libelle: '', date_valeur: '', debit: '', credit: '', category: 'virement', destination: '', note_operation: '', ref_reglement: '', observation: '', code_reglement: '' };
   const [releveForm, setReleveForm] = useState<any>(emptyReleveForm);
   const [etatExpandedSections, setEtatExpandedSections] = useState<string[]>(['virement','emission_cheque','emission_effets','remise_cheque','remise_lc','frais_bancaire']);
+  const [checkedReleve, setCheckedReleve] = useState<string[]>([]);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -2113,7 +2114,9 @@ const handleGenerateInvoicePDF = () => {
   // ── Relevé CRUD ──
   const fetchReleve = async () => {
     if (!companyId) return; setLoadingReleve(true);
-    const { data } = await supabase.from('bank_releve').select('*').eq('company_id', companyId).order('created_at');
+    let query = supabase.from('bank_releve').select('*').eq('company_id', companyId);
+    if (releveFilter.mois) query = query.eq('mois', releveFilter.mois);
+    const { data } = await query.order('created_at');
     setReleveList(data || []); setLoadingReleve(false);
   };
   const handleSaveReleve = async () => {
@@ -2141,7 +2144,6 @@ const handleGenerateInvoicePDF = () => {
     toast.success("Supprimé."); fetchReleve();
   };
   const filteredReleve = releveList.filter((r: any) => {
-    if (releveFilter.mois && r.mois !== releveFilter.mois) return false;
     if (releveFilter.libelle && !r.libelle?.toLowerCase().includes(releveFilter.libelle.toLowerCase())) return false;
     if (releveFilter.category && r.category !== releveFilter.category) return false;
     return true;
@@ -4321,13 +4323,18 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                     <div className="overflow-x-auto">
                       <table className="w-full text-left min-w-[900px]">
                         <thead className="bg-slate-50 border-b border-slate-200">
-                          <tr>{['Date','Libellé','Code Rèq.','Destination','Note','Décaissement','Encaissement','Réf.','Obs.',''].map(h => (
+                          <tr>{['✓','Date','Libellé','Code Rèq.','Destination','Note','Décaissement','Encaissement','Réf.','Obs.',''].map(h => (
                             <th key={h} className="px-3 py-1.5 text-[8px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
                           ))}</tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                           {items.map((r: any) => (
-                            <tr key={r.id} className="hover:bg-slate-50">
+                            <tr key={r.id} className={`hover:bg-slate-50 ${checkedReleve.includes(r.id) ? 'bg-emerald-50' : ''}`}>
+                              <td className="px-3 py-1.5">
+                                <input type="checkbox" checked={checkedReleve.includes(r.id)}
+                                  onChange={e => setCheckedReleve(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))}
+                                  className="accent-emerald-600" />
+                              </td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-600">{r.date_operation}</td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-700 max-w-[200px] truncate">{r.libelle}</td>
                               <td className="px-3 py-1.5">
