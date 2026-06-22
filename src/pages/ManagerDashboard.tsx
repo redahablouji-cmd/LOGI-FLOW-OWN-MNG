@@ -407,25 +407,12 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const handleSavePurchase = async () => {
     if (!editingPurchase) return;
     const p = editingPurchase as any;
-    const { error } = await supabase.from('purchases').update({
-      date: p.date || null,
-      categorie: p.categorie || null,
-      fournisseur: p.fournisseur || null,
-      numero_facture: p.numero_facture || null,
-      designation: p.designation || null,
-      identifiant_fiscal: p.identifiant_fiscal || null,
-      ice: p.ice || null,
-      affectation: p.affectation || null,
-      montant_ht: parseFloat(p.montant_ht) || 0,
-      montant_tva: parseFloat(p.montant_tva) || 0,
-      montant_ttc: parseFloat(p.montant_ttc) || 0,
-      banque: p.banque || null,
-      numero_reference: p.numero_reference || null,
-      date_echeance: p.date_echeance || null,
-      mode_paiement: p.mode_paiement || null,
-      code_reglement: p.code_reglement || null,
-      notes: p.notes || null,
-    }).eq('id', p.id);
+    // Only send fields that have values, let Supabase ignore unknown ones
+    const payload: any = {};
+    Object.keys(p).forEach(key => {
+      if (key !== 'id' && key !== 'created_at') payload[key] = p[key];
+    });
+    const { error } = await supabase.from('purchases').update(payload).eq('id', p.id);
     if (!error) { toast.success("Achat modifié."); setEditingPurchase(null); fetchPurchases(); }
     else toast.error(`Erreur: ${error.message}`);
   };
