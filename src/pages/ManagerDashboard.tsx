@@ -1891,6 +1891,26 @@ const handleGenerateInvoicePDF = () => {
   const handleGenerateVirementPDF = () => {
     const selected = virementList.filter((v: any) => selectedVirements.includes(v.id));
     if (selected.length === 0) return;
+    const toWords = (n: number): string => {
+      const a = Math.abs(Math.round(n));
+      if (a === 0) return 'zéro dirham';
+      const u = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+      const d = ['','dix','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+      const w = (n: number): string => {
+        if (n === 0) return '';
+        if (n < 20) return u[n];
+        if (n < 70) return d[Math.floor(n/10)] + (n%10 === 1 ? ' et un' : n%10 ? '-' + u[n%10] : '');
+        if (n < 80) return 'soixante' + (n === 71 ? ' et onze' : '-' + u[n-60]);
+        if (n < 100) return 'quatre-vingt' + (n === 80 ? 's' : '-' + u[n-80]);
+        if (n < 200) return 'cent' + (n === 100 ? '' : ' ' + w(n-100));
+        if (n < 1000) return u[Math.floor(n/100)] + ' cent' + (n%100 === 0 ? 's' : ' ' + w(n%100));
+        if (n < 2000) return 'mille' + (n === 1000 ? '' : ' ' + w(n-1000));
+        if (n < 1000000) return w(Math.floor(n/1000)) + ' mille' + (n%1000 ? ' ' + w(n%1000) : '');
+        if (n < 2000000) return 'un million' + (n%1000000 ? ' ' + w(n%1000000) : '');
+        return w(Math.floor(n/1000000)) + ' millions' + (n%1000000 ? ' ' + w(n%1000000) : '');
+      };
+      return w(a) + ' dirhams';
+    };
     const total = selected.reduce((s: number, v: any) => s + (Number(v.montant) || 0), 0);
     const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const acct = selected[0];
@@ -1939,7 +1959,7 @@ const handleGenerateInvoicePDF = () => {
             </tr>
           </tbody>
         </table>
-        <div style="margin-top:20px;font-size:10px;color:#7F7F7F"><strong style="color:#333">Arrêté le présent ordre de virement à la somme de :</strong> ${numberToWords(total)}</div>
+        <div style="margin-top:20px;font-size:10px;color:#7F7F7F"><strong style="color:#333">Arrêté le présent ordre de virement à la somme de :</strong> ${toWords(total)}</div>
         <div style="margin-top:30px;text-align:right;font-size:11px;color:#333">Casablanca le ${new Date().toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
         <div style="margin-top:20px;display:flex;justify-content:flex-end"><div style="width:200px;text-align:center;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:6px">Signature & Cachet</div></div>
       </div>
