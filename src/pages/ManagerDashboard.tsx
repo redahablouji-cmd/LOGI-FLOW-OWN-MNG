@@ -404,6 +404,31 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     if (!error) { toast.success("Modifié."); setEditingRecord(null); if (selectedMechanic) fetchMechanicData(selectedMechanic.id); }
     else toast.error(`Erreur: ${error.message}`);
   };
+  const handleSavePurchase = async () => {
+    if (!editingPurchase) return;
+    const p = editingPurchase as any;
+    const { error } = await supabase.from('purchases').update({
+      date: p.date || null,
+      categorie: p.categorie || null,
+      fournisseur: p.fournisseur || null,
+      numero_facture: p.numero_facture || null,
+      designation: p.designation || null,
+      identifiant_fiscal: p.identifiant_fiscal || null,
+      ice: p.ice || null,
+      affectation: p.affectation || null,
+      montant_ht: parseFloat(p.montant_ht) || 0,
+      montant_tva: parseFloat(p.montant_tva) || 0,
+      montant_ttc: parseFloat(p.montant_ttc) || 0,
+      banque: p.banque || null,
+      numero_reference: p.numero_reference || null,
+      date_echeance: p.date_echeance || null,
+      mode_paiement: p.mode_paiement || null,
+      code_reglement: p.code_reglement || null,
+      notes: p.notes || null,
+    }).eq('id', p.id);
+    if (!error) { toast.success("Achat modifié."); setEditingPurchase(null); fetchPurchases(); }
+    else toast.error(`Erreur: ${error.message}`);
+  };
 
   const handleDeleteRecord = async (id: string) => {
     if (!confirm('Supprimer cette fiche ?')) return;
@@ -2507,7 +2532,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                   <div className="overflow-x-auto">
                     <table className="w-full text-left min-w-[1800px]">
                       <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>{['Date','Catégorie','Fournisseur','N° Facture','Désignation','IF','ICE','Affectation','HT','TVA','TTC','Banque','N° Réf','Échéance','Mode','Écart Délai','Actions'].map(h => (
+                        <tr>{['Date','Catégorie','Fournisseur','N° Facture','Désignation','IF','ICE','Affectation','HT','TVA','TTC','Banque','N° Réf','Échéance','Mode','Écart Délai','Code Règ.','Actions'].map(h => (
                           <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                         ))}</tr>
                       </thead>
@@ -2538,6 +2563,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                                 </span>
                               ) : '—'}
                             </td>
+                            <td className="px-3 py-2 font-mono text-[10px] text-amber-600 font-bold">{p.code_reglement || '—'}</td>
                             <td className="px-3 py-3">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => setEditingPurchase(p)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={13} /></button>
@@ -4846,6 +4872,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 { label: 'Date', key: 'date_achat', type: 'date' },
                 { label: 'Montant HT', key: 'montant_ht', type: 'number' },
                 { label: 'Montant TTC', key: 'montant_ttc', type: 'number' },
+                { label: 'Code Règlement', key: 'code_reglement', type: 'text' },
                 { label: 'Notes', key: 'notes', type: 'text' },
               ].map(({ label, key, type }) => (
                 <div key={key}>
