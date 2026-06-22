@@ -243,6 +243,17 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [virementFilter, setVirementFilter] = useState({ raison: '', dateFrom: '', dateTo: '' });
   const emptyVirementForm = { date_virement: new Date().toISOString().split('T')[0], raison_social: '', rib: '', montant: '', justification: '', tva_mois: '', compte_id: '', banque: '', agence: '', numero_compte: '' };
   const [virementForm, setVirementForm] = useState<any>(emptyVirementForm);
+  // Relevé Bancaire + État Explicatif state
+  const [releveList, setReleveList] = useState<any[]>([]);
+  const [loadingReleve, setLoadingReleve] = useState(false);
+  const [releveMois, setReleveMois] = useState(new Date().toISOString().slice(0, 7));
+  const [parsingPDF, setParsingPDF] = useState(false);
+  const [showReleveForm, setShowReleveForm] = useState(false);
+  const [editingReleve, setEditingReleve] = useState<any>(null);
+  const [releveFilter, setReleveFilter] = useState({ mois: '', libelle: '', category: '' });
+  const emptyReleveForm = { code: '', date_operation: '', libelle: '', date_valeur: '', debit: '', credit: '', category: 'virement', destination: '', note_operation: '', ref_reglement: '', observation: '' };
+  const [releveForm, setReleveForm] = useState<any>(emptyReleveForm);
+  const [etatExpandedSections, setEtatExpandedSections] = useState<string[]>(['virement','emission_cheque','emission_effets','remise_cheque','remise_lc','frais_bancaire']);
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -1967,6 +1978,168 @@ const handleGenerateInvoicePDF = () => {
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
   };
+  // ── Auto-categorize bank transaction ──
+  const categorizeTransaction = (libelle: string): string => {
+    const l = (libelle || '').toUpperCase();
+    if (/PAIEMENT CHEQUE|RETRAIT ESPECES CHQ|RETRAIT ESPECES SANS/.test(l)) return 'emission_cheque';
+    if (/REGLEMENT LCN|REGLEMENT IMPAYE|VIREMENT DE MASSE/.test(l)) return 'emission_effets';
+    if (/REMISE CHEQUE/.test(l)) return 'remise_cheque';
+    if (/ENCAISSEMENT.*LCN|ESC REM LCN/.test(l)) return 'remise_lc';
+    if (/FRAIS|COTISATION|ARRETE|COMMISSION|COM RETRAIT|TIMFISC|TIMBRE|SECCART|MODULE DOCNET/.test(l)) return 'frais_bancaire';
+    return 'virement';
+  };
+
+  const isCredit = (libelle: string): boolean => {
+    const l = (libelle || '').toUpperCase();
+    return /VIR.*RECU|VIREMENT RECU|VERS ESP|VERSEMENT ESP|REMISE CHEQUE|ENCAISSEMENT|ESC REM LCN|AIDES AUX TRANSPORT/.test(l);
+  };
+
+  // ── PDF Parser ──
+  const parseBankPDF = async (file: File) => {
+    setParsingPDF(true);
+    try {
+      // Load pdf.js from CDN if not loaded
+      if (!(window as any).pdfjsLib) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error('Failed to load PDF.js'));
+          document.head.appendChild(s);
+        });
+      }
+      const pdfjsLib = (window as any).pdfjsLib;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+      const buffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const allItems: { text: string; x: number; y: number; page: number }[] = [];
+
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        const viewport = page.getViewport({ scale: 1 });
+        content.items.forEach((item: any) => {
+          if (item.str.trim()) {
+            allItems.push({ text: item.str.trim(), x: Math.round(item.transform[4]), y: Math.round(viewport.height - item.transform[5]), page: p });
+          }
+        });
+      }
+
+      // Group items by row (y-position ± 3px tolerance)
+      const rows: Map<string, typeof allItems> = new Map();
+      allItems.forEach(item => {
+        const key = `${item.page}-${Math.round(item.y / 4) * 4}`;
+        if (!rows.has(key)) rows.set(key, []);
+        rows.get(key)!.push(item);
+      });
+
+      // Parse transaction rows
+      const transactions: any[] = [];
+      let soldeDepart = 0;
+      let soldeFinal = 0;
+
+      rows.forEach((items) => {
+        items.sort((a, b) => a.x - b.x);
+        const fullText = items.map(i => i.text).join(' ');
+
+        // Extract solde
+        if (/SOLDE DEPART/i.test(fullText)) {
+          const m = fullText.match(/([\d\s]+,\d{2})/);
+          if (m) soldeDepart = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
+        }
+        if (/SOLDE FINAL/i.test(fullText)) {
+          const m = fullText.match(/([\d\s]+,\d{2})/);
+          if (m) soldeFinal = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
+        }
+
+        // Match transaction line: CODE DD MM LIBELLE DD MM YYYY AMOUNT
+        const txMatch = fullText.match(/^(\w{4,8})\s*(\d{2})\s*(\d{2})\s+(.+?)\s+(\d{2})\s+(\d{2})\s+(\d{4})\s+([\d\s]+,\d{2})$/);
+        if (txMatch) {
+          const code = txMatch[1];
+          const dateOp = `${txMatch[2]}/${txMatch[3]}`;
+          const libelle = txMatch[4].trim();
+          const dateVal = `${txMatch[5]}/${txMatch[6]}/${txMatch[7]}`;
+          const amount = parseFloat(txMatch[8].replace(/\s/g, '').replace(',', '.'));
+          const credit = isCredit(libelle);
+
+          transactions.push({
+            company_id: companyId,
+            mois: releveMois,
+            code, date_operation: dateOp, libelle, date_valeur: dateVal,
+            debit: credit ? 0 : amount,
+            credit: credit ? amount : 0,
+            category: categorizeTransaction(libelle),
+            solde_depart: soldeDepart,
+            solde_final: soldeFinal,
+          });
+        }
+      });
+
+      if (transactions.length === 0) {
+        toast.error("Aucune transaction trouvée dans le PDF. Vérifiez le format.");
+        return;
+      }
+
+      // Update solde on all rows
+      transactions.forEach(t => { t.solde_depart = soldeDepart; t.solde_final = soldeFinal; });
+
+      const { error } = await supabase.from('bank_releve').insert(transactions);
+      if (!error) {
+        toast.success(`${transactions.length} transactions extraites et importées !`);
+        fetchReleve();
+      } else toast.error(`Erreur: ${error.message}`);
+    } catch (err: any) {
+      toast.error(`Erreur PDF: ${err.message}`);
+    } finally {
+      setParsingPDF(false);
+    }
+  };
+
+  // ── Relevé CRUD ──
+  const fetchReleve = async () => {
+    if (!companyId) return; setLoadingReleve(true);
+    const { data } = await supabase.from('bank_releve').select('*').eq('company_id', companyId).order('created_at');
+    setReleveList(data || []); setLoadingReleve(false);
+  };
+  const handleSaveReleve = async () => {
+    const payload = {
+      company_id: companyId, mois: releveMois, code: releveForm.code || null,
+      date_operation: releveForm.date_operation || null, libelle: releveForm.libelle || null,
+      date_valeur: releveForm.date_valeur || null, debit: parseFloat(releveForm.debit) || 0,
+      credit: parseFloat(releveForm.credit) || 0, category: releveForm.category || 'virement',
+      destination: releveForm.destination || null, note_operation: releveForm.note_operation || null,
+      ref_reglement: releveForm.ref_reglement || null, observation: releveForm.observation || null,
+    };
+    if (editingReleve) {
+      const { error } = await supabase.from('bank_releve').update(payload).eq('id', editingReleve.id);
+      if (!error) { toast.success("Modifié."); setEditingReleve(null); } else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from('bank_releve').insert(payload);
+      if (!error) toast.success("Ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowReleveForm(false); setReleveForm(emptyReleveForm); fetchReleve();
+  };
+  const handleDeleteReleve = async (id: string) => {
+    if (!confirm('Supprimer ?')) return;
+    await supabase.from('bank_releve').delete().eq('id', id);
+    toast.success("Supprimé."); fetchReleve();
+  };
+  const filteredReleve = releveList.filter((r: any) => {
+    if (releveFilter.mois && r.mois !== releveFilter.mois) return false;
+    if (releveFilter.libelle && !r.libelle?.toLowerCase().includes(releveFilter.libelle.toLowerCase())) return false;
+    if (releveFilter.category && r.category !== releveFilter.category) return false;
+    return true;
+  });
+
+  const ETAT_CATEGORIES = [
+    { id: 'virement', label: 'Virement / Prélèvement', color: 'blue' },
+    { id: 'emission_cheque', label: 'Émission de Chèque', color: 'amber' },
+    { id: 'emission_effets', label: 'Émission des Effets', color: 'purple' },
+    { id: 'remise_cheque', label: 'Remise de Chèque', color: 'emerald' },
+    { id: 'remise_lc', label: 'Remise de LC', color: 'cyan' },
+    { id: 'frais_bancaire', label: 'Frais Bancaire', color: 'rose' },
+  ];
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -1985,6 +2158,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'bank_rip' && companyId) fetchRip();
     if (activeTab === 'bank_base_rip' && companyId) fetchBaseRip();
     if (activeTab === 'bank_virement' && companyId) { fetchVirement(); fetchRip(); fetchBaseRip(); }
+    if ((activeTab === 'bank_releve' || activeTab === 'bank_etat_explicatif') && companyId) fetchReleve();
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
       supabase.from('invoice_templates').select('*')
@@ -3987,6 +4161,195 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
             )}
           </div>
         )}
+        {activeTab === 'bank_releve' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-teal-500 text-white mb-2"><Landmark className="w-3.5 h-3.5" /> Relevé Bancaire</span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Relevé de Compte Bancaire</h1>
+                  <p className="text-sm text-slate-400 mt-1">{filteredReleve.length} transactions</p>
+                </div>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <input type="month" value={releveMois} onChange={e => setReleveMois(e.target.value)}
+                    className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
+                  <button onClick={fetchReleve} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <label className={`${parsingPDF ? 'bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'} text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer`}>
+                    {parsingPDF ? <><Loader2 size={14} className="animate-spin" /> Extraction...</> : <><Upload size={14} /> Importer PDF</>}
+                    <input type="file" accept=".pdf" className="hidden" disabled={parsingPDF} onChange={e => { const f = e.target.files?.[0]; if (f) parseBankPDF(f); e.target.value=''; }} />
+                  </label>
+                  <button onClick={() => { if (!filteredReleve.length) return; exportToXLS(filteredReleve.map((r:any) => ({ 'Mois':r.mois,'Code':r.code,'Date Op.':r.date_operation,'Libellé':r.libelle,'Date Valeur':r.date_valeur,'Débit':r.debit,'Crédit':r.credit,'Catégorie':r.category })),'releve_bancaire'); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                  <button onClick={() => { setReleveForm(emptyReleveForm); setEditingReleve(null); setShowReleveForm(true); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Manuel</button>
+                </div>
+              </div>
+            </div>
+            {/* Filters */}
+            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                <input type="month" value={releveFilter.mois} onChange={e => setReleveFilter(p => ({...p,mois:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Libellé</label>
+                <input type="text" placeholder="Rechercher..." value={releveFilter.libelle} onChange={e => setReleveFilter(p => ({...p,libelle:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" /></div>
+              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catégorie</label>
+                <select value={releveFilter.category} onChange={e => setReleveFilter(p => ({...p,category:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                  <option value="">Toutes</option>
+                  {ETAT_CATEGORIES.map(c => (<option key={c.id} value={c.id}>{c.label}</option>))}
+                </select></div>
+              <button onClick={() => setReleveFilter({mois:'',libelle:'',category:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+            </div>
+            {/* Totals */}
+            {filteredReleve.length > 0 && (() => {
+              const tD = filteredReleve.reduce((s: number, r: any) => s + (parseFloat(r.debit)||0), 0);
+              const tC = filteredReleve.reduce((s: number, r: any) => s + (parseFloat(r.credit)||0), 0);
+              const fmt2 = (n: number) => n.toLocaleString('fr-MA',{minimumFractionDigits:2});
+              return <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6">
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(tD)}</span></div>
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Crédit</span><span className="text-sm font-bold text-emerald-700">{fmt2(tC)}</span></div>
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Solde</span><span className="text-sm font-black text-blue-700">{fmt2(tC - tD)}</span></div>
+              </div>;
+            })()}
+            {/* Table */}
+            {loadingReleve ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[900px]">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>{['Code','Date Op.','Libellé','Valeur','Débit','Crédit','Catégorie','Actions'].map(h => (
+                        <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredReleve.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Aucune transaction. Uploadez un relevé PDF.</td></tr>
+                      : filteredReleve.map((r: any) => (
+                        <tr key={r.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{r.code||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-700">{r.date_operation||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-700 max-w-[250px] truncate">{r.libelle||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{r.date_valeur||'—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-rose-600 font-bold">{parseFloat(r.debit)>0 ? Number(r.debit).toLocaleString('fr-MA',{minimumFractionDigits:2}) : ''}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-emerald-600 font-bold">{parseFloat(r.credit)>0 ? Number(r.credit).toLocaleString('fr-MA',{minimumFractionDigits:2}) : ''}</td>
+                          <td className="px-3 py-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${r.category==='virement'?'bg-blue-50 text-blue-700':r.category==='emission_cheque'?'bg-amber-50 text-amber-700':r.category==='emission_effets'?'bg-purple-50 text-purple-700':r.category==='remise_cheque'?'bg-emerald-50 text-emerald-700':r.category==='remise_lc'?'bg-cyan-50 text-cyan-700':'bg-rose-50 text-rose-700'}`}>{ETAT_CATEGORIES.find(c=>c.id===r.category)?.label||r.category}</span></td>
+                          <td className="px-3 py-2 flex gap-1">
+                            <button onClick={() => { setEditingReleve(r); setReleveForm({...r,debit:String(r.debit),credit:String(r.credit)}); setShowReleveForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
+                            <button onClick={() => handleDeleteReleve(r.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {activeTab === 'bank_etat_explicatif' && (
+          <div>
+            <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-orange-500 text-white mb-2"><FileText className="w-3.5 h-3.5" /> État Explicatif</span>
+                  <h1 className="text-2xl font-extrabold tracking-tight">État Explicatif du Relevé Bancaire</h1>
+                  <p className="text-sm text-slate-400 mt-1">{releveList.length} transactions — {ETAT_CATEGORIES.length} sections</p>
+                </div>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <input type="month" value={releveFilter.mois || ''} onChange={e => setReleveFilter(p => ({...p,mois:e.target.value}))}
+                    className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
+                  <button onClick={fetchReleve} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => {
+                    const rows: any[] = [];
+                    ETAT_CATEGORIES.forEach(cat => {
+                      const items = filteredReleve.filter((r:any) => r.category === cat.id);
+                      rows.push({ 'Date':'', 'Libellé': `═══ ${cat.label.toUpperCase()} ═══`, 'Destination':'', 'Note':'', 'Décaissement':'', 'Encaissement':'', 'Réf. Règlement':'', 'Observation':'' });
+                      items.forEach((r:any) => rows.push({ 'Date':r.date_operation, 'Libellé':r.libelle, 'Destination':r.destination||'', 'Note':r.note_operation||'', 'Décaissement':parseFloat(r.debit)||'', 'Encaissement':parseFloat(r.credit)||'', 'Réf. Règlement':r.ref_reglement||'', 'Observation':r.observation||'' }));
+                      const subD = items.reduce((s:number,r:any)=>s+(parseFloat(r.debit)||0),0);
+                      const subC = items.reduce((s:number,r:any)=>s+(parseFloat(r.credit)||0),0);
+                      rows.push({ 'Date':'', 'Libellé':'SOUS-TOTAL', 'Destination':'', 'Note':'', 'Décaissement':subD||'', 'Encaissement':subC||'', 'Réf. Règlement':'', 'Observation':'' });
+                    });
+                    exportToXLS(rows, 'etat_explicatif');
+                  }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                </div>
+              </div>
+            </div>
+            {/* Solde départ */}
+            {filteredReleve.length > 0 && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 flex justify-between items-center">
+                <span className="text-xs font-black text-amber-800 uppercase">Solde de départ</span>
+                <span className="font-mono text-sm font-bold text-amber-900">{Number(filteredReleve[0]?.solde_depart||0).toLocaleString('fr-MA',{minimumFractionDigits:2})} DÉBITEUR</span>
+              </div>
+            )}
+            {/* Sections */}
+            {ETAT_CATEGORIES.map(cat => {
+              const items = filteredReleve.filter((r: any) => r.category === cat.id);
+              const isExp = etatExpandedSections.includes(cat.id);
+              const subDebit = items.reduce((s: number, r: any) => s + (parseFloat(r.debit) || 0), 0);
+              const subCredit = items.reduce((s: number, r: any) => s + (parseFloat(r.credit) || 0), 0);
+              const fmt2 = (n: number) => n > 0 ? n.toLocaleString('fr-MA', { minimumFractionDigits: 2 }) : '';
+              return (
+                <div key={cat.id} className="mb-3 bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div onClick={() => setEtatExpandedSections(prev => prev.includes(cat.id) ? prev.filter(x => x !== cat.id) : [...prev, cat.id])}
+                    className={`flex items-center justify-between px-5 py-3 cursor-pointer hover:bg-slate-50 border-l-4 ${cat.color==='blue'?'border-blue-500':cat.color==='amber'?'border-amber-500':cat.color==='purple'?'border-purple-500':cat.color==='emerald'?'border-emerald-500':cat.color==='cyan'?'border-cyan-500':'border-rose-500'}`}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-black text-slate-800">{cat.label}</span>
+                      <span className="text-[10px] font-bold text-slate-400">{items.length} lignes</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="font-mono text-xs text-rose-600">{fmt2(subDebit)}</span>
+                      <span className="font-mono text-xs text-emerald-600">{fmt2(subCredit)}</span>
+                      <span className="text-slate-400">{isExp ? '▼' : '▶'}</span>
+                    </div>
+                  </div>
+                  {isExp && items.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left min-w-[900px]">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>{['Date','Libellé','Destination','Note','Décaissement','Encaissement','Réf.','Obs.',''].map(h => (
+                            <th key={h} className="px-3 py-1.5 text-[8px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                          ))}</tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {items.map((r: any) => (
+                            <tr key={r.id} className="hover:bg-slate-50">
+                              <td className="px-3 py-1.5 text-[10px] text-slate-600">{r.date_operation}</td>
+                              <td className="px-3 py-1.5 text-[10px] text-slate-700 max-w-[200px] truncate">{r.libelle}</td>
+                              <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.destination||'—'}</td>
+                              <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.note_operation||'—'}</td>
+                              <td className="px-3 py-1.5 font-mono text-[10px] text-rose-600 font-bold">{parseFloat(r.debit)>0?Number(r.debit).toLocaleString('fr-MA',{minimumFractionDigits:2}):''}</td>
+                              <td className="px-3 py-1.5 font-mono text-[10px] text-emerald-600 font-bold">{parseFloat(r.credit)>0?Number(r.credit).toLocaleString('fr-MA',{minimumFractionDigits:2}):''}</td>
+                              <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.ref_reglement||'—'}</td>
+                              <td className="px-3 py-1.5 text-[10px] text-slate-500">{r.observation||'—'}</td>
+                              <td className="px-3 py-1.5"><button onClick={() => { setEditingReleve(r); setReleveForm({...r,debit:String(r.debit),credit:String(r.credit)}); setShowReleveForm(true); }} className="text-slate-300 hover:text-blue-600 cursor-pointer"><Pencil size={11} /></button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* Totals + Solde Final */}
+            {filteredReleve.length > 0 && (() => {
+              const tD = filteredReleve.reduce((s:number,r:any)=>s+(parseFloat(r.debit)||0),0);
+              const tC = filteredReleve.reduce((s:number,r:any)=>s+(parseFloat(r.credit)||0),0);
+              const fmt2 = (n:number) => n.toLocaleString('fr-MA',{minimumFractionDigits:2});
+              return <>
+                <div className="mt-4 bg-slate-900 rounded-xl p-4 flex justify-between items-center">
+                  <span className="text-xs font-black text-white uppercase">Total Mouvements</span>
+                  <div className="flex gap-6">
+                    <span className="font-mono text-sm font-bold text-rose-400">{fmt2(tD)}</span>
+                    <span className="font-mono text-sm font-bold text-emerald-400">{fmt2(tC)}</span>
+                  </div>
+                </div>
+                <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl p-4 flex justify-between items-center">
+                  <span className="text-xs font-black text-blue-800 uppercase">Solde Final</span>
+                  <span className="font-mono text-sm font-bold text-blue-900">{fmt2(Math.abs(tC - tD + (parseFloat(filteredReleve[0]?.solde_depart)||0)))} {tC - tD + (parseFloat(filteredReleve[0]?.solde_depart)||0) >= 0 ? 'CRÉDITEUR' : 'DÉBITEUR'}</span>
+                </div>
+              </>;
+            })()}
+          </div>
+        )}
 
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
@@ -4137,6 +4500,61 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
         <div className="flex gap-3 pt-5">
           <button onClick={handleSaveVirement} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingVirement ? 'Enregistrer' : 'Ajouter'}</button>
           <button onClick={() => { setShowVirementForm(false); setEditingVirement(null); setVirementForm(emptyVirementForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+{/* Relevé Form */}
+<AnimatePresence>
+  {showReleveForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingReleve ? 'Modifier Transaction' : 'Nouvelle Transaction'}</h3>
+          <button onClick={() => { setShowReleveForm(false); setEditingReleve(null); setReleveForm(emptyReleveForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[
+            { label: 'Code', key: 'code' },
+            { label: 'Date Opération', key: 'date_operation' },
+            { label: 'Date Valeur', key: 'date_valeur' },
+          ].map(({label, key}) => (
+            <div key={key}><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+              <input type="text" value={releveForm[key]||''} onChange={e => setReleveForm((p:any)=>({...p,[key]:e.target.value}))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+          ))}
+          <div className="sm:col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Libellé</label>
+            <input type="text" value={releveForm.libelle||''} onChange={e => setReleveForm((p:any)=>({...p,libelle:e.target.value,category:categorizeTransaction(e.target.value)}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Débit</label>
+            <input type="number" value={releveForm.debit||''} onChange={e => setReleveForm((p:any)=>({...p,debit:e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-rose-200 bg-rose-50 px-3 text-sm focus:outline-none focus:border-rose-500" /></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crédit</label>
+            <input type="number" value={releveForm.credit||''} onChange={e => setReleveForm((p:any)=>({...p,credit:e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-emerald-200 bg-emerald-50 px-3 text-sm focus:outline-none focus:border-emerald-500" /></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catégorie</label>
+            <select value={releveForm.category||'virement'} onChange={e => setReleveForm((p:any)=>({...p,category:e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+              {ETAT_CATEGORIES.map(c => (<option key={c.id} value={c.id}>{c.label}</option>))}
+            </select></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Destination</label>
+            <input type="text" value={releveForm.destination||''} onChange={e => setReleveForm((p:any)=>({...p,destination:e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note Opération</label>
+            <input type="text" value={releveForm.note_operation||''} onChange={e => setReleveForm((p:any)=>({...p,note_operation:e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Réf. Règlement</label>
+            <input type="text" value={releveForm.ref_reglement||''} onChange={e => setReleveForm((p:any)=>({...p,ref_reglement:e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+          <div className="sm:col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observation</label>
+            <input type="text" value={releveForm.observation||''} onChange={e => setReleveForm((p:any)=>({...p,observation:e.target.value}))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveReleve} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingReleve?'Enregistrer':'Ajouter'}</button>
+          <button onClick={() => { setShowReleveForm(false); setEditingReleve(null); setReleveForm(emptyReleveForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
         </div>
       </motion.div>
     </div>
