@@ -4612,7 +4612,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
             <input type="text" value={releveForm.note_operation||''} onChange={e => setReleveForm((p:any)=>({...p,note_operation:e.target.value}))}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Code Règlement</label>
-            <input type="text" value={editingReglement.code_reglement || ''} onChange={e => setEditingReglement((p: any) => ({...p, code_reglement: e.target.value}))}
+            <input type="text" value={releveForm.code_reglement || ''} onChange={e => setReleveForm((p: any) => ({...p, code_reglement: e.target.value}))}
               className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" /></div>
           <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Réf. Règlement</label>
             <input type="text" value={releveForm.ref_reglement||''} onChange={e => setReleveForm((p:any)=>({...p,ref_reglement:e.target.value}))}
