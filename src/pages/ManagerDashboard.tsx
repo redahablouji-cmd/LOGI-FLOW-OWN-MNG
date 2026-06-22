@@ -1997,10 +1997,10 @@ const handleGenerateInvoicePDF = () => {
   const categorizeTransaction = (libelle: string): string => {
     const l = (libelle || '').toUpperCase();
     if (/PAIEMENT CHEQUE|RETRAIT ESPECES CHQ|RETRAIT ESPECES SANS/.test(l)) return 'emission_cheque';
-    if (/REGLEMENT LCN|REGLEMENT IMPAYE|VIREMENT DE MASSE/.test(l)) return 'emission_effets';
+    if (/REGLEMENT LCN|REGLEMENT IMPAYE/.test(l)) return 'emission_effets';
     if (/REMISE CHEQUE/.test(l)) return 'remise_cheque';
     if (/ENCAISSEMENT.*LCN|ESC REM LCN/.test(l)) return 'remise_lc';
-    if (/FRAIS|COTISATION|ARRETE|COMMISSION|COM RETRAIT|TIMFISC|TIMBRE|SECCART|MODULE DOCNET/.test(l)) return 'frais_bancaire';
+    if (/FRAIS|COTISATION|ARRETE|COMMISSION|COMM? VIR|COM RETRAIT|TIMFISC|TIMBRE|SECCART|MODULE DOCNET|OPERATION AU DEBIT|INCIDENT PAIEMENT/.test(l)) return 'frais_bancaire';
     return 'virement';
   };
 
@@ -4284,6 +4284,19 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                   }}
                     className="bg-white/10 hover:bg-white/15 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                     {checkedReleve.length === filteredReleve.length && filteredReleve.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
+                  </button>
+                  <button onClick={async () => {
+                    let count = 0;
+                    for (const r of releveList) {
+                      const newCat = categorizeTransaction(r.libelle);
+                      const updates: any = { category: newCat };
+                      await supabase.from('bank_releve').update(updates).eq('id', r.id);
+                      count++;
+                    }
+                    toast.success(`${count} lignes re-catégorisées.`);
+                    fetchReleve();
+                  }} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <RefreshCw size={14} /> Appliquer règles
                   </button>
                   {checkedReleve.length > 0 && (
                     <button onClick={async () => {
