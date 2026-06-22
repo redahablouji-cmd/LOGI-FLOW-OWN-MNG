@@ -4275,6 +4275,92 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                   <input type="month" value={releveFilter.mois || ''} onChange={e => setReleveFilter(p => ({...p,mois:e.target.value}))}
                     className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
                   <button onClick={fetchReleve} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  {checkedReleve.length > 0 && (
+                    <button onClick={async () => {
+                      const checked = releveList.filter((r: any) => checkedReleve.includes(r.id));
+                      if (checked.length === 0) return;
+                      const fmt2 = (n: number) => n > 0 ? n.toLocaleString('fr-MA', { minimumFractionDigits: 2 }) : '';
+                      const soldeDepart = checked[0]?.solde_depart || 0;
+
+                      let allRowsHtml = '';
+                      let grandDebit = 0;
+                      let grandCredit = 0;
+
+                      ETAT_CATEGORIES.forEach(cat => {
+                        const items = checked.filter((r: any) => r.category === cat.id);
+                        if (items.length === 0) return;
+                        const subD = items.reduce((s: number, r: any) => s + (parseFloat(r.debit) || 0), 0);
+                        const subC = items.reduce((s: number, r: any) => s + (parseFloat(r.credit) || 0), 0);
+                        grandDebit += subD;
+                        grandCredit += subC;
+
+                        allRowsHtml += `<tr style="background:#E8EDF3"><td colspan="8" style="font-weight:900;font-size:9px;color:#1F3864;padding:4px 6px;border:1px solid #ddd;border-bottom:2px solid #1F3864">${cat.label}</td></tr>`;
+                        items.forEach((r: any, i: number) => {
+                          const bg = i % 2 === 1 ? '#F8F8F8' : '#fff';
+                          allRowsHtml += `<tr>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;background:${bg}">${r.date_operation || ''}</td>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;background:${bg}">${r.libelle || ''}</td>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;background:${bg}">${r.destination || ''}</td>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;background:${bg}">${r.note_operation || ''}</td>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;text-align:right;font-family:monospace;background:${bg}">${parseFloat(r.debit) > 0 ? fmt2(parseFloat(r.debit)) : ''}</td>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;text-align:right;font-family:monospace;background:${bg}">${parseFloat(r.credit) > 0 ? fmt2(parseFloat(r.credit)) : ''}</td>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;background:${bg}">${r.ref_reglement || ''}</td>
+                            <td style="padding:3px 4px;font-size:8px;border:1px solid #ddd;background:${bg}">${r.observation || ''}</td>
+                          </tr>`;
+                        });
+                        allRowsHtml += `<tr style="background:#F0F4FA"><td colspan="4" style="text-align:right;font-weight:700;font-size:8px;color:#1F3864;padding:3px 6px;border:1px solid #ddd">Sous-total ${cat.label}</td><td style="text-align:right;font-family:monospace;font-weight:700;font-size:8px;color:#1F3864;padding:3px 4px;border:1px solid #ddd">${fmt2(subD)}</td><td style="text-align:right;font-family:monospace;font-weight:700;font-size:8px;color:#1F3864;padding:3px 4px;border:1px solid #ddd">${fmt2(subC)}</td><td colspan="2" style="border:1px solid #ddd"></td></tr>`;
+                      });
+
+                      const soldeFinal = Math.abs(grandCredit - grandDebit + soldeDepart);
+                      const moisLabel = releveFilter.mois || releveMois || '';
+
+                      const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+                        <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style>
+                        </head><body>
+                        <div style="width:297mm;min-height:210mm;padding:10mm;position:relative">
+                          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <div style="background:#FFFDE7;border:1px solid #D4A017;padding:4px 10px;font-size:10px;font-weight:700;color:#1F3864">TVA / MOIS : ${moisLabel}</div>
+                            <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center">États Explicatif du Relevé Bancaire — ${moisLabel}</div>
+                            <div style="width:100px"></div>
+                          </div>
+                          <div style="background:#FFFDE7;border:1px solid #e5e5e5;padding:5px 12px;font-size:10px;font-weight:700;margin-bottom:4px;display:flex;justify-content:space-between">
+                            <span>Solde départ Débiteur</span><span>${Number(soldeDepart).toLocaleString('fr-MA',{minimumFractionDigits:2})}</span>
+                          </div>
+                          <table style="width:100%;border-collapse:collapse">
+                            <thead><tr>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:7%">Date</th>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:22%">Libellé</th>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:14%">Destination</th>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:14%">Note opération</th>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:10%">Décaissement</th>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:10%">Encaissement</th>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:12%">Réf. Règlement</th>
+                              <th style="background:#1F3864;color:#fff;font-size:8px;font-weight:700;text-align:center;padding:4px;border:1px solid #1F3864;width:11%">Observation</th>
+                            </tr></thead>
+                            <tbody>
+                              ${allRowsHtml}
+                              <tr><td colspan="4" style="text-align:right;background:#1F3864;color:#fff;font-weight:900;font-size:10px;padding:5px 6px;border:1px solid #1F3864">Total Mouvements</td><td style="text-align:right;font-family:monospace;background:#1F3864;color:#fff;font-weight:900;font-size:10px;padding:5px 6px;border:1px solid #1F3864">${Number(grandDebit).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td><td style="text-align:right;font-family:monospace;background:#1F3864;color:#fff;font-weight:900;font-size:10px;padding:5px 6px;border:1px solid #1F3864">${Number(grandCredit).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td><td colspan="2" style="background:#1F3864;border:1px solid #1F3864"></td></tr>
+                              <tr><td colspan="4" style="text-align:right;background:#FFFDE7;font-weight:900;font-size:10px;color:#1F3864;padding:5px 6px;border:1px solid #ddd">Solde final débiteur</td><td colspan="2" style="text-align:right;font-family:monospace;background:#FFFDE7;font-weight:900;font-size:10px;color:#1F3864;padding:5px 6px;border:1px solid #ddd">${soldeFinal.toLocaleString('fr-MA',{minimumFractionDigits:2})}</td><td colspan="2" style="background:#FFFDE7;border:1px solid #ddd"></td></tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        </body></html>`;
+
+                      const win = window.open('', '_blank');
+                      if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+
+                      // Mark as printed
+                      for (const id of checkedReleve) {
+                        await supabase.from('bank_releve').update({ printed: true }).eq('id', id);
+                      }
+                      setReleveList(prev => prev.map(r => checkedReleve.includes(r.id) ? { ...r, printed: true } : r));
+                      setCheckedReleve([]);
+                      toast.success(`${checkedReleve.length} lignes imprimées.`);
+                    }}
+                      className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      <FileText size={14} /> Générer PDF ({checkedReleve.length})
+                    </button>
+                  )}
                   <button onClick={() => {
                     const rows: any[] = [];
                     ETAT_CATEGORIES.forEach(cat => {
@@ -4331,9 +4417,12 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                           {items.map((r: any) => (
                             <tr key={r.id} className={`hover:bg-slate-50 ${checkedReleve.includes(r.id) ? 'bg-emerald-50' : ''}`}>
                               <td className="px-3 py-1.5">
-                                <input type="checkbox" checked={checkedReleve.includes(r.id)}
-                                  onChange={e => setCheckedReleve(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))}
-                                  className="accent-emerald-600" />
+                                <div className="flex items-center gap-1">
+                                  <input type="checkbox" checked={checkedReleve.includes(r.id)}
+                                    onChange={e => setCheckedReleve(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))}
+                                    className="accent-emerald-600" />
+                                  {r.printed && <span className="text-[7px] font-black text-emerald-500">✓</span>}
+                                </div>
                               </td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-600">{r.date_operation}</td>
                               <td className="px-3 py-1.5 text-[10px] text-slate-700 max-w-[200px] truncate">{r.libelle}</td>
