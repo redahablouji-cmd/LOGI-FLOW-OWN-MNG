@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, LogOut, Users, ShoppingBag, Wrench, Menu, X, BadgeCheck, RefreshCw, Plus, Eye, Download, FileText, Pencil, Trash2, Truck, Upload, Receipt, Settings, TrendingUp, FolderOpen, Check, Landmark, Search } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -2217,7 +2217,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'bank_rip' && companyId) fetchRip();
     if (activeTab === 'bank_base_rip' && companyId) fetchBaseRip();
     if (activeTab === 'bank_virement' && companyId) { fetchVirement(); fetchRip(); fetchBaseRip(); }
-    if (activeTab === 'bank_tva' && companyId) fetchTva();
+    if (activeTab === 'bank_tva' && companyId) { fetchTva(); fetchPurchases(); fetchFournisseurs(); }
     if ((activeTab === 'bank_releve' || activeTab === 'bank_etat_explicatif') && companyId) fetchReleve();
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
@@ -4354,7 +4354,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                           const { data: pData } = await supabase.from('purchases').select('*').eq('code_reglement', code).eq('company_id', companyId).limit(1);
                           if (pData && pData.length > 0) {
                             const p = pData[0];
-                            tauxTva = parseFloat(p.taux_tva || p.montant_tva && p.montant_ht ? ((parseFloat(p.montant_tva) / parseFloat(p.montant_ht)) * 100) : 0) || 0;
+                            tauxTva = (p.taux_tva ? parseFloat(p.taux_tva) : (p.montant_tva && p.montant_ht ? (parseFloat(p.montant_tva) / parseFloat(p.montant_ht)) * 100 : 0)) || 0;
                             numFacture = p.numero_facture || '';
                             fournisseur = p.fournisseur || p.supplier || '';
                             ifFourn = p.identifiant_fiscal || p.if_number || '';
@@ -4697,13 +4697,22 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <div>
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-rose-500 text-white mb-2"><Landmark className="w-3.5 h-3.5" /> TVA</span>
                   <h1 className="text-2xl font-extrabold tracking-tight">Déclaration TVA</h1>
-                  <p className="text-sm text-slate-400 mt-1">{tvaList.length} lignes</p>
+                  <p className="text-sm text-slate-400 mt-1">{tvaList.filter((t:any) => t.type_tva === 'encaissement').length} encaissements — {purchases.length} déductions ({tvaList.length} lignes en tout)</p>
                 </div>
                 <div className="flex gap-2 flex-wrap items-center">
                   <input type="month" value={tvaMois} onChange={e => setTvaMois(e.target.value)}
                     className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
-                  <button onClick={fetchTva} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
-                  <button onClick={() => { if (!tvaList.length) return; exportToXLS(tvaList.map((t:any) => ({ 'N° Facture':t.numero_facture,'Date':t.date_facture,'Fournisseur':t.nom_fournisseur,'IF':t.if_fournisseur,'ICE':t.ice_fournisseur,'Désignation':t.designation,'HT':t.montant_ht,'Taux TVA':t.taux_tva,'TVA':t.montant_tva,'TTC':t.montant_ttc,'Date Paie.':t.date_paiement,'Mode':t.mode_paiement })),'tva'); }}
+                  <button onClick={() => { fetchTva(); fetchPurchases(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  <button onClick={() => {
+                    const encRows = tvaList.filter((t:any) => t.type_tva === 'encaissement');
+                    const decRows = purchases;
+                    const rows: any[] = [];
+                    rows.push({ 'Type': '=== ENCAISSEMENTS ===' });
+                    encRows.forEach((t:any) => rows.push({ 'Type':'Enc.','N° Facture':t.numero_facture,'Date':t.date_facture,'Fournisseur/Client':t.nom_fournisseur,'HT':t.montant_ht,'Taux TVA':t.taux_tva,'TVA':t.montant_tva,'TTC':t.montant_ttc }));
+                    rows.push({ 'Type': '=== DÉDUCTIONS ===' });
+                    decRows.forEach((p:any) => rows.push({ 'Type':'Déc.','N° Facture':p.numero_facture,'Date':p.date,'Fournisseur/Client':p.fournisseur,'HT':p.montant_ht,'Taux TVA':p.taux_tva || p.montant_tva && p.montant_ht ? Math.round((parseFloat(p.montant_tva)/parseFloat(p.montant_ht))*100) : 0,'TVA':p.montant_tva,'TTC':p.montant_ttc }));
+                    exportToXLS(rows, 'tva_declaration');
+                  }}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                   <button onClick={() => { setTvaForm(emptyTvaForm); setEditingTva(null); setShowTvaForm(true); }}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau</button>
@@ -4713,15 +4722,15 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
 
             {/* 3 Formula Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-              {/* Encaissements — auto from rows */}
+              {/* Encaissements — from bank_tva encaissement rows */}
               <div className="bg-white rounded-xl border border-emerald-200 p-4">
                 <h3 className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-3">Encaissements (TVA Collectée)</h3>
                 <div className="space-y-2">
                   {[7, 10, 12, 13, 14, 20].map(rate => {
-                    const items = tvaList.filter((t: any) => (t.type_tva === 'encaissement') && Math.round(parseFloat(t.taux_tva) || 0) === rate);
+                    const items = tvaList.filter((t: any) => t.type_tva === 'encaissement' && Math.round(parseFloat(t.taux_tva) || 0) === rate);
                     const totalHT = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_ht) || 0), 0);
                     const totalTVA = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
-                    return totalHT > 0 || totalTVA > 0 ? (
+                    return totalTVA > 0 ? (
                       <div key={rate} className="flex justify-between items-center">
                         <span className="text-[9px] font-black text-slate-400 w-8">{rate}%</span>
                         <span className="text-[9px] text-slate-500">HT: {totalHT.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
@@ -4741,15 +4750,18 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 </div>
               </div>
 
-              {/* Décaissements — auto from rows */}
+              {/* Décaissements — from purchases table */}
               <div className="bg-white rounded-xl border border-rose-200 p-4">
                 <h3 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3">Décaissements (TVA Déductible)</h3>
                 <div className="space-y-2">
                   {[0, 7, 10, 12, 13, 14, 20].map(rate => {
-                    const items = tvaList.filter((t: any) => (t.type_tva === 'decaissement' || !t.type_tva) && Math.round(parseFloat(t.taux_tva) || 0) === rate);
-                    const totalHT = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_ht) || 0), 0);
-                    const totalTVA = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
-                    return totalHT > 0 || totalTVA > 0 ? (
+                    const items = purchases.filter((p: any) => {
+                      const pRate = parseFloat(p.taux_tva) || (parseFloat(p.montant_ht) > 0 ? Math.round((parseFloat(p.montant_tva) / parseFloat(p.montant_ht)) * 100) : 0);
+                      return Math.round(pRate) === rate;
+                    });
+                    const totalTVA = items.reduce((s: number, p: any) => s + (parseFloat(p.montant_tva) || 0), 0);
+                    const totalHT = items.reduce((s: number, p: any) => s + (parseFloat(p.montant_ht) || 0), 0);
+                    return totalTVA > 0 ? (
                       <div key={rate} className="flex justify-between items-center">
                         <span className="text-[9px] font-black text-slate-400 w-8">{rate}%</span>
                         <span className="text-[9px] text-slate-500">HT: {totalHT.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
@@ -4757,13 +4769,13 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                       </div>
                     ) : null;
                   })}
-                  {tvaList.filter((t: any) => t.type_tva === 'decaissement' || !t.type_tva).length === 0 && (
-                    <p className="text-[10px] text-slate-400 text-center py-2">Aucun décaissement</p>
+                  {purchases.length === 0 && (
+                    <p className="text-[10px] text-slate-400 text-center py-2">Aucun achat</p>
                   )}
                   <div className="pt-2 border-t border-rose-200 flex justify-between">
                     <span className="text-[10px] font-black text-rose-800">Total TVA Déductible</span>
                     <span className="font-mono text-sm font-bold text-rose-700">
-                      {tvaList.filter((t: any) => t.type_tva === 'decaissement' || !t.type_tva).reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                      {purchases.reduce((s: number, p: any) => s + (parseFloat(p.montant_tva) || 0), 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -4774,7 +4786,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">Résultat TVA</h3>
                 {(() => {
                   const collectee = tvaList.filter((t: any) => t.type_tva === 'encaissement').reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
-                  const deductible = tvaList.filter((t: any) => t.type_tva === 'decaissement' || !t.type_tva).reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
+                  const deductible = purchases.reduce((s: number, p: any) => s + (parseFloat(p.montant_tva) || 0), 0);
                   const result = collectee - deductible;
                   return (
                     <div className="space-y-3">
@@ -4792,43 +4804,47 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
               </div>
             </div>
 
-            {/* Relevé des déductions — Table */}
+            {/* Relevé des Déductions — from purchases */}
             <div className="bg-white rounded-xl border border-slate-200 p-4 mb-2">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Relevé des Déductions</h3>
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Relevé des Déductions (Achats)</h3>
             </div>
             {loadingTva ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left min-w-[1200px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>{['N° Facture','Date','Fournisseur','IF','ICE','Désignation','HT','Taux TVA','TVA','TTC','Date Paie.','Mode','Type','Actions'].map(h => (
+                      <tr>{['N° Facture','Date','Fournisseur','IF','ICE','Désignation','HT','Taux TVA','TVA','TTC','Date Éch.','Mode','Actions'].map(h => (
                         <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                       ))}</tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {tvaList.length === 0 ? (
-                        <tr><td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">Aucune ligne.</td></tr>
-                      ) : tvaList.map((t: any) => (
-                        <tr key={t.id} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 font-mono text-xs text-blue-600">{t.numero_facture || '—'}</td>
-                          <td className="px-3 py-2 text-xs text-slate-700">{t.date_facture || '—'}</td>
-                          <td className="px-3 py-2 text-xs font-semibold text-slate-700">{t.nom_fournisseur || '—'}</td>
-                          <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{t.if_fournisseur || '—'}</td>
-                          <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{t.ice_fournisseur || '—'}</td>
-                          <td className="px-3 py-2 text-xs text-slate-600 max-w-[150px] truncate">{t.designation || '—'}</td>
-                          <td className="px-3 py-2 font-mono text-xs text-slate-700">{Number(t.montant_ht || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-3 py-2 font-mono text-xs text-slate-500">{t.taux_tva}%</td>
-                          <td className="px-3 py-2 font-mono text-xs text-amber-700 font-bold">{Number(t.montant_tva || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-3 py-2 font-mono text-xs font-bold text-slate-900">{Number(t.montant_ttc || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-3 py-2 text-xs text-slate-500">{t.date_paiement || '—'}</td>
-                          <td className="px-3 py-2 text-xs text-slate-500">{t.mode_paiement || '—'}</td>
-                          <td className="px-3 py-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${t.type_tva === 'encaissement' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{t.type_tva === 'encaissement' ? 'Enc.' : 'Déc.'}</span></td>
-                          <td className="px-3 py-2 flex gap-1">
-                            <button onClick={() => { setEditingTva(t); setTvaForm({ ...t, montant_ht: String(t.montant_ht), taux_tva: String(t.taux_tva) }); setShowTvaForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
-                            <button onClick={() => handleDeleteTva(t.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
-                          </td>
-                        </tr>
-                      ))}
+                      {purchases.length === 0 ? (
+                        <tr><td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat. Ajoutez des achats dans la page Achats & Factures.</td></tr>
+                      ) : purchases.map((p: any) => {
+                        const ht = parseFloat(p.montant_ht) || 0;
+                        const tva = parseFloat(p.montant_tva) || 0;
+                        const ttc = parseFloat(p.montant_ttc) || 0;
+                        const taux = parseFloat(p.taux_tva) || (ht > 0 ? Math.round((tva / ht) * 100) : 0);
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 font-mono text-xs text-blue-600">{p.numero_facture || '—'}</td>
+                            <td className="px-3 py-2 text-xs text-slate-700">{p.date || '—'}</td>
+                            <td className="px-3 py-2 text-xs font-semibold text-slate-700">{p.fournisseur || p.supplier || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{p.identifiant_fiscal || p.if_number || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{p.ice || '—'}</td>
+                            <td className="px-3 py-2 text-xs text-slate-600 max-w-[150px] truncate">{p.designation || p.description || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-slate-700">{ht.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-slate-500">{taux}%</td>
+                            <td className="px-3 py-2 font-mono text-xs text-amber-700 font-bold">{tva.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-2 font-mono text-xs font-bold text-slate-900">{ttc.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-2 text-xs text-slate-500">{p.date_echeance || '—'}</td>
+                            <td className="px-3 py-2 text-xs text-slate-500">{p.mode_paiement || '—'}</td>
+                            <td className="px-3 py-2">
+                              <button onClick={() => setEditingPurchase(p)} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Loader2, UserPlus, Mail, User, Lock, CheckCircle2 } from 'lucide-react';
 import { createStaffAccount, insertStaffProfile } from '../../lib/auth';
 import { toast } from 'sonner';

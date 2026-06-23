@@ -17,6 +17,18 @@ export default function LoginPage() {
   // Detect if input is a business code (no @ symbol)
   const isBusinessCode = !identifier.includes('@');
 
+  const handleQuickLogin = (role: 'owner' | 'manager') => {
+    if (role === 'owner') {
+      sessionStorage.setItem('owner_email', 'admin@logiflow.demo');
+      sessionStorage.setItem('owner_session', 'true');
+      toast.success("Connexion Démo (Propriétaire)");
+      navigate('/owner');
+    } else {
+      toast.success("Connexion Démo (Manager)");
+      navigate('/manager');
+    }
+  };
+
  const handleLogin = async (e: FormEvent) => {
   e.preventDefault();
   setErrorMessage(null);
