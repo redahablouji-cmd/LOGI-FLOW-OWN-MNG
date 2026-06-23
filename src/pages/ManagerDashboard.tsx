@@ -249,9 +249,9 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [showTvaForm, setShowTvaForm] = useState(false);
   const [editingTva, setEditingTva] = useState<any>(null);
   const [tvaMois, setTvaMois] = useState(new Date().toISOString().slice(0, 7));
-  const emptyTvaForm = { numero_facture: '', date_facture: '', nom_fournisseur: '', if_fournisseur: '', ice_fournisseur: '', designation: '', montant_ht: '', taux_tva: '20', montant_tva: '', montant_ttc: '', date_paiement: '', mode_paiement: '' };
+  const emptyTvaForm = { type_tva: 'decaissement', numero_facture: '', date_facture: '', nom_fournisseur: '', if_fournisseur: '', ice_fournisseur: '', designation: '', montant_ht: '', taux_tva: '20', montant_tva: '', montant_ttc: '', date_paiement: '', mode_paiement: '' };
   const [tvaForm, setTvaForm] = useState<any>(emptyTvaForm);
-  const [tvaEncaiss, setTvaEncaiss] = useState({ t14: '', t13: '', t12: '', t10: '', t20: '' });
+  
   // Relevé Bancaire + État Explicatif state
   const [releveList, setReleveList] = useState<any[]>([]);
   const [loadingReleve, setLoadingReleve] = useState(false);
@@ -2183,6 +2183,7 @@ const handleGenerateInvoicePDF = () => {
       ice_fournisseur: tvaForm.ice_fournisseur || null, designation: tvaForm.designation || null,
       montant_ht: ht, taux_tva: rate, montant_tva: tvaAmt, montant_ttc: ht + tvaAmt,
       date_paiement: tvaForm.date_paiement || null, mode_paiement: tvaForm.mode_paiement || null,
+      type_tva: tvaForm.type_tva || 'decaissement',
     };
     if (editingTva) {
       const { error } = await supabase.from('bank_tva').update(payload).eq('id', editingTva.id);
@@ -4609,70 +4610,68 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
 
             {/* 3 Formula Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-              {/* Encaissements */}
+              {/* Encaissements — auto from rows */}
               <div className="bg-white rounded-xl border border-emerald-200 p-4">
                 <h3 className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-3">Encaissements (TVA Collectée)</h3>
                 <div className="space-y-2">
-                  {[
-                    { key: 't14', label: '14%', rate: 0.14 },
-                    { key: 't13', label: '13%', rate: 0.13 },
-                    { key: 't12', label: '12%', rate: 0.12 },
-                    { key: 't10', label: '10%', rate: 0.10 },
-                    { key: 't20', label: '20%', rate: 0.20 },
-                  ].map(({ key, label, rate }) => (
-                    <div key={key} className="flex items-center gap-2">
-                      <span className="text-[9px] font-black text-slate-400 w-8">{label}</span>
-                      <input type="number" placeholder="CA HT" value={(tvaEncaiss as any)[key] || ''}
-                        onChange={e => setTvaEncaiss(p => ({ ...p, [key]: e.target.value }))}
-                        className="flex-1 h-7 rounded border border-slate-200 px-2 text-xs focus:outline-none focus:border-emerald-500" />
-                      <span className="text-xs font-mono font-bold text-emerald-700 w-20 text-right">
-                        {((parseFloat((tvaEncaiss as any)[key]) || 0) * rate).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  ))}
+                  {[7, 10, 12, 13, 14, 20].map(rate => {
+                    const items = tvaList.filter((t: any) => (t.type_tva === 'encaissement') && Math.round(parseFloat(t.taux_tva) || 0) === rate);
+                    const totalHT = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_ht) || 0), 0);
+                    const totalTVA = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
+                    return totalHT > 0 || totalTVA > 0 ? (
+                      <div key={rate} className="flex justify-between items-center">
+                        <span className="text-[9px] font-black text-slate-400 w-8">{rate}%</span>
+                        <span className="text-[9px] text-slate-500">HT: {totalHT.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-mono text-xs font-bold text-emerald-700">{totalTVA.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ) : null;
+                  })}
+                  {tvaList.filter((t: any) => t.type_tva === 'encaissement').length === 0 && (
+                    <p className="text-[10px] text-slate-400 text-center py-2">Aucun encaissement</p>
+                  )}
                   <div className="pt-2 border-t border-emerald-200 flex justify-between">
                     <span className="text-[10px] font-black text-emerald-800">Total TVA Collectée</span>
                     <span className="font-mono text-sm font-bold text-emerald-700">
-                      {(() => {
-                        const rates = [0.14, 0.13, 0.12, 0.10, 0.20];
-                        const keys = ['t14', 't13', 't12', 't10', 't20'];
-                        return keys.reduce((s, k, i) => s + (parseFloat((tvaEncaiss as any)[k]) || 0) * rates[i], 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
-                      })()}
+                      {tvaList.filter((t: any) => t.type_tva === 'encaissement').reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Décaissements — auto from table */}
+              {/* Décaissements — auto from rows */}
               <div className="bg-white rounded-xl border border-rose-200 p-4">
                 <h3 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3">Décaissements (TVA Déductible)</h3>
                 <div className="space-y-2">
                   {[0, 7, 10, 12, 13, 14, 20].map(rate => {
-                    const total = tvaList.filter((t: any) => Math.round(parseFloat(t.taux_tva) || 0) === rate).reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
-                    return total > 0 ? (
-                      <div key={rate} className="flex justify-between">
-                        <span className="text-[9px] font-black text-slate-400">{rate}%</span>
-                        <span className="font-mono text-xs font-bold text-rose-700">{total.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
+                    const items = tvaList.filter((t: any) => (t.type_tva === 'decaissement' || !t.type_tva) && Math.round(parseFloat(t.taux_tva) || 0) === rate);
+                    const totalHT = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_ht) || 0), 0);
+                    const totalTVA = items.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
+                    return totalHT > 0 || totalTVA > 0 ? (
+                      <div key={rate} className="flex justify-between items-center">
+                        <span className="text-[9px] font-black text-slate-400 w-8">{rate}%</span>
+                        <span className="text-[9px] text-slate-500">HT: {totalHT.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-mono text-xs font-bold text-rose-700">{totalTVA.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
                       </div>
                     ) : null;
                   })}
+                  {tvaList.filter((t: any) => t.type_tva === 'decaissement' || !t.type_tva).length === 0 && (
+                    <p className="text-[10px] text-slate-400 text-center py-2">Aucun décaissement</p>
+                  )}
                   <div className="pt-2 border-t border-rose-200 flex justify-between">
                     <span className="text-[10px] font-black text-rose-800">Total TVA Déductible</span>
                     <span className="font-mono text-sm font-bold text-rose-700">
-                      {tvaList.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                      {tvaList.filter((t: any) => t.type_tva === 'decaissement' || !t.type_tva).reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* TVA Due / Crédit */}
+              {/* Résultat TVA */}
               <div className="bg-white rounded-xl border border-blue-200 p-4">
                 <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">Résultat TVA</h3>
                 {(() => {
-                  const rates = [0.14, 0.13, 0.12, 0.10, 0.20];
-                  const keys = ['t14', 't13', 't12', 't10', 't20'];
-                  const collectee = keys.reduce((s, k, i) => s + (parseFloat((tvaEncaiss as any)[k]) || 0) * rates[i], 0);
-                  const deductible = tvaList.reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
+                  const collectee = tvaList.filter((t: any) => t.type_tva === 'encaissement').reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
+                  const deductible = tvaList.filter((t: any) => t.type_tva === 'decaissement' || !t.type_tva).reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
                   const result = collectee - deductible;
                   return (
                     <div className="space-y-3">
@@ -4699,7 +4698,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="overflow-x-auto">
                   <table className="w-full text-left min-w-[1200px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>{['N° Facture','Date','Fournisseur','IF','ICE','Désignation','HT','Taux TVA','TVA','TTC','Date Paie.','Mode','Actions'].map(h => (
+                      <tr>{['N° Facture','Date','Fournisseur','IF','ICE','Désignation','HT','Taux TVA','TVA','TTC','Date Paie.','Mode','Type','Actions'].map(h => (
                         <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                       ))}</tr>
                     </thead>
@@ -4720,6 +4719,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                           <td className="px-3 py-2 font-mono text-xs font-bold text-slate-900">{Number(t.montant_ttc || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
                           <td className="px-3 py-2 text-xs text-slate-500">{t.date_paiement || '—'}</td>
                           <td className="px-3 py-2 text-xs text-slate-500">{t.mode_paiement || '—'}</td>
+                          <td className="px-3 py-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${t.type_tva === 'encaissement' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{t.type_tva === 'encaissement' ? 'Enc.' : 'Déc.'}</span></td>
                           <td className="px-3 py-2 flex gap-1">
                             <button onClick={() => { setEditingTva(t); setTvaForm({ ...t, montant_ht: String(t.montant_ht), taux_tva: String(t.taux_tva) }); setShowTvaForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
                             <button onClick={() => handleDeleteTva(t.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
@@ -5000,6 +5000,19 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
           <button onClick={() => { setShowTvaForm(false); setEditingTva(null); setTvaForm(emptyTvaForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</label>
+            <div className="flex gap-2 mt-1">
+              <button type="button" onClick={() => setTvaForm((p: any) => ({ ...p, type_tva: 'encaissement' }))}
+                className={`flex-1 h-9 rounded-lg text-xs font-black uppercase cursor-pointer border-2 ${tvaForm.type_tva === 'encaissement' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                Encaissement
+              </button>
+              <button type="button" onClick={() => setTvaForm((p: any) => ({ ...p, type_tva: 'decaissement' }))}
+                className={`flex-1 h-9 rounded-lg text-xs font-black uppercase cursor-pointer border-2 ${tvaForm.type_tva === 'decaissement' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                Décaissement
+              </button>
+            </div>
+          </div>
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Facture</label>
             <input type="text" value={tvaForm.numero_facture || ''} onChange={e => setTvaForm((p: any) => ({ ...p, numero_facture: e.target.value }))}
