@@ -256,6 +256,9 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [releveList, setReleveList] = useState<any[]>([]);
   const [loadingReleve, setLoadingReleve] = useState(false);
   const [releveMois, setReleveMois] = useState(new Date().toISOString().slice(0, 7));
+  const [releveImports, setReleveImports] = useState<any[]>([]);
+  const [loadingImports, setLoadingImports] = useState(false);
+  const [selectedImportMois, setSelectedImportMois] = useState<string | null>(null);
   const [parsingPDF, setParsingPDF] = useState(false);
   const [showReleveForm, setShowReleveForm] = useState(false);
   const [editingReleve, setEditingReleve] = useState<any>(null);
@@ -2110,8 +2113,19 @@ const handleGenerateInvoicePDF = () => {
 
       const { error } = await supabase.from('bank_releve').insert(transactions);
       if (!error) {
-        toast.success(`${transactions.length} transactions extraites et importées !`);
-        fetchReleve();
+        // Create import record
+        await supabase.from('bank_releve_imports').insert({
+          company_id: companyId,
+          mois: releveMois,
+          filename: file.name,
+          transaction_count: transactions.length,
+          solde_depart: soldeDepart,
+          solde_final: soldeFinal,
+        });
+        toast.success(`${transactions.length} transactions extraites pour ${releveMois} !`);
+        fetchReleveImports();
+        setSelectedImportMois(releveMois);
+        fetchReleve(releveMois);
       } else toast.error(`Erreur: ${error.message}`);
     } catch (err: any) {
       toast.error(`Erreur PDF: ${err.message}`);
@@ -2121,16 +2135,23 @@ const handleGenerateInvoicePDF = () => {
   };
 
   // ── Relevé CRUD ──
-  const fetchReleve = async () => {
+  const fetchReleveImports = async () => {
+    if (!companyId) return; setLoadingImports(true);
+    const { data } = await supabase.from('bank_releve_imports').select('*').eq('company_id', companyId).order('mois', { ascending: false });
+    setReleveImports(data || []); setLoadingImports(false);
+  };
+
+  const fetchReleve = async (mois?: string) => {
     if (!companyId) return; setLoadingReleve(true);
+    const targetMois = mois || selectedImportMois || releveFilter.mois;
     let query = supabase.from('bank_releve').select('*').eq('company_id', companyId);
-    if (releveFilter.mois) query = query.eq('mois', releveFilter.mois);
+    if (targetMois) query = query.eq('mois', targetMois);
     const { data } = await query.order('created_at');
     setReleveList(data || []); setLoadingReleve(false);
   };
   const handleSaveReleve = async () => {
     const payload = {
-      company_id: companyId, mois: releveMois, code: releveForm.code || null,
+      company_id: companyId, mois: selectedImportMois || releveMois, code: releveForm.code || null,
       date_operation: releveForm.date_operation || null, libelle: releveForm.libelle || null,
       date_valeur: releveForm.date_valeur || null, debit: parseFloat(releveForm.debit) || 0,
       credit: parseFloat(releveForm.credit) || 0, category: releveForm.category || 'virement',
@@ -2151,6 +2172,13 @@ const handleGenerateInvoicePDF = () => {
     if (!confirm('Supprimer ?')) return;
     await supabase.from('bank_releve').delete().eq('id', id);
     toast.success("Supprimé."); fetchReleve();
+  };
+  const handleDeleteImport = async (imp: any) => {
+    if (!confirm(`Supprimer le relevé ${imp.mois} et ses ${imp.transaction_count} transactions ?`)) return;
+    await supabase.from('bank_releve').delete().eq('company_id', companyId).eq('mois', imp.mois);
+    await supabase.from('bank_releve_imports').delete().eq('id', imp.id);
+    toast.success(`Relevé ${imp.mois} supprimé.`);
+    fetchReleveImports();
   };
   const filteredReleve = releveList.filter((r: any) => {
     if (releveFilter.libelle && !r.libelle?.toLowerCase().includes(releveFilter.libelle.toLowerCase())) return false;
@@ -2218,7 +2246,8 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'bank_base_rip' && companyId) fetchBaseRip();
     if (activeTab === 'bank_virement' && companyId) { fetchVirement(); fetchRip(); fetchBaseRip(); }
     if (activeTab === 'bank_tva' && companyId) { fetchTva(); fetchPurchases(); fetchFournisseurs(); }
-    if ((activeTab === 'bank_releve' || activeTab === 'bank_etat_explicatif') && companyId) fetchReleve();
+    if (activeTab === 'bank_releve' && companyId) { fetchReleveImports(); if (selectedImportMois) fetchReleve(selectedImportMois); }
+    if (activeTab === 'bank_etat_explicatif' && companyId) { fetchReleveImports(); if (selectedImportMois) fetchReleve(selectedImportMois); else fetchReleve(); fetchFournisseurs(); fetchClients(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
       supabase.from('invoice_templates').select('*')
@@ -4230,78 +4259,134 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-teal-500 text-white mb-2"><Landmark className="w-3.5 h-3.5" /> Relevé Bancaire</span>
-                  <h1 className="text-2xl font-extrabold tracking-tight">Relevé de Compte Bancaire</h1>
-                  <p className="text-sm text-slate-400 mt-1">{filteredReleve.length} transactions</p>
+                  <h1 className="text-2xl font-extrabold tracking-tight">Relevés de Compte Bancaire</h1>
+                  <p className="text-sm text-slate-400 mt-1">{releveImports.length} mois importés{selectedImportMois ? ` — ${selectedImportMois} sélectionné` : ''}</p>
                 </div>
                 <div className="flex gap-2 flex-wrap items-center">
                   <input type="month" value={releveMois} onChange={e => setReleveMois(e.target.value)}
                     className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
-                  <button onClick={() => { setReleveFilter({mois:'',libelle:'',category:''}); fetchReleve(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                   <label className={`${parsingPDF ? 'bg-amber-400' : 'bg-amber-600 hover:bg-amber-700'} text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer`}>
                     {parsingPDF ? <><Loader2 size={14} className="animate-spin" /> Extraction...</> : <><Upload size={14} /> Importer PDF</>}
                     <input type="file" accept=".pdf" className="hidden" disabled={parsingPDF} onChange={e => { const f = e.target.files?.[0]; if (f) parseBankPDF(f); e.target.value=''; }} />
                   </label>
-                  <button onClick={() => { if (!filteredReleve.length) return; exportToXLS(filteredReleve.map((r:any) => ({ 'Mois':r.mois,'Code':r.code,'Date Op.':r.date_operation,'Libellé':r.libelle,'Date Valeur':r.date_valeur,'Débit':r.debit,'Crédit':r.credit,'Catégorie':r.category })),'releve_bancaire'); }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
-                  <button onClick={() => { setReleveForm(emptyReleveForm); setEditingReleve(null); setShowReleveForm(true); }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Manuel</button>
+                  <button onClick={fetchReleveImports} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                 </div>
               </div>
             </div>
-            {/* Filters */}
-            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
-              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
-                <input type="month" value={releveFilter.mois} onChange={e => setReleveFilter(p => ({...p,mois:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
-              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Libellé</label>
-                <input type="text" placeholder="Rechercher..." value={releveFilter.libelle} onChange={e => setReleveFilter(p => ({...p,libelle:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" /></div>
-              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catégorie</label>
-                <select value={releveFilter.category} onChange={e => setReleveFilter(p => ({...p,category:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
-                  <option value="">Toutes</option>
-                  {ETAT_CATEGORIES.map(c => (<option key={c.id} value={c.id}>{c.label}</option>))}
-                </select></div>
-              <button onClick={() => setReleveFilter({mois:'',libelle:'',category:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
-            </div>
-            {/* Totals */}
-            {filteredReleve.length > 0 && (() => {
-              const tD = filteredReleve.reduce((s: number, r: any) => s + (parseFloat(r.debit)||0), 0);
-              const tC = filteredReleve.reduce((s: number, r: any) => s + (parseFloat(r.credit)||0), 0);
-              const fmt2 = (n: number) => n.toLocaleString('fr-MA',{minimumFractionDigits:2});
-              return <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6">
-                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(tD)}</span></div>
-                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Crédit</span><span className="text-sm font-bold text-emerald-700">{fmt2(tC)}</span></div>
-                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Solde</span><span className="text-sm font-black text-blue-700">{fmt2(tC - tD)}</span></div>
-              </div>;
-            })()}
-            {/* Table */}
-            {loadingReleve ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left min-w-[900px]">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>{['Code','Date Op.','Libellé','Valeur','Débit','Crédit','Catégorie','Actions'].map(h => (
-                        <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
-                      ))}</tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredReleve.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Aucune transaction. Uploadez un relevé PDF.</td></tr>
-                      : filteredReleve.map((r: any) => (
-                        <tr key={r.id} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{r.code||'—'}</td>
-                          <td className="px-3 py-2 text-xs text-slate-700">{r.date_operation||'—'}</td>
-                          <td className="px-3 py-2 text-xs text-slate-700 max-w-[250px] truncate">{r.libelle||'—'}</td>
-                          <td className="px-3 py-2 text-xs text-slate-500">{r.date_valeur||'—'}</td>
-                          <td className="px-3 py-2 font-mono text-xs text-rose-600 font-bold">{parseFloat(r.debit)>0 ? Number(r.debit).toLocaleString('fr-MA',{minimumFractionDigits:2}) : ''}</td>
-                          <td className="px-3 py-2 font-mono text-xs text-emerald-600 font-bold">{parseFloat(r.credit)>0 ? Number(r.credit).toLocaleString('fr-MA',{minimumFractionDigits:2}) : ''}</td>
-                          <td className="px-3 py-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${r.category==='virement'?'bg-blue-50 text-blue-700':r.category==='emission_cheque'?'bg-amber-50 text-amber-700':r.category==='emission_effets'?'bg-purple-50 text-purple-700':r.category==='remise_cheque'?'bg-emerald-50 text-emerald-700':r.category==='remise_lc'?'bg-cyan-50 text-cyan-700':'bg-rose-50 text-rose-700'}`}>{ETAT_CATEGORIES.find(c=>c.id===r.category)?.label||r.category}</span></td>
-                          <td className="px-3 py-2 flex gap-1">
-                            <button onClick={() => { setEditingReleve(r); setReleveForm({...r,debit:String(r.debit),credit:String(r.credit)}); setShowReleveForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
-                            <button onClick={() => handleDeleteReleve(r.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+            {/* Import Registry */}
+            {!selectedImportMois ? (
+              <div>
+                {loadingImports ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+                  <div className="space-y-3">
+                    {releveImports.length === 0 ? (
+                      <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">Aucun relevé importé. Sélectionnez un mois et importez un PDF.</div>
+                    ) : releveImports.map((imp: any) => (
+                      <div key={imp.id} onClick={() => { setSelectedImportMois(imp.mois); fetchReleve(imp.mois); }}
+                        className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-lg bg-teal-50 flex items-center justify-center">
+                            <Landmark size={20} className="text-teal-600" />
+                          </div>
+                          <div>
+                            <span className="text-lg font-black text-slate-800">{imp.mois}</span>
+                            <div className="flex gap-3 mt-1">
+                              <span className="text-[10px] text-slate-500">{imp.filename || 'PDF'}</span>
+                              <span className="text-[10px] text-slate-400">Importé le {new Date(imp.created_at).toLocaleDateString('fr-MA')}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <span className="text-sm font-bold text-slate-700">{imp.transaction_count} transactions</span>
+                            <div className="flex gap-2 mt-1">
+                              <span className="text-[9px] text-slate-400">Solde départ: {Number(imp.solde_depart || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+                          {imp.pushed && <span className="text-[9px] font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded uppercase">Poussé</span>}
+                          <span className="text-slate-400">▶</span>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteImport(imp); }}
+                            className="text-slate-300 hover:text-rose-500 cursor-pointer ml-2"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                {/* Back button + month header */}
+                <div className="mb-4 flex items-center justify-between">
+                  <button onClick={() => { setSelectedImportMois(null); setReleveList([]); }}
+                    className="flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700 cursor-pointer">
+                    ← Retour aux relevés
+                  </button>
+                  <span className="text-lg font-black text-slate-800">{selectedImportMois}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => fetchReleve(selectedImportMois!)} className="bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                    <button onClick={() => { if (!releveList.length) return; exportToXLS(releveList.map((r:any) => ({ 'Mois':r.mois,'Code':r.code,'Date Op.':r.date_operation,'Libellé':r.libelle,'Date Valeur':r.date_valeur,'Débit':r.debit,'Crédit':r.credit,'Catégorie':r.category })),'releve_bancaire'); }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                    <button onClick={() => { setReleveForm(emptyReleveForm); setEditingReleve(null); setShowReleveForm(true); }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Manuel</button>
+                  </div>
                 </div>
+
+                {/* Filters */}
+                <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Libellé</label>
+                    <input type="text" placeholder="Rechercher..." value={releveFilter.libelle} onChange={e => setReleveFilter(p => ({...p,libelle:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-44" /></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catégorie</label>
+                    <select value={releveFilter.category} onChange={e => setReleveFilter(p => ({...p,category:e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                      <option value="">Toutes</option>
+                      {ETAT_CATEGORIES.map(c => (<option key={c.id} value={c.id}>{c.label}</option>))}
+                    </select></div>
+                  <button onClick={() => setReleveFilter({mois:'',libelle:'',category:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+                </div>
+
+                {/* Totals */}
+                {filteredReleve.length > 0 && (() => {
+                  const tD = filteredReleve.reduce((s: number, r: any) => s + (parseFloat(r.debit)||0), 0);
+                  const tC = filteredReleve.reduce((s: number, r: any) => s + (parseFloat(r.credit)||0), 0);
+                  const fmt2 = (n: number) => n.toLocaleString('fr-MA',{minimumFractionDigits:2});
+                  return <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6">
+                    <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(tD)}</span></div>
+                    <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Crédit</span><span className="text-sm font-bold text-emerald-700">{fmt2(tC)}</span></div>
+                    <div><span className="text-[9px] font-black text-slate-400 uppercase block">Solde</span><span className="text-sm font-black text-blue-700">{fmt2(tC - tD)}</span></div>
+                  </div>;
+                })()}
+
+                {/* Transactions Table */}
+                {loadingReleve ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left min-w-[900px]">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>{['Code','Date Op.','Libellé','Valeur','Débit','Crédit','Catégorie','Actions'].map(h => (
+                            <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                          ))}</tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredReleve.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Aucune transaction.</td></tr>
+                          : filteredReleve.map((r: any) => (
+                            <tr key={r.id} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{r.code||'—'}</td>
+                              <td className="px-3 py-2 text-xs text-slate-700">{r.date_operation||'—'}</td>
+                              <td className="px-3 py-2 text-xs text-slate-700 max-w-[250px] truncate">{r.libelle||'—'}</td>
+                              <td className="px-3 py-2 text-xs text-slate-500">{r.date_valeur||'—'}</td>
+                              <td className="px-3 py-2 font-mono text-xs text-rose-600 font-bold">{parseFloat(r.debit)>0 ? Number(r.debit).toLocaleString('fr-MA',{minimumFractionDigits:2}) : ''}</td>
+                              <td className="px-3 py-2 font-mono text-xs text-emerald-600 font-bold">{parseFloat(r.credit)>0 ? Number(r.credit).toLocaleString('fr-MA',{minimumFractionDigits:2}) : ''}</td>
+                              <td className="px-3 py-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${r.category==='virement'?'bg-blue-50 text-blue-700':r.category==='emission_cheque'?'bg-amber-50 text-amber-700':r.category==='emission_effets'?'bg-purple-50 text-purple-700':r.category==='remise_cheque'?'bg-emerald-50 text-emerald-700':r.category==='remise_lc'?'bg-cyan-50 text-cyan-700':'bg-rose-50 text-rose-700'}`}>{ETAT_CATEGORIES.find(c=>c.id===r.category)?.label||r.category}</span></td>
+                              <td className="px-3 py-2 flex gap-1">
+                                <button onClick={() => { setEditingReleve(r); setReleveForm({...r,debit:String(r.debit),credit:String(r.credit)}); setShowReleveForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
+                                <button onClick={() => handleDeleteReleve(r.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -4316,8 +4401,11 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                   <p className="text-sm text-slate-400 mt-1">{releveList.length} transactions — {ETAT_CATEGORIES.length} sections</p>
                 </div>
                 <div className="flex gap-2 flex-wrap items-center">
-                  <input type="month" value={releveFilter.mois || ''} onChange={e => setReleveFilter(p => ({...p,mois:e.target.value}))}
-                    className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
+                  <select value={selectedImportMois || ''} onChange={e => { setSelectedImportMois(e.target.value || null); if (e.target.value) fetchReleve(e.target.value); else fetchReleve(); }}
+                    className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none">
+                    <option value="">Tous les mois</option>
+                    {releveImports.map((imp: any) => (<option key={imp.id} value={imp.mois}>{imp.mois} ({imp.transaction_count} tx)</option>))}
+                  </select>
                   <button onClick={() => { setReleveFilter({mois:'',libelle:'',category:''}); fetchReleve(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                   <button onClick={() => {
                     if (checkedReleve.length === filteredReleve.length && filteredReleve.length > 0) {
