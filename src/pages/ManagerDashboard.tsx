@@ -4328,6 +4328,109 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                     className="bg-white/10 hover:bg-white/15 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                     {checkedReleve.length === filteredReleve.length && filteredReleve.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
                   </button>
+                  {checkedReleve.length > 0 && (
+                    <button onClick={async () => {
+                      const checked = releveList.filter((r: any) => checkedReleve.includes(r.id));
+                      if (checked.length === 0) return;
+                      let pushed = 0;
+                      let skipped = 0;
+
+                      for (const row of checked) {
+                        const code = row.code_reglement?.trim();
+                        let tauxTva = 0;
+                        let numFacture = '';
+                        let fournisseur = '';
+                        let ifFourn = '';
+                        let iceFourn = '';
+                        let designation = '';
+                        let datePaiement = '';
+                        let modePaiement = '';
+                        let montantHT = 0;
+                        let montantTVA = 0;
+                        let montantTTC = 0;
+
+                        if (code) {
+                          // Try purchases first
+                          const { data: pData } = await supabase.from('purchases').select('*').eq('code_reglement', code).eq('company_id', companyId).limit(1);
+                          if (pData && pData.length > 0) {
+                            const p = pData[0];
+                            tauxTva = parseFloat(p.taux_tva || p.montant_tva && p.montant_ht ? ((parseFloat(p.montant_tva) / parseFloat(p.montant_ht)) * 100) : 0) || 0;
+                            numFacture = p.numero_facture || '';
+                            fournisseur = p.fournisseur || p.supplier || '';
+                            ifFourn = p.identifiant_fiscal || p.if_number || '';
+                            iceFourn = p.ice || '';
+                            designation = p.designation || p.description || '';
+                            datePaiement = p.date_echeance || p.date || '';
+                            modePaiement = p.mode_paiement || '';
+                            montantHT = parseFloat(p.montant_ht) || 0;
+                            montantTVA = parseFloat(p.montant_tva) || 0;
+                            montantTTC = parseFloat(p.montant_ttc) || 0;
+                          } else {
+                            // Try reglements
+                            const { data: rData } = await supabase.from('reglements').select('*').eq('code_reglement', code).eq('company_id', companyId).limit(1);
+                            if (rData && rData.length > 0) {
+                              const reg = rData[0];
+                              fournisseur = reg.client || row.destination || '';
+                              modePaiement = reg.type_reglement || '';
+                              datePaiement = reg.date_reglement || '';
+                              montantTTC = parseFloat(reg.montant_total) || parseFloat(row.debit) || parseFloat(row.credit) || 0;
+                              // Try to get taux from linked invoices
+                              if (reg.facture_ids && reg.facture_ids.length > 0) {
+                                const { data: fData } = await supabase.from('suivi_facturation').select('*').in('id', reg.facture_ids).limit(1);
+                                if (fData && fData.length > 0) {
+                                  const f = fData[0];
+                                  const ht = parseFloat(f.montant_ht) || 0;
+                                  const tva = parseFloat(f.tva) || 0;
+                                  tauxTva = ht > 0 ? Math.round((tva / ht) * 100) : 0;
+                                  montantHT = ht;
+                                  montantTVA = tva;
+                                  numFacture = f.numero_facture || '';
+                                }
+                              }
+                            }
+                          }
+                        }
+
+                        // Fallback amounts from the bank row itself
+                        if (!montantTTC) montantTTC = parseFloat(row.debit) || parseFloat(row.credit) || 0;
+                        if (!montantHT && tauxTva > 0) {
+                          montantHT = parseFloat((montantTTC / (1 + tauxTva / 100)).toFixed(2));
+                          montantTVA = parseFloat((montantTTC - montantHT).toFixed(2));
+                        } else if (!montantHT) {
+                          montantHT = montantTTC;
+                        }
+
+                        const typeTva = parseFloat(row.credit) > 0 ? 'encaissement' : 'decaissement';
+
+                        const { error } = await supabase.from('bank_tva').insert({
+                          company_id: companyId,
+                          mois: row.mois || tvaMois,
+                          type_tva: typeTva,
+                          numero_facture: numFacture || row.ref_reglement || '',
+                          date_facture: datePaiement || row.date_operation || null,
+                          nom_fournisseur: fournisseur || row.destination || '',
+                          if_fournisseur: ifFourn || '',
+                          ice_fournisseur: iceFourn || '',
+                          designation: designation || row.note_operation || row.libelle || '',
+                          montant_ht: montantHT,
+                          taux_tva: tauxTva,
+                          montant_tva: montantTVA,
+                          montant_ttc: montantTTC,
+                          date_paiement: datePaiement || null,
+                          mode_paiement: modePaiement || '',
+                        });
+
+                        if (!error) pushed++;
+                        else skipped++;
+                      }
+
+                      toast.success(`${pushed} ligne(s) poussées vers TVA${skipped > 0 ? ` (${skipped} erreurs)` : ''}`);
+                      setCheckedReleve([]);
+                    }}
+                      className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      <TrendingUp size={14} /> Pousser vers TVA ({checkedReleve.length})
+                    </button>
+                  )}
                   <button onClick={async () => {
                     let count = 0;
                     for (const r of releveList) {
