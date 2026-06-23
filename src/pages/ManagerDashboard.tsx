@@ -2564,7 +2564,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                   <div className="overflow-x-auto">
                     <table className="w-full text-left min-w-[1800px]">
                       <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>{['Date','Catégorie','Fournisseur','N° Facture','Désignation','IF','ICE','Affectation','HT','TVA','TTC','Banque','N° Réf','Échéance','Mode','Écart Délai','Code Règ.','Actions'].map(h => (
+                        <tr>{['Date','Catégorie','Fournisseur','N° Facture','Désignation','IF','ICE','Affectation','HT','TVA','TTC','Banque','N° Réf','Échéance','Mode','Écart Délai','Code Règ.','TVA Mois','Actions'].map(h => (
                           <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                         ))}</tr>
                       </thead>
@@ -2595,7 +2595,8 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                                 </span>
                               ) : '—'}
                             </td>
-                            <td className="px-3 py-2 font-mono text-[10px] text-amber-600 font-bold">{p?.code_reglement || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-[10px] text-amber-600 font-bold">{p.code_reglement || '—'}</td>
+                            <td className="px-3 py-2 text-[10px] text-slate-500">{p.tva_mois || '—'}</td>
                             <td className="px-3 py-3">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => setEditingPurchase(p)} className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={13} /></button>
@@ -4354,16 +4355,16 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                           const { data: pData } = await supabase.from('purchases').select('*').eq('code_reglement', code).eq('company_id', companyId).limit(1);
                           if (pData && pData.length > 0) {
                             const p = pData[0];
-                            tauxTva = (p.taux_tva ? parseFloat(p.taux_tva) : (p.montant_tva && p.montant_ht ? (parseFloat(p.montant_tva) / parseFloat(p.montant_ht)) * 100 : 0)) || 0;
+                            tauxTva = (p.tva_rate ? parseFloat(p.tva_rate) : (p.tva_amount && p.montant_ht ? (parseFloat(p.tva_amount) / parseFloat(p.montant_ht)) * 100 : 0)) || 0;
                             numFacture = p.numero_facture || '';
-                            fournisseur = p.fournisseur || p.supplier || '';
+                            fournisseur = p.fournisseur || '';
                             ifFourn = p.identifiant_fiscal || p.if_number || '';
                             iceFourn = p.ice || '';
                             designation = p.designation || p.description || '';
                             datePaiement = p.date_echeance || p.date || '';
                             modePaiement = p.mode_paiement || '';
                             montantHT = parseFloat(p.montant_ht) || 0;
-                            montantTVA = parseFloat(p.montant_tva) || 0;
+                            montantTVA = parseFloat(p.tva_amount) || 0;
                             montantTTC = parseFloat(p.montant_ttc) || 0;
                           } else {
                             // Try reglements
@@ -4702,6 +4703,8 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="flex gap-2 flex-wrap items-center">
                   <input type="month" value={tvaMois} onChange={e => setTvaMois(e.target.value)}
                     className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
+                    <input type="month" value={tvaMois} onChange={e => setTvaMois(e.target.value)}
+                    className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
                   <button onClick={() => { fetchTva(); fetchPurchases(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                   <button onClick={() => {
                     const encRows = tvaList.filter((t:any) => t.type_tva === 'encaissement');
@@ -4710,7 +4713,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                     rows.push({ 'Type': '=== ENCAISSEMENTS ===' });
                     encRows.forEach((t:any) => rows.push({ 'Type':'Enc.','N° Facture':t.numero_facture,'Date':t.date_facture,'Fournisseur/Client':t.nom_fournisseur,'HT':t.montant_ht,'Taux TVA':t.taux_tva,'TVA':t.montant_tva,'TTC':t.montant_ttc }));
                     rows.push({ 'Type': '=== DÉDUCTIONS ===' });
-                    decRows.forEach((p:any) => rows.push({ 'Type':'Déc.','N° Facture':p.numero_facture,'Date':p.date,'Fournisseur/Client':p.fournisseur,'HT':p.montant_ht,'Taux TVA':p.taux_tva || p.montant_tva && p.montant_ht ? Math.round((parseFloat(p.montant_tva)/parseFloat(p.montant_ht))*100) : 0,'TVA':p.montant_tva,'TTC':p.montant_ttc }));
+                    decRows.forEach((p:any) => rows.push({ 'Type':'Déc.','N° Facture':p.numero_facture,'Date':p.date,'Fournisseur/Client':p.fournisseur,'HT':p.montant_ht,'Taux TVA':p.tva_rate || p.tva_amount && p.montant_ht ? Math.round((parseFloat(p.tva_amount)/parseFloat(p.montant_ht))*100) : 0,'TVA':p.tva_amount,'TTC':p.montant_ttc }));
                     exportToXLS(rows, 'tva_declaration');
                   }}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
@@ -4755,14 +4758,14 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <h3 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3">Décaissements (TVA Déductible)</h3>
                 <div className="space-y-2">
                   {[0, 7, 10, 12, 13, 14, 20].map(rate => {
-                    const items = purchases.filter((p: any) => {
+                    const items = (tvaMois ? purchases.filter((p: any) => p.tva_mois === tvaMois) : purchases).filter((p: any) => {
                       const ht = parseFloat(p.montant_ht) || 0;
                       const ttc = parseFloat(p.montant_ttc) || 0;
-                      const tva = parseFloat(p.montant_tva) || (ttc - ht > 0 ? ttc - ht : 0);
-                      const pRate = parseFloat(p.taux_tva) || (ht > 0 && tva > 0 ? Math.round((tva / ht) * 100) : 0);
+                      const tva = parseFloat(p.tva_amount) || (ttc - ht > 0 ? ttc - ht : 0);
+                      const pRate = parseFloat(p.tva_rate) || (ht > 0 && tva > 0 ? Math.round((tva / ht) * 100) : 0);
                       return Math.round(pRate) === rate;
                     });
-                    const totalTVA = items.reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.montant_tva) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0);
+                    const totalTVA = items.reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.tva_amount) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0);
                     const totalHT = items.reduce((s: number, p: any) => s + (parseFloat(p.montant_ht) || 0), 0);
                     return totalTVA > 0 ? (
                       <div key={rate} className="flex justify-between items-center">
@@ -4772,13 +4775,13 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                       </div>
                     ) : null;
                   })}
-                  {purchases.length === 0 && (
+                  {(tvaMois ? purchases.filter((p: any) => p.tva_mois === tvaMois) : purchases).length === 0 && (
                     <p className="text-[10px] text-slate-400 text-center py-2">Aucun achat</p>
                   )}
                   <div className="pt-2 border-t border-rose-200 flex justify-between">
                     <span className="text-[10px] font-black text-rose-800">Total TVA Déductible</span>
                     <span className="font-mono text-sm font-bold text-rose-700">
-                      {purchases.reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.montant_tva) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                      {(tvaMois ? purchases.filter((p: any) => p.tva_mois === tvaMois) : purchases).reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.tva_amount) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -4789,7 +4792,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">Résultat TVA</h3>
                 {(() => {
                   const collectee = tvaList.filter((t: any) => t.type_tva === 'encaissement').reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
-                  const deductible = purchases.reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.montant_tva) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0);
+                  const deductible = (tvaMois ? purchases.filter((p: any) => p.tva_mois === tvaMois) : purchases).reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.tva_amount) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0);
                   const result = collectee - deductible;
                   return (
                     <div className="space-y-3">
@@ -4821,21 +4824,23 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                       ))}</tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {purchases.length === 0 ? (
-                        <tr><td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat. Ajoutez des achats dans la page Achats & Factures.</td></tr>
-                      ) : purchases.map((p: any) => {
+                      {(() => {
+                        const filtered = tvaMois ? purchases.filter((p: any) => p.tva_mois === tvaMois) : purchases;
+                        return filtered.length === 0 ? (
+                          <tr><td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">{tvaMois ? `Aucun achat pour ${tvaMois}.` : 'Aucun achat.'}</td></tr>
+                        ) : filtered.map((p: any) => {
                         const ht = parseFloat(p.montant_ht) || 0;
                         const ttc = parseFloat(p.montant_ttc) || 0;
-                        const tva = parseFloat(p.montant_tva) || (ttc - ht > 0 ? parseFloat((ttc - ht).toFixed(2)) : 0);
-                        const taux = parseFloat(p.taux_tva) || (ht > 0 && tva > 0 ? Math.round((tva / ht) * 100) : 0);
+                        const tva = parseFloat(p.tva_amount) || (ttc - ht > 0 ? parseFloat((ttc - ht).toFixed(2)) : 0);
+                        const taux = parseFloat(p.tva_rate) || (ht > 0 && tva > 0 ? Math.round((tva / ht) * 100) : 0);
                         return (
                           <tr key={p.id} className="hover:bg-slate-50">
                             <td className="px-3 py-2 font-mono text-xs text-blue-600">{p.numero_facture || '—'}</td>
-                            <td className="px-3 py-2 text-xs text-slate-700">{p.date || '—'}</td>
-                            <td className="px-3 py-2 text-xs font-semibold text-slate-700">{p.fournisseur || p.supplier || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{p.identifiant_fiscal || p.if_number || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{p.ice || '—'}</td>
-                            <td className="px-3 py-2 text-xs text-slate-600 max-w-[150px] truncate">{p.designation || p.description || '—'}</td>
+                            <td className="px-3 py-2 text-xs text-slate-700">{p.date_achat || '—'}</td>
+                            <td className="px-3 py-2 text-xs font-semibold text-slate-700">{p.fournisseur || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{p.if_number || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{p.ice || p.ice_fournisseur || '—'}</td>
+                            <td className="px-3 py-2 text-xs text-slate-600 max-w-[150px] truncate">{p.designation || '—'}</td>
                             <td className="px-3 py-2 font-mono text-xs text-slate-700">{ht.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
                             <td className="px-3 py-2 font-mono text-xs text-slate-500">{taux}%</td>
                             <td className="px-3 py-2 font-mono text-xs text-amber-700 font-bold">{tva.toLocaleString('fr-MA', { minimumFractionDigits: 2 })}</td>
@@ -4847,7 +4852,8 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                             </td>
                           </tr>
                         );
-                      })}
+                      });
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -5415,6 +5421,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 { label: 'Montant HT', key: 'montant_ht', type: 'number' },
                 { label: 'Montant TTC', key: 'montant_ttc', type: 'number' },
                 { label: 'Code Règlement', key: 'code_reglement', type: 'text' },
+                { label: 'TVA Mois', key: 'tva_mois', type: 'month' },
                 { label: 'Notes', key: 'notes', type: 'text' },
               ].map(({ label, key, type }) => (
                 <div key={key}>
