@@ -4756,10 +4756,13 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="space-y-2">
                   {[0, 7, 10, 12, 13, 14, 20].map(rate => {
                     const items = purchases.filter((p: any) => {
-                      const pRate = parseFloat(p.taux_tva) || (parseFloat(p.montant_ht) > 0 ? Math.round((parseFloat(p.montant_tva) / parseFloat(p.montant_ht)) * 100) : 0);
+                      const ht = parseFloat(p.montant_ht) || 0;
+                      const ttc = parseFloat(p.montant_ttc) || 0;
+                      const tva = parseFloat(p.montant_tva) || (ttc - ht > 0 ? ttc - ht : 0);
+                      const pRate = parseFloat(p.taux_tva) || (ht > 0 && tva > 0 ? Math.round((tva / ht) * 100) : 0);
                       return Math.round(pRate) === rate;
                     });
-                    const totalTVA = items.reduce((s: number, p: any) => s + (parseFloat(p.montant_tva) || 0), 0);
+                    const totalTVA = items.reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.montant_tva) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0);
                     const totalHT = items.reduce((s: number, p: any) => s + (parseFloat(p.montant_ht) || 0), 0);
                     return totalTVA > 0 ? (
                       <div key={rate} className="flex justify-between items-center">
@@ -4775,7 +4778,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                   <div className="pt-2 border-t border-rose-200 flex justify-between">
                     <span className="text-[10px] font-black text-rose-800">Total TVA Déductible</span>
                     <span className="font-mono text-sm font-bold text-rose-700">
-                      {purchases.reduce((s: number, p: any) => s + (parseFloat(p.montant_tva) || 0), 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
+                      {purchases.reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.montant_tva) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -4786,7 +4789,7 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                 <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">Résultat TVA</h3>
                 {(() => {
                   const collectee = tvaList.filter((t: any) => t.type_tva === 'encaissement').reduce((s: number, t: any) => s + (parseFloat(t.montant_tva) || 0), 0);
-                  const deductible = purchases.reduce((s: number, p: any) => s + (parseFloat(p.montant_tva) || 0), 0);
+                  const deductible = purchases.reduce((s: number, p: any) => { const ht = parseFloat(p.montant_ht)||0; const ttc = parseFloat(p.montant_ttc)||0; return s + (parseFloat(p.montant_tva) || (ttc-ht > 0 ? ttc-ht : 0)); }, 0);
                   const result = collectee - deductible;
                   return (
                     <div className="space-y-3">
@@ -4822,9 +4825,9 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
                         <tr><td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat. Ajoutez des achats dans la page Achats & Factures.</td></tr>
                       ) : purchases.map((p: any) => {
                         const ht = parseFloat(p.montant_ht) || 0;
-                        const tva = parseFloat(p.montant_tva) || 0;
                         const ttc = parseFloat(p.montant_ttc) || 0;
-                        const taux = parseFloat(p.taux_tva) || (ht > 0 ? Math.round((tva / ht) * 100) : 0);
+                        const tva = parseFloat(p.montant_tva) || (ttc - ht > 0 ? parseFloat((ttc - ht).toFixed(2)) : 0);
+                        const taux = parseFloat(p.taux_tva) || (ht > 0 && tva > 0 ? Math.round((tva / ht) * 100) : 0);
                         return (
                           <tr key={p.id} className="hover:bg-slate-50">
                             <td className="px-3 py-2 font-mono text-xs text-blue-600">{p.numero_facture || '—'}</td>
