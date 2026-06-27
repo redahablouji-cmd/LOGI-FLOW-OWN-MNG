@@ -5509,6 +5509,17 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </div>
                   </div>
                 </div>
+                <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+                    <input type="text" placeholder="Filtrer..." value={glFilter.name} onChange={e => setGlFilter(p => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                    <select value={glFilter.month} onChange={e => setGlFilter(p => ({...p, month: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                      <option value="">Tous</option>{['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (<option key={m} value={m}>{m}</option>))}
+                    </select></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Année</label>
+                    <input type="text" placeholder="2026" value={glFilter.year} onChange={e => setGlFilter(p => ({...p, year: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-20" /></div>
+                  <button onClick={() => setGlFilter({name:'',month:'',year:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+                </div>
                 <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6 items-center">
                   <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(totalDebit)}</span></div>
                   <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Crédit</span><span className="text-sm font-bold text-emerald-700">{fmt2(totalCredit)}</span></div>
@@ -5523,11 +5534,16 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {jRows.length === 0 ? (
-                          <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucune facture.</td></tr>
-                        ) : (() => {
+                        {(() => {
+                          const filtered = jRows.filter((r: any) => {
+                            if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                            if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                            if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                            return true;
+                          });
+                          if (filtered.length === 0) return <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucune écriture.</td></tr>;
                           let runSolde = 0;
-                          return jRows.map((r: any) => {
+                          return filtered.map((r: any) => {
                             runSolde += (r.debit || 0) - (r.credit || 0);
                             return (
                               <tr key={r.id} className={`hover:bg-slate-50 ${r.credit > 0 ? 'bg-emerald-50/30' : ''}`}>
