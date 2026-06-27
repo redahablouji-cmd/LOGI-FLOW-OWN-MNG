@@ -23,7 +23,7 @@ const exportToXLS = (data: any[], filename: string) => {
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements'| 'bank_rip' | 'bank_releve' | 'bank_base_rip' | 'bank_virement' | 'bank_etat_explicatif' | 'bank_tva';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements'| 'bank_rip' | 'bank_releve' | 'bank_base_rip' | 'bank_virement' | 'bank_etat_explicatif' | 'bank_tva'| 'gl_achat' | 'gl_vente' | 'j_achat' | 'j_vente';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -251,7 +251,15 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [tvaMois, setTvaMois] = useState(new Date().toISOString().slice(0, 7));
   const emptyTvaForm = { type_tva: 'decaissement', numero_facture: '', date_facture: '', nom_fournisseur: '', if_fournisseur: '', ice_fournisseur: '', designation: '', montant_ht: '', taux_tva: '20', montant_tva: '', montant_ttc: '', date_paiement: '', mode_paiement: '' };
   const [tvaForm, setTvaForm] = useState<any>(emptyTvaForm);
-  
+  // Comptabilité state
+  const [comptaList, setComptaList] = useState<any[]>([]);
+  const [loadingCompta, setLoadingCompta] = useState(false);
+  const [showComptaForm, setShowComptaForm] = useState(false);
+  const [editingCompta, setEditingCompta] = useState<any>(null);
+  const [comptaType, setComptaType] = useState('gl_achat');
+  const emptyComptaForm = { numero: '', date_ecriture: '', journal_code: '', numero_piece: '', compte_pcm: '', libelle: '', debit: '', credit: '', observations: '', compte_numero: '', compte_libelle: '' };
+  const [comptaForm, setComptaForm] = useState<any>(emptyComptaForm);
+  const [glOpen, setGlOpen] = useState(false);
   // Relevé Bancaire + État Explicatif state
   const [releveList, setReleveList] = useState<any[]>([]);
   const [loadingReleve, setLoadingReleve] = useState(false);
@@ -2227,6 +2235,42 @@ const handleGenerateInvoicePDF = () => {
     await supabase.from('bank_tva').delete().eq('id', id);
     toast.success("Supprimé."); fetchTva();
   };
+  // ── Comptabilité CRUD ──
+  const fetchCompta = async (type: string) => {
+    if (!companyId) return; setLoadingCompta(true);
+    const { data } = await supabase.from('comptabilite').select('*').eq('company_id', companyId).eq('type', type).order('numero');
+    setComptaList(data || []); setLoadingCompta(false);
+  };
+  const handleSaveCompta = async () => {
+    const payload = {
+      company_id: companyId, type: comptaType,
+      numero: parseInt(comptaForm.numero) || null, date_ecriture: comptaForm.date_ecriture || null,
+      journal_code: comptaForm.journal_code || null, numero_piece: comptaForm.numero_piece || null,
+      compte_pcm: comptaForm.compte_pcm || null, libelle: comptaForm.libelle || null,
+      debit: parseFloat(comptaForm.debit) || 0, credit: parseFloat(comptaForm.credit) || 0,
+      observations: comptaForm.observations || null, compte_numero: comptaForm.compte_numero || null, compte_libelle: comptaForm.compte_libelle || null,
+    };
+    if (editingCompta) {
+      const { error } = await supabase.from('comptabilite').update(payload).eq('id', editingCompta.id);
+      if (!error) { toast.success("Modifié."); setEditingCompta(null); } else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from('comptabilite').insert(payload);
+      if (!error) toast.success("Ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowComptaForm(false); setComptaForm(emptyComptaForm); fetchCompta(comptaType);
+  };
+  const handleDeleteCompta = async (id: string) => {
+    if (!confirm('Supprimer ?')) return;
+    await supabase.from('comptabilite').delete().eq('id', id);
+    toast.success("Supprimé."); fetchCompta(comptaType);
+  };
+
+  const COMPTA_CONFIG: Record<string, { label: string; title: string; color: string; isGL: boolean }> = {
+    gl_achat: { label: 'Grand Livre Achat', title: 'Grand Livre des Achats', color: 'amber', isGL: true },
+    gl_vente: { label: 'Grand Livre Vente', title: 'Grand Livre des Ventes', color: 'blue', isGL: true },
+    j_achat: { label: 'Journal Achat', title: 'Journal des Achats', color: 'rose', isGL: false },
+    j_vente: { label: 'Journal Vente', title: 'Journal des Ventes', color: 'emerald', isGL: false },
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -2248,6 +2292,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'bank_tva' && companyId) { fetchTva(); fetchPurchases(); fetchFournisseurs(); }
     if (activeTab === 'bank_releve' && companyId) { fetchReleveImports(); if (selectedImportMois) fetchReleve(selectedImportMois); }
     if (activeTab === 'bank_etat_explicatif' && companyId) { fetchReleveImports(); if (selectedImportMois) fetchReleve(selectedImportMois); else fetchReleve(); fetchFournisseurs(); fetchClients(); }
+    if (['gl_achat','gl_vente','j_achat','j_vente'].includes(activeTab) && companyId) { setComptaType(activeTab); fetchCompta(activeTab); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
       supabase.from('invoice_templates').select('*')
@@ -2312,6 +2357,12 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
   { id: 'bank_etat_explicatif', label: 'État Explicatif' },
   { id: 'bank_tva',             label: 'TVA' },
 ];
+const glSubItems: { id: ManagerTab; label: string }[] = [
+    { id: 'gl_achat',  label: 'Grand Livre Achat' },
+    { id: 'gl_vente',  label: 'Grand Livre Vente' },
+    { id: 'j_achat',   label: 'Journal Achat' },
+    { id: 'j_vente',   label: 'Journal Vente' },
+  ];
 
   const suiviFields = [
     { label: 'Date',                  key: 'date',           type: 'date'   },
@@ -2409,6 +2460,22 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
         {(bankOpen || activeTab.startsWith('bank_')) && (
           <div className="ml-6 mt-1 space-y-0.5">
             {bankSubItems.map(sub => (
+              <button key={sub.id} onClick={() => { setActiveTab(sub.id); if (sidebarOpen) setSidebarOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === sub.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
+                {sub.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* GL & Journal group */}
+        <button onClick={() => setGlOpen(p => !p)}
+          className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer mt-1 ${glOpen || ['gl_achat','gl_vente','j_achat','j_vente'].includes(activeTab) ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <div className="flex items-center gap-3"><FileText size={18} /><span>Grand Livre & Journal</span></div>
+          <span className="text-xs">{glOpen ? '▼' : '▶'}</span>
+        </button>
+        {(glOpen || ['gl_achat','gl_vente','j_achat','j_vente'].includes(activeTab)) && (
+          <div className="ml-6 mt-1 space-y-0.5">
+            {glSubItems.map(sub => (
               <button key={sub.id} onClick={() => { setActiveTab(sub.id); if (sidebarOpen) setSidebarOpen(false); }}
                 className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === sub.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
                 {sub.label}
@@ -4949,6 +5016,185 @@ const bankSubItems: { id: ManagerTab; label: string }[] = [
             )}
           </div>
         )}
+        {['gl_achat','gl_vente','j_achat','j_vente'].includes(activeTab) && (() => {
+          const cfg = COMPTA_CONFIG[activeTab] || COMPTA_CONFIG.gl_achat;
+          const isGL = cfg.isGL;
+          const headers = isGL
+            ? ['N°','Date','Journal','N° Pièce','Libellé','Débit','Crédit','Solde','Observations','Actions']
+            : ['N°','Date','N° Pièce','Compte PCM','Libellé','Débit','Crédit','Solde','Observations','Actions'];
+          const totalDebit = comptaList.reduce((s: number, r: any) => s + (parseFloat(r.debit) || 0), 0);
+          const totalCredit = comptaList.reduce((s: number, r: any) => s + (parseFloat(r.credit) || 0), 0);
+          const fmt2 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+
+          return (
+            <div>
+              <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-${cfg.color}-500 text-white mb-2`}><FileText className="w-3.5 h-3.5" /> {cfg.label}</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight">{cfg.title}</h1>
+                    <p className="text-sm text-slate-400 mt-1">{comptaList.length} écritures</p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => fetchCompta(activeTab)} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                    <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      <Upload size={14} /> Importer XLS
+                      <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                        const file = e.target.files?.[0]; if (!file) return;
+                        try {
+                          const buffer = await file.arrayBuffer(); const wb = XLSX.read(buffer, { type: 'array' });
+                          const ws = wb.Sheets[wb.SheetNames[0]];
+                          const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                          const headerIdx = rawRows.findIndex((r: any[]) => r.some((c: any) => String(c).toLowerCase().includes('libellé') || String(c).toLowerCase().includes('libelle')));
+                          const dataRows = rawRows.slice(headerIdx >= 0 ? headerIdx + 1 : 7).filter((r: any[]) => r.length > 2 && (r[0] || r[1] || r[4]));
+                          const records = dataRows.filter((r: any[]) => String(r[0] || '').trim() !== 'SOLDE À NOUVEAU' && String(r[0] || '').trim() !== '').map((r: any[]) => {
+                            if (isGL) {
+                              return { company_id: companyId, type: activeTab, numero: parseInt(r[0]) || null, date_ecriture: r[1] ? String(r[1]).split(' ')[0] : null, journal_code: String(r[2] || '').trim() || null, numero_piece: String(r[3] || '').trim() || null, libelle: String(r[4] || '').trim() || null, debit: parseFloat(r[5]) || 0, credit: parseFloat(r[6]) || 0, observations: String(r[8] || '').trim() || null };
+                            } else {
+                              return { company_id: companyId, type: activeTab, numero: parseInt(r[0]) || null, date_ecriture: r[1] ? String(r[1]).split(' ')[0] : null, numero_piece: String(r[2] || '').trim() || null, compte_pcm: String(r[3] || '').trim() || null, libelle: String(r[4] || '').trim() || null, debit: parseFloat(r[5]) || 0, credit: parseFloat(r[6]) || 0, observations: String(r[8] || '').trim() || null };
+                            }
+                          });
+                          if (!records.length) { toast.error("Aucune donnée."); return; }
+                          const { error } = await supabase.from('comptabilite').insert(records);
+                          if (!error) { toast.success(`${records.length} écritures importées.`); fetchCompta(activeTab); } else toast.error(`Erreur: ${error.message}`);
+                        } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                        e.target.value = '';
+                      }} />
+                    </label>
+                    <button onClick={() => { if (!comptaList.length) return; exportToXLS(comptaList.map((r:any) => {
+                      if (isGL) return { 'N°':r.numero,'Date':r.date_ecriture,'Journal':r.journal_code,'N° Pièce':r.numero_piece,'Libellé':r.libelle,'Débit':r.debit,'Crédit':r.credit,'Observations':r.observations };
+                      return { 'N°':r.numero,'Date':r.date_ecriture,'N° Pièce':r.numero_piece,'Compte PCM':r.compte_pcm,'Libellé':r.libelle,'Débit':r.debit,'Crédit':r.credit,'Observations':r.observations };
+                    }), activeTab); }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                    <button onClick={() => { setComptaForm(emptyComptaForm); setEditingCompta(null); setShowComptaForm(true); }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Totals bar */}
+              <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6 items-center">
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(totalDebit)}</span></div>
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Crédit</span><span className="text-sm font-bold text-emerald-700">{fmt2(totalCredit)}</span></div>
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Solde</span><span className={`text-sm font-black ${Math.abs(totalDebit - totalCredit) < 0.01 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt2(totalDebit - totalCredit)} {Math.abs(totalDebit - totalCredit) < 0.01 ? '✔ OK' : '✘'}</span></div>
+              </div>
+
+              {/* Table */}
+              {loadingCompta ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left min-w-[900px]">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>{headers.map(h => (
+                          <th key={h} className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {comptaList.length === 0 ? (
+                          <tr><td colSpan={headers.length} className="px-4 py-10 text-center text-sm text-slate-400">Aucune écriture.</td></tr>
+                        ) : (() => {
+                          let runSolde = 0;
+                          return comptaList.map((r: any) => {
+                            const d = parseFloat(r.debit) || 0;
+                            const c = parseFloat(r.credit) || 0;
+                            runSolde += d - c;
+                            return (
+                              <tr key={r.id} className="hover:bg-slate-50">
+                                <td className="px-3 py-2 font-mono text-xs text-slate-500">{r.numero || '—'}</td>
+                                <td className="px-3 py-2 text-xs text-slate-700">{r.date_ecriture || '—'}</td>
+                                {isGL && <td className="px-3 py-2 text-xs text-slate-600">{r.journal_code || '—'}</td>}
+                                <td className="px-3 py-2 font-mono text-xs text-blue-600">{isGL ? (r.numero_piece || '—') : (r.numero_piece || '—')}</td>
+                                {!isGL && <td className="px-3 py-2 font-mono text-xs text-slate-500">{r.compte_pcm || '—'}</td>}
+                                <td className="px-3 py-2 text-xs text-slate-700 max-w-[200px] truncate">{r.libelle || '—'}</td>
+                                <td className="px-3 py-2 font-mono text-xs text-rose-600 font-bold">{d > 0 ? fmt2(d) : ''}</td>
+                                <td className="px-3 py-2 font-mono text-xs text-emerald-600 font-bold">{c > 0 ? fmt2(c) : ''}</td>
+                                <td className={`px-3 py-2 font-mono text-xs font-bold ${runSolde >= 0 ? 'text-slate-700' : 'text-rose-600'}`}>{fmt2(runSolde)}</td>
+                                <td className="px-3 py-2 text-xs text-slate-500">{r.observations || '—'}</td>
+                                <td className="px-3 py-2 flex gap-1">
+                                  <button onClick={() => { setEditingCompta(r); setComptaForm({ ...r, numero: String(r.numero), debit: String(r.debit), credit: String(r.credit) }); setShowComptaForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
+                                  <button onClick={() => handleDeleteCompta(r.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+        {/* Comptabilité Form */}
+<AnimatePresence>
+  {showComptaForm && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingCompta ? 'Modifier' : 'Nouvelle Écriture'} — {COMPTA_CONFIG[comptaType]?.label}</h3>
+          <button onClick={() => { setShowComptaForm(false); setEditingCompta(null); setComptaForm(emptyComptaForm); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N°</label>
+            <input type="number" value={comptaForm.numero || ''} onChange={e => setComptaForm((p: any) => ({ ...p, numero: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</label>
+            <input type="date" value={comptaForm.date_ecriture || ''} onChange={e => setComptaForm((p: any) => ({ ...p, date_ecriture: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          {COMPTA_CONFIG[comptaType]?.isGL && (
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Journal</label>
+              <input type="text" value={comptaForm.journal_code || ''} onChange={e => setComptaForm((p: any) => ({ ...p, journal_code: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          )}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Pièce</label>
+            <input type="text" value={comptaForm.numero_piece || ''} onChange={e => setComptaForm((p: any) => ({ ...p, numero_piece: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          {!COMPTA_CONFIG[comptaType]?.isGL && (
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Compte PCM</label>
+              <input type="text" value={comptaForm.compte_pcm || ''} onChange={e => setComptaForm((p: any) => ({ ...p, compte_pcm: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          )}
+          <div className="sm:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Libellé</label>
+            <input type="text" value={comptaForm.libelle || ''} onChange={e => setComptaForm((p: any) => ({ ...p, libelle: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Débit</label>
+            <input type="number" value={comptaForm.debit || ''} onChange={e => setComptaForm((p: any) => ({ ...p, debit: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-rose-200 bg-rose-50 px-3 text-sm focus:outline-none focus:border-rose-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crédit</label>
+            <input type="number" value={comptaForm.credit || ''} onChange={e => setComptaForm((p: any) => ({ ...p, credit: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-emerald-200 bg-emerald-50 px-3 text-sm focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Observations</label>
+            <input type="text" value={comptaForm.observations || ''} onChange={e => setComptaForm((p: any) => ({ ...p, observations: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={handleSaveCompta} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingCompta ? 'Enregistrer' : 'Ajouter'}</button>
+          <button onClick={() => { setShowComptaForm(false); setEditingCompta(null); setComptaForm(emptyComptaForm); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
 
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
