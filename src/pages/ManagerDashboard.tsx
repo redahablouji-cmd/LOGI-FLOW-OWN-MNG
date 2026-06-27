@@ -263,6 +263,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   // Plan Comptable state
   const [planComptable, setPlanComptable] = useState<any[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
+  const [glFilter, setGlFilter] = useState({ name: '', month: '', year: '' });
   // Relevé Bancaire + État Explicatif state
   const [releveList, setReleveList] = useState<any[]>([]);
   const [loadingReleve, setLoadingReleve] = useState(false);
@@ -5065,10 +5066,52 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       <button onClick={fetchPurchases} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
-                      <button onClick={() => { if (!glRows.length) return; exportToXLS(glRows.map(r => ({ 'N°': r.numero, 'Date': r.date_ecriture, 'Journal': r.journal_code, 'N° Pièce': r.numero_piece, 'Libellé': r.libelle, 'Débit': r.debit || '', 'Crédit': r.credit || '' })), 'grand_livre_achat'); }}
+                    <button onClick={() => {
+                      const rows = glRows.filter((r: any) => {
+                        if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                        if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                        if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                        return true;
+                      });
+                      if (!rows.length) { toast.error("Aucune ligne à imprimer."); return; }
+                      const fmt3 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+                      let solde = 0;
+                      const rowsHtml = rows.map((r: any, i: number) => {
+                        solde += (r.debit||0) - (r.credit||0);
+                        const bg = i%2===1?'#F8F8F8':'#fff';
+                        return `<tr><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.date_ecriture||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.journal_code||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero_piece||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.libelle||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.debit>0?fmt3(r.debit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.credit>0?fmt3(r.credit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${fmt3(solde)}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.observation||''}</td></tr>`;
+                      }).join('');
+                      const tD = rows.reduce((s:number,r:any)=>s+(r.debit||0),0);
+                      const tC = rows.reduce((s:number,r:any)=>s+(r.credit||0),0);
+                      const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+                      <div style="width:297mm;min-height:210mm;padding:10mm">
+                        <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:8px">Grand Livre des Achats — Exercice ${glFilter.year||new Date().getFullYear()}</div>
+                        <table style="width:100%;border-collapse:collapse">
+                          <thead><tr>${['N°','Date','Journal','N° Pièce','Libellé','Débit','Crédit','Solde','Observations'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:8px;padding:4px 6px;border:1px solid #1F3864;text-align:center">${h}</th>`).join('')}</tr></thead>
+                          <tbody>${rowsHtml}
+                            <tr><td colspan="5" style="text-align:right;background:#1F3864;color:#fff;font-weight:900;font-size:9px;padding:4px 6px;border:1px solid #1F3864">TOTAUX</td><td style="text-align:right;font-family:monospace;background:#1F3864;color:#fff;font-weight:900;font-size:9px;padding:4px 6px;border:1px solid #1F3864">${fmt3(tD)}</td><td style="text-align:right;font-family:monospace;background:#1F3864;color:#fff;font-weight:900;font-size:9px;padding:4px 6px;border:1px solid #1F3864">${fmt3(tC)}</td><td colspan="2" style="background:#1F3864;border:1px solid #1F3864"></td></tr>
+                          </tbody>
+                        </table>
+                      </div></body></html>`;
+                      const win = window.open('','_blank');
+                      if (win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
+                    }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
+                    <button onClick={() => { if (!glRows.length) return; exportToXLS(
+                        glRows.map(r => ({ 'N°': r.numero, 'Date': r.date_ecriture, 'Journal': r.journal_code, 'N° Pièce': r.numero_piece, 'Libellé': r.libelle, 'Débit': r.debit || '', 'Crédit': r.credit || '' })), 'grand_livre_achat'); }}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     </div>
                   </div>
+                </div>
+                <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fournisseur</label>
+                    <input type="text" placeholder="Filtrer..." value={glFilter.name} onChange={e => setGlFilter(p => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                    <select value={glFilter.month} onChange={e => setGlFilter(p => ({...p, month: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                      <option value="">Tous</option>{['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (<option key={m} value={m}>{m}</option>))}
+                    </select></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Année</label>
+                    <input type="text" placeholder="2026" value={glFilter.year} onChange={e => setGlFilter(p => ({...p, year: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-20" /></div>
+                  <button onClick={() => setGlFilter({name:'',month:'',year:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
                 </div>
                 <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6 items-center">
                   <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(totalDebit)}</span></div>
@@ -5084,11 +5127,16 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {glRows.length === 0 ? (
-                          <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat. Les écritures se génèrent depuis la page Achats.</td></tr>
-                        ) : (() => {
+                        {(() => {
+                          const filtered = glRows.filter((r: any) => {
+                            if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                            if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                            if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                            return true;
+                          });
+                          if (filtered.length === 0) return <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucune écriture.</td></tr>;
                           let runSolde = 0;
-                          return glRows.map((r: any) => {
+                          return filtered.map((r: any) => {
                             runSolde += (r.debit || 0) - (r.credit || 0);
                             return (
                               <tr key={r.id} className={`hover:bg-slate-50 ${r.credit > 0 ? 'bg-emerald-50/30' : ''}`}>
@@ -5154,10 +5202,51 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       <button onClick={fetchFacturation} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                      <button onClick={() => {
+                        const rows = glRows.filter((r: any) => {
+                          if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                          if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                          if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                          return true;
+                        });
+                        if (!rows.length) { toast.error("Aucune ligne à imprimer."); return; }
+                        const fmt3 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+                        let solde = 0;
+                        const rowsHtml = rows.map((r: any, i: number) => {
+                          solde += (r.debit||0) - (r.credit||0);
+                          const bg = i%2===1?'#F8F8F8':'#fff';
+                          return `<tr><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.date_ecriture||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.journal_code||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero_piece||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.libelle||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.debit>0?fmt3(r.debit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.credit>0?fmt3(r.credit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${fmt3(solde)}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.observation||''}</td></tr>`;
+                        }).join('');
+                        const tD = rows.reduce((s:number,r:any)=>s+(r.debit||0),0);
+                        const tC = rows.reduce((s:number,r:any)=>s+(r.credit||0),0);
+                        const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+                        <div style="width:297mm;min-height:210mm;padding:10mm">
+                          <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:8px">Grand Livre des Ventes — Exercice ${glFilter.year||new Date().getFullYear()}</div>
+                          <table style="width:100%;border-collapse:collapse">
+                            <thead><tr>${['N°','Date','Journal','N° Pièce','Libellé','Débit','Crédit','Solde','Observations'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:8px;padding:4px 6px;border:1px solid #1F3864;text-align:center">${h}</th>`).join('')}</tr></thead>
+                            <tbody>${rowsHtml}
+                              <tr><td colspan="5" style="text-align:right;background:#1F3864;color:#fff;font-weight:900;font-size:9px;padding:4px 6px;border:1px solid #1F3864">TOTAUX</td><td style="text-align:right;font-family:monospace;background:#1F3864;color:#fff;font-weight:900;font-size:9px;padding:4px 6px;border:1px solid #1F3864">${fmt3(tD)}</td><td style="text-align:right;font-family:monospace;background:#1F3864;color:#fff;font-weight:900;font-size:9px;padding:4px 6px;border:1px solid #1F3864">${fmt3(tC)}</td><td colspan="2" style="background:#1F3864;border:1px solid #1F3864"></td></tr>
+                            </tbody>
+                          </table>
+                        </div></body></html>`;
+                        const win = window.open('','_blank');
+                        if (win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
+                      }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
                       <button onClick={() => { if (!glRows.length) return; exportToXLS(glRows.map(r => ({ 'N°': r.numero, 'Date': r.date_ecriture, 'Journal': r.journal_code, 'N° Pièce': r.numero_piece, 'Libellé': r.libelle, 'Débit': r.debit || '', 'Crédit': r.credit || '' })), 'grand_livre_vente'); }}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     </div>
                   </div>
+                </div>
+                <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</label>
+                    <input type="text" placeholder="Filtrer..." value={glFilter.name} onChange={e => setGlFilter(p => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                    <select value={glFilter.month} onChange={e => setGlFilter(p => ({...p, month: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                      <option value="">Tous</option>{['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (<option key={m} value={m}>{m}</option>))}
+                    </select></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Année</label>
+                    <input type="text" placeholder="2026" value={glFilter.year} onChange={e => setGlFilter(p => ({...p, year: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-20" /></div>
+                  <button onClick={() => setGlFilter({name:'',month:'',year:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
                 </div>
                 <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6 items-center">
                   <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(totalDebit)}</span></div>
@@ -5173,11 +5262,16 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {glRows.length === 0 ? (
-                          <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucune facture.</td></tr>
-                        ) : (() => {
+                        {(() => {
+                          const filtered = glRows.filter((r: any) => {
+                            if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                            if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                            if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                            return true;
+                          });
+                          if (filtered.length === 0) return <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucune écriture.</td></tr>;
                           let runSolde = 0;
-                          return glRows.map((r: any) => {
+                          return filtered.map((r: any) => {
                             runSolde += (r.debit || 0) - (r.credit || 0);
                             return (
                               <tr key={r.id} className={`hover:bg-slate-50 ${r.credit > 0 ? 'bg-emerald-50/30' : ''}`}>
@@ -5251,10 +5345,50 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       <button onClick={() => { fetchPurchases(); fetchPlanComptable(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                      <button onClick={() => {
+                        const rows = jRows.filter((r: any) => {
+                          if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                          if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                          if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                          return true;
+                        });
+                        if (!rows.length) { toast.error("Aucune ligne."); return; }
+                        const fmt3 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+                        let solde = 0;
+                        const rowsHtml = rows.map((r: any, i: number) => {
+                          solde += (r.debit||0) - (r.credit||0);
+                          const bg = i%2===1?'#F8F8F8':'#fff';
+                          return `<tr><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.date_ecriture||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero_piece||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.compte_pcm||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.libelle||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.debit>0?fmt3(r.debit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.credit>0?fmt3(r.credit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${fmt3(solde)}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.observation||''}</td></tr>`;
+                        }).join('');
+                        const tD = rows.reduce((s:number,r:any)=>s+(r.debit||0),0);
+                        const tC = rows.reduce((s:number,r:any)=>s+(r.credit||0),0);
+                        const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+                        <div style="width:297mm;min-height:210mm;padding:10mm">
+                          <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:4px">Journal des Achats (AC) — Exercice ${glFilter.year||new Date().getFullYear()}</div>
+                          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:10px;font-weight:700;color:#1F3864;background:#FFFDE7;padding:4px 10px;border:1px solid #e5e5e5"><span>TOTAUX JOURNAL</span><span>Débit: ${fmt3(tD)} | Crédit: ${fmt3(tC)} | Écart: ${fmt3(tD-tC)} ${Math.abs(tD-tC)<0.01?'✔ OK':'✘'}</span></div>
+                          <table style="width:100%;border-collapse:collapse">
+                            <thead><tr>${['N°','Date','N° Pièce','Compte PCM','Libellé','Débit','Crédit','Solde','Observations'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:8px;padding:4px 6px;border:1px solid #1F3864;text-align:center">${h}</th>`).join('')}</tr></thead>
+                            <tbody>${rowsHtml}</tbody>
+                          </table>
+                        </div></body></html>`;
+                        const win = window.open('','_blank');
+                        if (win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
+                      }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
                       <button onClick={() => { if (!jRows.length) return; exportToXLS(jRows.map(r => ({ 'N°': r.numero, 'Date': r.date_ecriture, 'N° Pièce': r.numero_piece, 'Compte PCM': r.compte_pcm, 'Libellé': r.libelle, 'Débit': r.debit || '', 'Crédit': r.credit || '' })), 'journal_achat'); }}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     </div>
                   </div>
+                </div>
+                <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fournisseur</label>
+                    <input type="text" placeholder="Filtrer..." value={glFilter.name} onChange={e => setGlFilter(p => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                    <select value={glFilter.month} onChange={e => setGlFilter(p => ({...p, month: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500">
+                      <option value="">Tous</option>{['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (<option key={m} value={m}>{m}</option>))}
+                    </select></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Année</label>
+                    <input type="text" placeholder="2026" value={glFilter.year} onChange={e => setGlFilter(p => ({...p, year: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-20" /></div>
+                  <button onClick={() => setGlFilter({name:'',month:'',year:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
                 </div>
                 <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6 items-center">
                   <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Débit</span><span className="text-sm font-bold text-rose-700">{fmt2(totalDebit)}</span></div>
@@ -5270,11 +5404,16 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         ))}</tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {jRows.length === 0 ? (
-                          <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucun achat.</td></tr>
-                        ) : (() => {
+                        {(() => {
+                          const filtered = jRows.filter((r: any) => {
+                            if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                            if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                            if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                            return true;
+                          });
+                          if (filtered.length === 0) return <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">Aucune écriture.</td></tr>;
                           let runSolde = 0;
-                          return jRows.map((r: any) => {
+                          return filtered.map((r: any) => {
                             runSolde += (r.debit || 0) - (r.credit || 0);
                             return (
                               <tr key={r.id} className={`hover:bg-slate-50 ${r.credit > 0 ? 'bg-emerald-50/30' : ''}`}>
@@ -5336,6 +5475,35 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       <button onClick={() => { fetchFacturation(); fetchPlanComptable(); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                      <button onClick={() => {
+                        const rows = jRows.filter((r: any) => {
+                          if (glFilter.name && !r.libelle?.toLowerCase().includes(glFilter.name.toLowerCase())) return false;
+                          if (glFilter.month && r.date_ecriture && !r.date_ecriture.includes(`-${glFilter.month.padStart(2,'0')}-`)) return false;
+                          if (glFilter.year && r.date_ecriture && !r.date_ecriture.startsWith(glFilter.year)) return false;
+                          return true;
+                        });
+                        if (!rows.length) { toast.error("Aucune ligne."); return; }
+                        const fmt3 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+                        let solde = 0;
+                        const rowsHtml = rows.map((r: any, i: number) => {
+                          solde += (r.debit||0) - (r.credit||0);
+                          const bg = i%2===1?'#F8F8F8':'#fff';
+                          return `<tr><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.date_ecriture||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.numero_piece||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.compte_pcm||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.libelle||''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.debit>0?fmt3(r.debit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${r.credit>0?fmt3(r.credit):''}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;text-align:right;font-family:monospace;background:${bg}">${fmt3(solde)}</td><td style="padding:3px 6px;border:1px solid #ddd;font-size:8px;background:${bg}">${r.observation||''}</td></tr>`;
+                        }).join('');
+                        const tD = rows.reduce((s:number,r:any)=>s+(r.debit||0),0);
+                        const tC = rows.reduce((s:number,r:any)=>s+(r.credit||0),0);
+                        const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+                        <div style="width:297mm;min-height:210mm;padding:10mm">
+                          <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:4px">Journal des Ventes (VT) — Exercice ${glFilter.year||new Date().getFullYear()}</div>
+                          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:10px;font-weight:700;color:#1F3864;background:#FFFDE7;padding:4px 10px;border:1px solid #e5e5e5"><span>TOTAUX JOURNAL</span><span>Débit: ${fmt3(tD)} | Crédit: ${fmt3(tC)} | Écart: ${fmt3(tD-tC)} ${Math.abs(tD-tC)<0.01?'✔ OK':'✘'}</span></div>
+                          <table style="width:100%;border-collapse:collapse">
+                            <thead><tr>${['N°','Date','N° Pièce','Compte PCM','Libellé','Débit','Crédit','Solde','Observations'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:8px;padding:4px 6px;border:1px solid #1F3864;text-align:center">${h}</th>`).join('')}</tr></thead>
+                            <tbody>${rowsHtml}</tbody>
+                          </table>
+                        </div></body></html>`;
+                        const win = window.open('','_blank');
+                        if (win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
+                      }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
                       <button onClick={() => { if (!jRows.length) return; exportToXLS(jRows.map(r => ({ 'N°': r.numero, 'Date': r.date_ecriture, 'N° Pièce': r.numero_piece, 'Compte PCM': r.compte_pcm, 'Libellé': r.libelle, 'Débit': r.debit || '', 'Crédit': r.credit || '' })), 'journal_vente'); }}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     </div>
