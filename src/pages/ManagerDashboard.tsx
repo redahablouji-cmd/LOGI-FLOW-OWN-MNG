@@ -292,6 +292,34 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [paieForm, setPaieForm] = useState<any>({});
   const [paieOpen, setPaieOpen] = useState(false);
   const [paieFilter, setPaieFilter] = useState({ name: '', mois: '' });
+  const [paieParams, setPaieParams] = useState<Record<string, any[]>>({});
+
+  const PARAM_TABLES = [
+    { id: 'heures_sup', title: 'Heures Supplémentaires', color: 'blue', headers: ['Activité','Période','Horaire','Jours ouv.','Jours fér.'],
+      defaults: [['Non agricole','Jour','6h-21h','0.25','0.5'],['Non agricole','Nuit','21h-6h','0.5','1'],['Agricole','Jour','5h-20h','0.25','0.5'],['Agricole','Nuit','20h-5h','0.5','1']] },
+    { id: 'nb_heures', title: "Nombre d'heures de Travail", color: 'blue', headers: ['Période','Sect. Agricole','Non Agricole'],
+      defaults: [['Jours','8','7.33'],['Semaines','48','44'],['Mois','208','191'],['An','2496','2288']] },
+    { id: 'anciennete', title: "Prime d'Ancienneté", color: 'emerald', headers: ['Période','Taux'],
+      defaults: [['0 à 2 ans','0%'],['2 à 5 ans','5%'],['5 à 12 ans','10%'],['12 à 20 ans','15%'],['20 à 25 ans','20%'],['+25 ans','25%']] },
+    { id: 'charges_fam', title: 'Charges de Familles', color: 'emerald', headers: ['Situation','Enfants','Mensuel','Annuel'],
+      defaults: [['Marié','0','41.67','500'],['Marié','1','83.33','1000'],['Marié','2','125','1500'],['Marié','3','166.67','2000'],['Marié','4','208.33','2500'],['Marié','5','250','3000'],['Marié','6','250','3000']] },
+    { id: 'cnss', title: 'CNSS', color: 'amber', headers: ['Cotisation','Part Salariale','Part Patronale','Plafond'],
+      defaults: [['Prestation Sociale','4.48%','8.98%','6000'],['Allocations familiales','—','6.40%','Non plaf.'],['Taxe Formation Pro','—','1.60%','—'],['Total','4.48%','16.98%','21.46%']] },
+    { id: 'amo', title: 'AMO', color: 'amber', headers: ['Cotisation','Part Salariale','Part Patronale','Plafond'],
+      defaults: [['AMO','2.26%','2.26%','Non plaf.'],['Participation AMO','—','1.85%','—'],['Total','2.26%','4.11%','6.37%']] },
+    { id: 'ir_mensuel', title: 'IR Brut — Barème Mensuel', color: 'rose', headers: ['RNI du','RNI au','Taux','Déduction'],
+      defaults: [['0','3333','0%','0'],['3333.01','5000','10%','333.33'],['5000.01','6667','20%','833.33'],['6667.01','8333','30%','15000'],['8333.01','15000','34%','1833.33'],['15000.01','+','37%','2283.33']] },
+    { id: 'ir_annuel', title: 'IR Brut — Barème Annuel', color: 'rose', headers: ['RNI du','RNI au','Taux','Déduction'],
+      defaults: [['0','40000','0%','0'],['40000.01','60000','10%','4000'],['60000.01','80000','20%','10000'],['80000.01','100000','30%','18000'],['100000.01','180000','34%','22000'],['180000.01','+','37%','27400']] },
+    { id: 'frais_pro', title: 'Frais Professionnels', color: 'purple', headers: ['SBI','Taux FP','Déduction FP','Plafond'],
+      defaults: [['≤ 78000 (≤ 6500/m)','35%','30000','—'],['> 78000 (> 6501/m)','25%','35000','2916.67']] },
+    { id: 'sit_fam', title: 'Situation Familiale', color: 'purple', headers: ['Code','Situation'],
+      defaults: [['1','Célibataire'],['2','Marié'],['3','Divorcé']] },
+    { id: 'smig_smag', title: 'SMIG / SMAG 2025-2026', color: 'cyan', headers: ['Type','Date','Taux Horaire','Brut'],
+      defaults: [['SMIG','01/01/2025','17.10','3266.96'],['SMIG','01/01/2026','17.92','3422.53'],['SMAG','01/04/2025','93.01','2418.23'],['SMAG','01/04/2026','97.44','2533.39']] },
+    { id: 'preavis_lic', title: 'Préavis & Licenciement', color: 'slate', headers: ['Catégorie','Période','Indemnité'],
+      defaults: [['Préavis Cadre','< 1 an','1 mois'],['Préavis Cadre','1-5 ans','2 mois'],['Préavis Cadre','+5 ans','3 mois'],['Préavis Salarié','< 1 an','8 jours'],['Préavis Salarié','1-5 ans','1 mois'],['Préavis Salarié','+5 ans','2 mois'],['Licenciement','0-5 ans','96h'],['Licenciement','6-10 ans','144h'],['Licenciement','11-15 ans','192h'],['Licenciement','+15 ans','240h']] },
+  ];
 
   const PAIE_CONFIG: Record<string, { label: string; table: string; color: string; columns: { key: string; label: string; type: string }[] }> = {
     paie_journal: { label: 'Journal de Paie', table: 'paie_journal', color: 'blue', columns: [
@@ -2386,6 +2414,53 @@ const handleGenerateInvoicePDF = () => {
     await supabase.from(cfg.table).delete().eq('id', id);
     toast.success("Supprimé."); fetchPaie(type);
   };
+  const fetchPaieParams = async () => {
+    if (!companyId) return;
+    const { data } = await supabase.from('paie_parametres').select('*').eq('company_id', companyId).order('row_index');
+    if (!data || data.length === 0) {
+      // Seed defaults
+      const records: any[] = [];
+      PARAM_TABLES.forEach(t => {
+        t.defaults.forEach((row, i) => {
+          records.push({ company_id: companyId, categorie: t.id, row_index: i, row_data: row });
+        });
+      });
+      await supabase.from('paie_parametres').insert(records);
+      const { data: d2 } = await supabase.from('paie_parametres').select('*').eq('company_id', companyId).order('row_index');
+      data?.splice(0, data.length, ...(d2 || []));
+    }
+    const grouped: Record<string, any[]> = {};
+    (data || []).forEach((r: any) => {
+      if (!grouped[r.categorie]) grouped[r.categorie] = [];
+      grouped[r.categorie].push(r);
+    });
+    setPaieParams(grouped);
+  };
+
+  const updateParamCell = async (id: string, categorie: string, rowData: string[]) => {
+    await supabase.from('paie_parametres').update({ row_data: rowData }).eq('id', id);
+    setPaieParams(prev => ({
+      ...prev,
+      [categorie]: (prev[categorie] || []).map(r => r.id === id ? { ...r, row_data: rowData } : r),
+    }));
+  };
+
+  const addParamRow = async (categorie: string, colCount: number) => {
+    const rows = paieParams[categorie] || [];
+    const newRow = Array(colCount).fill('');
+    const { data, error } = await supabase.from('paie_parametres').insert({
+      company_id: companyId, categorie, row_index: rows.length, row_data: newRow,
+    }).select().single();
+    if (!error && data) {
+      setPaieParams(prev => ({ ...prev, [categorie]: [...(prev[categorie] || []), data] }));
+      toast.success("Ligne ajoutée.");
+    }
+  };
+
+  const deleteParamRow = async (id: string, categorie: string) => {
+    await supabase.from('paie_parametres').delete().eq('id', id);
+    setPaieParams(prev => ({ ...prev, [categorie]: (prev[categorie] || []).filter(r => r.id !== id) }));
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -2412,6 +2487,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'j_achat' && companyId) { fetchPurchases(); fetchPlanComptable(); }
     if (activeTab === 'j_vente' && companyId) { fetchFacturation(); fetchPlanComptable(); }
     if (activeTab === 'plan_comptable' && companyId) fetchPlanComptable();
+    if (activeTab === 'paie_parametres' && companyId) fetchPaieParams();
     if (activeTab === 'bilan' && companyId) fetchBilan();
     if (['paie_journal','paie_bulletin','paie_ordre_virement','paie_parametres','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
@@ -5928,9 +6004,10 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 <div>
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-purple-500 text-white mb-2"><Settings className="w-3.5 h-3.5" /> Paramètres Paie</span>
                   <h1 className="text-2xl font-extrabold tracking-tight">Paramètres de Paie</h1>
-                  <p className="text-sm text-slate-400 mt-1">Tables de référence</p>
+                  <p className="text-sm text-slate-400 mt-1">Tables de référence — cliquez pour modifier</p>
                 </div>
                 <div className="flex gap-2">
+                  <button onClick={fetchPaieParams} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                   <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                     <Upload size={14} /> Importer XLS
                     <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
@@ -5940,12 +6017,12 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         const ws = wb.Sheets[wb.SheetNames[0]];
                         const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
                         const records = rawRows.filter((r: any[]) => r.length > 0 && r.some((c: any) => c !== null && c !== undefined && c !== '')).map((r: any[], i: number) => ({
-                          company_id: companyId, categorie: 'import', libelle: r.map(c => String(c ?? '')).join(' | '),
-                          valeur: String(r[0] ?? ''), taux: parseFloat(r[1]) || null, plafond: parseFloat(r[2]) || null, observations: `row_${i}`,
+                          company_id: companyId, categorie: 'import', row_index: i,
+                          row_data: r.map((c: any) => String(c ?? '')),
                         }));
                         if (!records.length) { toast.error("Aucune donnée."); return; }
                         const { error } = await supabase.from('paie_parametres').insert(records);
-                        if (!error) { toast.success(`${records.length} paramètres importés.`); fetchPaie('paie_parametres'); } else toast.error(`Erreur: ${error.message}`);
+                        if (!error) { toast.success(`${records.length} lignes importées.`); fetchPaieParams(); } else toast.error(`Erreur: ${error.message}`);
                       } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
                       e.target.value = '';
                     }} />
@@ -5955,231 +6032,57 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* 1. Heures Supplémentaires */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">Heures Supplémentaires</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-blue-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Activité</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Période</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Horaire</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Jours ouv.</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Jours fér.</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr><td className="px-2 py-1.5 text-[10px]">Non agricole</td><td className="px-2 py-1.5 text-[10px]">Jour</td><td className="px-2 py-1.5 text-[10px]">6h - 21h</td><td className="px-2 py-1.5 font-mono text-[10px]">25%</td><td className="px-2 py-1.5 font-mono text-[10px]">50%</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Non agricole</td><td className="px-2 py-1.5 text-[10px]">Nuit</td><td className="px-2 py-1.5 text-[10px]">21h - 6h</td><td className="px-2 py-1.5 font-mono text-[10px]">50%</td><td className="px-2 py-1.5 font-mono text-[10px]">100%</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Agricole</td><td className="px-2 py-1.5 text-[10px]">Jour</td><td className="px-2 py-1.5 text-[10px]">5h - 20h</td><td className="px-2 py-1.5 font-mono text-[10px]">25%</td><td className="px-2 py-1.5 font-mono text-[10px]">50%</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Agricole</td><td className="px-2 py-1.5 text-[10px]">Nuit</td><td className="px-2 py-1.5 text-[10px]">20h - 5h</td><td className="px-2 py-1.5 font-mono text-[10px]">50%</td><td className="px-2 py-1.5 font-mono text-[10px]">100%</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 2. Nombre d'heures de Travail */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">Nombre d'heures de Travail</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-blue-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Période</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Sect. Agricole</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-blue-600 uppercase">Non Agricole</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr><td className="px-2 py-1.5 text-[10px]">Jours</td><td className="px-2 py-1.5 font-mono text-[10px]">8</td><td className="px-2 py-1.5 font-mono text-[10px]">7.33</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Semaines</td><td className="px-2 py-1.5 font-mono text-[10px]">48</td><td className="px-2 py-1.5 font-mono text-[10px]">44</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Mois</td><td className="px-2 py-1.5 font-mono text-[10px]">208</td><td className="px-2 py-1.5 font-mono text-[10px]">191</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">An</td><td className="px-2 py-1.5 font-mono text-[10px]">2 496</td><td className="px-2 py-1.5 font-mono text-[10px]">2 288</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 3. Prime d'Ancienneté */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-3">Prime d'Ancienneté</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-emerald-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-emerald-600 uppercase">Période</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-emerald-600 uppercase">Taux</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[['0 à 2 ans','0%'],['2 à 5 ans','5%'],['5 à 12 ans','10%'],['12 à 20 ans','15%'],['20 à 25 ans','20%'],['+25 ans','25%']].map(([p,t]) => (
-                      <tr key={p}><td className="px-2 py-1.5 text-[10px]">{p}</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">{t}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 4. Charges de Familles */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-3">Charges de Familles</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-emerald-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-emerald-600 uppercase">Situation</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-emerald-600 uppercase">Enfants</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-emerald-600 uppercase">Mensuel</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-emerald-600 uppercase">Annuel</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[[0,'41,67','500'],[1,'83,33','1 000'],[2,'125,00','1 500'],[3,'166,67','2 000'],[4,'208,33','2 500'],[5,'250,00','3 000'],[6,'250,00','3 000']].map(([e,m,a]) => (
-                      <tr key={String(e)}><td className="px-2 py-1.5 text-[10px]">Marié</td><td className="px-2 py-1.5 font-mono text-[10px]">{e}</td><td className="px-2 py-1.5 font-mono text-[10px]">{m}</td><td className="px-2 py-1.5 font-mono text-[10px]">{a}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 5. CNSS */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-3">CNSS</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-amber-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Cotisation</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Part Salariale</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Part Patronale</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Plafond</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr><td className="px-2 py-1.5 text-[10px]">Prestation Sociale</td><td className="px-2 py-1.5 font-mono text-[10px]">4,48%</td><td className="px-2 py-1.5 font-mono text-[10px]">8,98%</td><td className="px-2 py-1.5 font-mono text-[10px]">6 000</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Allocations familiales</td><td className="px-2 py-1.5 font-mono text-[10px]">—</td><td className="px-2 py-1.5 font-mono text-[10px]">6,40%</td><td className="px-2 py-1.5 font-mono text-[10px]">Non plaf.</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Taxe Formation Pro</td><td className="px-2 py-1.5 font-mono text-[10px]">—</td><td className="px-2 py-1.5 font-mono text-[10px]">1,60%</td><td className="px-2 py-1.5 font-mono text-[10px]">—</td></tr>
-                    <tr className="bg-amber-50"><td className="px-2 py-1.5 text-[10px] font-bold">Total</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">4,48%</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">16,98%</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">21,46%</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 6. AMO */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-3">AMO</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-amber-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Cotisation</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Part Salariale</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Part Patronale</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-amber-600 uppercase">Plafond</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr><td className="px-2 py-1.5 text-[10px]">AMO</td><td className="px-2 py-1.5 font-mono text-[10px]">2,26%</td><td className="px-2 py-1.5 font-mono text-[10px]">2,26%</td><td className="px-2 py-1.5 font-mono text-[10px]">Non plaf.</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">Participation AMO</td><td className="px-2 py-1.5 font-mono text-[10px]">—</td><td className="px-2 py-1.5 font-mono text-[10px]">1,85%</td><td className="px-2 py-1.5 font-mono text-[10px]">—</td></tr>
-                    <tr className="bg-amber-50"><td className="px-2 py-1.5 text-[10px] font-bold">Total</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">2,26%</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">4,11%</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">6,37%</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 7. IR Barème Mensuel */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3">IR Brut 2025 — Barème Mensuel</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-rose-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">RNI du</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">RNI au</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">Taux</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">Déduction</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[['0','3 333','0%','0'],['3 333,01','5 000','10%','333,33'],['5 000,01','6 667','20%','833,33'],['6 667,01','8 333','30%','15 000'],['8 333,01','15 000','34%','1 833,33'],['15 000,01','+','37%','2 283,33']].map(([a,b,c,d],i) => (
-                      <tr key={i}><td className="px-2 py-1.5 font-mono text-[10px]">{a}</td><td className="px-2 py-1.5 font-mono text-[10px]">{b}</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">{c}</td><td className="px-2 py-1.5 font-mono text-[10px]">{d}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 8. IR Barème Annuel */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3">IR Brut 2025 — Barème Annuel</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-rose-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">RNI du</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">RNI au</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">Taux</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-rose-600 uppercase">Déduction</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[['0','40 000','0%','0'],['40 000,01','60 000','10%','4 000'],['60 000,01','80 000','20%','10 000'],['80 000,01','100 000','30%','18 000'],['100 000,01','180 000','34%','22 000'],['180 000,01','+','37%','27 400']].map(([a,b,c,d],i) => (
-                      <tr key={i}><td className="px-2 py-1.5 font-mono text-[10px]">{a}</td><td className="px-2 py-1.5 font-mono text-[10px]">{b}</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">{c}</td><td className="px-2 py-1.5 font-mono text-[10px]">{d}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 9. Frais Professionnels */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-purple-700 uppercase tracking-widest mb-3">Frais Professionnels</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-purple-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-purple-600 uppercase">SBI</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-purple-600 uppercase">Taux FP</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-purple-600 uppercase">Déduction FP</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-purple-600 uppercase">Plafond</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr><td className="px-2 py-1.5 text-[10px]">≤ 78 000 (≤ 6 500/m)</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">35%</td><td className="px-2 py-1.5 font-mono text-[10px]">30 000</td><td className="px-2 py-1.5 font-mono text-[10px]">—</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">&gt; 78 000 (&gt; 6 501/m)</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">25%</td><td className="px-2 py-1.5 font-mono text-[10px]">35 000</td><td className="px-2 py-1.5 font-mono text-[10px]">2 916,67</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 10. Situation Familiale */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-purple-700 uppercase tracking-widest mb-3">Situation Familiale</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-purple-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-purple-600 uppercase">Code</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-purple-600 uppercase">Situation</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr><td className="px-2 py-1.5 font-mono text-[10px]">1</td><td className="px-2 py-1.5 text-[10px]">Célibataire</td></tr>
-                    <tr><td className="px-2 py-1.5 font-mono text-[10px]">2</td><td className="px-2 py-1.5 text-[10px]">Marié</td></tr>
-                    <tr><td className="px-2 py-1.5 font-mono text-[10px]">3</td><td className="px-2 py-1.5 text-[10px]">Divorcé</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 11. SMIG / SMAG */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-black text-cyan-700 uppercase tracking-widest mb-3">SMIG / SMAG 2025-2026</h3>
-                <table className="w-full text-left border-collapse">
-                  <thead><tr className="bg-cyan-50">
-                    <th className="px-2 py-1.5 text-[8px] font-black text-cyan-600 uppercase">Type</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-cyan-600 uppercase">Date</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-cyan-600 uppercase">Taux Horaire</th>
-                    <th className="px-2 py-1.5 text-[8px] font-black text-cyan-600 uppercase">Brut</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr><td className="px-2 py-1.5 text-[10px]">SMIG</td><td className="px-2 py-1.5 text-[10px]">01/01/2025</td><td className="px-2 py-1.5 font-mono text-[10px]">17,10</td><td className="px-2 py-1.5 font-mono text-[10px]">3 266,96</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">SMIG</td><td className="px-2 py-1.5 text-[10px]">01/01/2026</td><td className="px-2 py-1.5 font-mono text-[10px]">17,92</td><td className="px-2 py-1.5 font-mono text-[10px]">3 422,53</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">SMAG</td><td className="px-2 py-1.5 text-[10px]">01/04/2025</td><td className="px-2 py-1.5 font-mono text-[10px]">93,01</td><td className="px-2 py-1.5 font-mono text-[10px]">2 418,23</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">SMAG</td><td className="px-2 py-1.5 text-[10px]">01/04/2026</td><td className="px-2 py-1.5 font-mono text-[10px]">97,44</td><td className="px-2 py-1.5 font-mono text-[10px]">2 533,39</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 12. Préavis + Licenciement */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 lg:col-span-2">
-                <h3 className="text-[10px] font-black text-slate-700 uppercase tracking-widest mb-3">Préavis & Indemnité de Licenciement</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Préavis Cadre</p>
-                    <table className="w-full border-collapse"><tbody className="divide-y divide-slate-100">
-                      {[['< 1 an','1 mois'],['1-5 ans','2 mois'],['+5 ans','3 mois']].map(([p,v]) => (<tr key={p}><td className="px-2 py-1 text-[10px]">{p}</td><td className="px-2 py-1 font-mono text-[10px] font-bold">{v}</td></tr>))}
-                    </tbody></table>
+              {PARAM_TABLES.map(t => {
+                const rows = paieParams[t.id] || [];
+                return (
+                  <div key={t.id} className={`bg-white rounded-xl border border-slate-200 p-4 ${t.id === 'preavis_lic' ? 'lg:col-span-2' : ''}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className={`text-[10px] font-black text-${t.color}-700 uppercase tracking-widest`}>{t.title}</h3>
+                      <button onClick={() => addParamRow(t.id, t.headers.length)}
+                        className={`text-[9px] font-bold text-${t.color}-600 hover:text-${t.color}-700 cursor-pointer`}>+ Ligne</button>
+                    </div>
+                    <table className="w-full text-left border-collapse">
+                      <thead><tr className={`bg-${t.color}-50`}>
+                        {t.headers.map(h => (
+                          <th key={h} className={`px-2 py-1.5 text-[8px] font-black text-${t.color}-600 uppercase`}>{h}</th>
+                        ))}
+                        <th className="px-1 py-1.5 text-[8px] w-6"></th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {rows.length === 0 ? (
+                          <tr><td colSpan={t.headers.length + 1} className="px-2 py-3 text-center text-[10px] text-slate-400">Aucune donnée</td></tr>
+                        ) : rows.map((row: any) => {
+                          const cells: string[] = Array.isArray(row.row_data) ? row.row_data : [];
+                          return (
+                            <tr key={row.id} className="hover:bg-slate-50">
+                              {t.headers.map((_, ci) => (
+                                <td key={ci} className="px-1 py-0.5">
+                                  <input type="text" value={cells[ci] || ''}
+                                    onChange={e => {
+                                      const newCells = [...cells];
+                                      while (newCells.length <= ci) newCells.push('');
+                                      newCells[ci] = e.target.value;
+                                      setPaieParams(prev => ({
+                                        ...prev,
+                                        [t.id]: (prev[t.id] || []).map(r => r.id === row.id ? { ...r, row_data: newCells } : r),
+                                      }));
+                                    }}
+                                    onBlur={() => updateParamCell(row.id, t.id, cells)}
+                                    className="w-full h-6 rounded border border-transparent hover:border-slate-200 focus:border-blue-400 px-1.5 text-[10px] font-mono focus:outline-none bg-transparent" />
+                                </td>
+                              ))}
+                              <td className="px-1 py-0.5">
+                                <button onClick={() => deleteParamRow(row.id, t.id)}
+                                  className="text-slate-300 hover:text-rose-500 cursor-pointer"><Trash2 size={10} /></button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Préavis Salarié</p>
-                    <table className="w-full border-collapse"><tbody className="divide-y divide-slate-100">
-                      {[['< 1 an','8 jours'],['1-5 ans','1 mois'],['+5 ans','2 mois']].map(([p,v]) => (<tr key={p}><td className="px-2 py-1 text-[10px]">{p}</td><td className="px-2 py-1 font-mono text-[10px] font-bold">{v}</td></tr>))}
-                    </tbody></table>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Indemnité Licenciement</p>
-                    <table className="w-full border-collapse"><tbody className="divide-y divide-slate-100">
-                      {[['0-5 ans','96h'],['6-10 ans','144h'],['11-15 ans','192h'],['+15 ans','240h']].map(([p,v]) => (<tr key={p}><td className="px-2 py-1 text-[10px]">{p}</td><td className="px-2 py-1 font-mono text-[10px] font-bold">{v}</td></tr>))}
-                    </tbody></table>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-slate-200">
-                  <p className="text-[9px] text-slate-500"><strong>Congé annuel :</strong> 1,5 jours/mois après 6 mois — 18 jours/an + 1,5j par 5 ans — Plafond 30 jours</p>
-                  <p className="text-[9px] text-slate-500"><strong>Dommages & intérêts :</strong> Licenciement abusif = 1,5 mois/an — Plafond 36 mois</p>
-                </div>
-              </div>
+                );
+              })}
             </div>
           </div>
         )}
