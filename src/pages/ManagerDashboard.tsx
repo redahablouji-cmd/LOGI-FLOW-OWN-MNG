@@ -319,6 +319,10 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       defaults: [['SMIG','01/01/2025','17.10','3266.96'],['SMIG','01/01/2026','17.92','3422.53'],['SMAG','01/04/2025','93.01','2418.23'],['SMAG','01/04/2026','97.44','2533.39']] },
     { id: 'preavis_lic', title: 'Préavis & Licenciement', color: 'slate', headers: ['Catégorie','Période','Indemnité'],
       defaults: [['Préavis Cadre','< 1 an','1 mois'],['Préavis Cadre','1-5 ans','2 mois'],['Préavis Cadre','+5 ans','3 mois'],['Préavis Salarié','< 1 an','8 jours'],['Préavis Salarié','1-5 ans','1 mois'],['Préavis Salarié','+5 ans','2 mois'],['Licenciement','0-5 ans','96h'],['Licenciement','6-10 ans','144h'],['Licenciement','11-15 ans','192h'],['Licenciement','+15 ans','240h']] },
+    { id: 'conge_annuel', title: 'Congé Annuel Payé (Art. 231 & 232)', color: 'teal', headers: ['Condition','Durée','Plafond'],
+      defaults: [['Après 6 mois','1,5 jours/mois',''],['Congé annuel','18 jours/an + 1,5j par 5 ans','Plafond 30 jours']] },
+    { id: 'dommages_interets', title: 'Dommages et Intérêts', color: 'red', headers: ['Type','Indemnité','Plafond'],
+      defaults: [['Licenciement abusif','1,5 mois/an','Plafond 36 mois']] },
   ];
 
   const PAIE_CONFIG: Record<string, { label: string; table: string; color: string; columns: { key: string; label: string; type: string }[] }> = {
