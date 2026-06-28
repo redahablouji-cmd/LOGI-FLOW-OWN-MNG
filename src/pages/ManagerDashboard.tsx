@@ -6112,7 +6112,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   </tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     <tr><td className="px-2 py-1.5 text-[10px]">≤ 78 000 (≤ 6 500/m)</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">35%</td><td className="px-2 py-1.5 font-mono text-[10px]">30 000</td><td className="px-2 py-1.5 font-mono text-[10px]">—</td></tr>
-                    <tr><td className="px-2 py-1.5 text-[10px]">> 78 000 (> 6 501/m)</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">25%</td><td className="px-2 py-1.5 font-mono text-[10px]">35 000</td><td className="px-2 py-1.5 font-mono text-[10px]">2 916,67</td></tr>
+                    <tr><td className="px-2 py-1.5 text-[10px]">&gt; 78 000 (&gt; 6 501/m)</td><td className="px-2 py-1.5 font-mono text-[10px] font-bold">25%</td><td className="px-2 py-1.5 font-mono text-[10px]">35 000</td><td className="px-2 py-1.5 font-mono text-[10px]">2 916,67</td></tr>
                   </tbody>
                 </table>
               </div>
