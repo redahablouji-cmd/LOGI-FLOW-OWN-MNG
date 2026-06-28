@@ -284,6 +284,61 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [releveForm, setReleveForm] = useState<any>(emptyReleveForm);
   const [etatExpandedSections, setEtatExpandedSections] = useState<string[]>(['virement','emission_cheque','emission_effets','remise_cheque','remise_lc','frais_bancaire']);
   const [checkedReleve, setCheckedReleve] = useState<string[]>([]);
+  // Gestion de Paie state
+  const [paieList, setPaieList] = useState<any[]>([]);
+  const [loadingPaie, setLoadingPaie] = useState(false);
+  const [showPaieForm, setShowPaieForm] = useState(false);
+  const [editingPaie, setEditingPaie] = useState<any>(null);
+  const [paieForm, setPaieForm] = useState<any>({});
+  const [paieOpen, setPaieOpen] = useState(false);
+  const [paieFilter, setPaieFilter] = useState({ name: '', mois: '' });
+
+  const PAIE_CONFIG: Record<string, { label: string; table: string; color: string; columns: { key: string; label: string; type: string }[] }> = {
+    paie_journal: { label: 'Journal de Paie', table: 'paie_journal', color: 'blue', columns: [
+      { key: 'mois', label: 'Mois', type: 'month' }, { key: 'matricule', label: 'Matricule', type: 'text' },
+      { key: 'nom_prenom', label: 'Nom & Prénom', type: 'text' }, { key: 'fonction', label: 'Fonction', type: 'text' },
+      { key: 'date_embauche', label: 'Date Embauche', type: 'date' }, { key: 'situation_fam', label: 'Sit. Fam.', type: 'text' },
+      { key: 'cnss_num', label: 'N° CNSS', type: 'text' }, { key: 'salaire_base', label: 'Salaire Base', type: 'number' },
+      { key: 'heures_sup', label: 'Heures Sup', type: 'number' }, { key: 'primes', label: 'Primes', type: 'number' },
+      { key: 'indemnites', label: 'Indemnités', type: 'number' }, { key: 'anciennete', label: 'Ancienneté', type: 'number' },
+      { key: 'salaire_brut', label: 'Salaire Brut', type: 'number' }, { key: 'cnss_sal', label: 'CNSS', type: 'number' },
+      { key: 'amo', label: 'AMO', type: 'number' }, { key: 'ir_net', label: 'IR Net', type: 'number' },
+      { key: 'avances', label: 'Avances', type: 'number' }, { key: 'net_a_payer', label: 'Net à Payer', type: 'number' },
+      { key: 'mode_paiement', label: 'Mode Paie.', type: 'text' },
+    ]},
+    paie_bulletin: { label: 'Bulletin de Paie', table: 'paie_bulletin', color: 'emerald', columns: [
+      { key: 'mois', label: 'Mois', type: 'month' }, { key: 'matricule', label: 'Matricule', type: 'text' },
+      { key: 'nom_prenom', label: 'Nom & Prénom', type: 'text' }, { key: 'qualification', label: 'Qualification', type: 'text' },
+      { key: 'mode_paiement', label: 'Mode Paie.', type: 'text' }, { key: 'periode', label: 'Période', type: 'text' },
+      { key: 'date_naissance', label: 'Date Naissance', type: 'date' }, { key: 'date_embauche', label: 'Date Embauche', type: 'date' },
+      { key: 'cnss_num', label: 'N° CNSS', type: 'text' }, { key: 'cin', label: 'N° CIN', type: 'text' },
+      { key: 'code', label: 'Code', type: 'text' }, { key: 'designation', label: 'Désignation', type: 'text' },
+      { key: 'base', label: 'Base', type: 'number' }, { key: 'taux', label: 'Taux', type: 'number' },
+      { key: 'a_payer', label: 'À Payer', type: 'number' }, { key: 'a_retenir', label: 'À Retenir', type: 'number' },
+    ]},
+    paie_ordre_virement: { label: 'Ordre de Virement', table: 'paie_ordre_virement', color: 'amber', columns: [
+      { key: 'mois', label: 'Mois', type: 'month' }, { key: 'numero', label: 'N°', type: 'number' },
+      { key: 'nom_prenom', label: 'Nom & Prénom', type: 'text' }, { key: 'rib_salarie', label: 'RIB/IBAN', type: 'text' },
+      { key: 'net_a_payer', label: 'Net à Payer', type: 'number' }, { key: 'banque', label: 'Banque', type: 'text' },
+      { key: 'agence', label: 'Agence', type: 'text' }, { key: 'date_virement', label: 'Date Virement', type: 'date' },
+      { key: 'ref_ordre', label: 'Réf. Ordre', type: 'text' },
+    ]},
+    paie_parametres: { label: 'Paramètres Paie', table: 'paie_parametres', color: 'purple', columns: [
+      { key: 'categorie', label: 'Catégorie', type: 'text' }, { key: 'libelle', label: 'Libellé', type: 'text' },
+      { key: 'valeur', label: 'Valeur', type: 'text' }, { key: 'taux', label: 'Taux', type: 'number' },
+      { key: 'plafond', label: 'Plafond', type: 'number' }, { key: 'observations', label: 'Observations', type: 'text' },
+    ]},
+    paie_solde_compte: { label: 'Solde Tout Compte', table: 'paie_solde_compte', color: 'rose', columns: [
+      { key: 'nom_prenom', label: 'Nom & Prénom', type: 'text' }, { key: 'cin', label: 'CIN', type: 'text' },
+      { key: 'matricule', label: 'Matricule', type: 'text' }, { key: 'poste', label: 'Poste', type: 'text' },
+      { key: 'departement', label: 'Département', type: 'text' }, { key: 'date_embauche', label: 'Date Embauche', type: 'date' },
+      { key: 'date_fin', label: 'Date Fin', type: 'date' }, { key: 'motif_rupture', label: 'Motif', type: 'text' },
+      { key: 'salaire_base', label: 'Salaire Base', type: 'number' }, { key: 'rubrique', label: 'Rubrique', type: 'text' },
+      { key: 'base_calcul', label: 'Base Calcul', type: 'number' }, { key: 'nb_jours', label: 'NB Jours', type: 'number' },
+      { key: 'montant_brut', label: 'Montant Brut', type: 'number' }, { key: 'cnss_ir', label: 'CNSS/IR', type: 'number' },
+      { key: 'montant_net', label: 'Montant Net', type: 'number' },
+    ]},
+  };
   // ── Fetch company ──────────────────────────────────────────────────────
   const fetchCompany = async () => {
     if (!user) return;
@@ -2303,6 +2358,34 @@ const handleGenerateInvoicePDF = () => {
     await supabase.from('bilan_documents').delete().eq('id', doc.id);
     toast.success("Supprimé."); fetchBilan();
   };
+  // ── Gestion de Paie CRUD ──
+  const fetchPaie = async (type: string) => {
+    if (!companyId) return; setLoadingPaie(true);
+    const cfg = PAIE_CONFIG[type]; if (!cfg) return;
+    const { data } = await supabase.from(cfg.table).select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setPaieList(data || []); setLoadingPaie(false);
+  };
+  const handleSavePaie = async (type: string) => {
+    const cfg = PAIE_CONFIG[type]; if (!cfg) return;
+    const payload: any = { company_id: companyId };
+    cfg.columns.forEach(col => {
+      payload[col.key] = col.type === 'number' ? (parseFloat(paieForm[col.key]) || 0) : (paieForm[col.key] || null);
+    });
+    if (editingPaie) {
+      const { error } = await supabase.from(cfg.table).update(payload).eq('id', editingPaie.id);
+      if (!error) { toast.success("Modifié."); setEditingPaie(null); } else { toast.error(`Erreur: ${error.message}`); return; }
+    } else {
+      const { error } = await supabase.from(cfg.table).insert(payload);
+      if (!error) toast.success("Ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
+    }
+    setShowPaieForm(false); setPaieForm({}); fetchPaie(type);
+  };
+  const handleDeletePaie = async (type: string, id: string) => {
+    if (!confirm('Supprimer ?')) return;
+    const cfg = PAIE_CONFIG[type]; if (!cfg) return;
+    await supabase.from(cfg.table).delete().eq('id', id);
+    toast.success("Supprimé."); fetchPaie(type);
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -2330,6 +2413,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'j_vente' && companyId) { fetchFacturation(); fetchPlanComptable(); }
     if (activeTab === 'plan_comptable' && companyId) fetchPlanComptable();
     if (activeTab === 'bilan' && companyId) fetchBilan();
+    if (['paie_journal','paie_bulletin','paie_ordre_virement','paie_parametres','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
@@ -2402,6 +2486,13 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
     { id: 'j_vente',        label: 'Journal Vente' },
     { id: 'plan_comptable', label: 'Plan Comptable' },
     { id: 'bilan',          label: 'Bilan' },
+  ];
+  const paieSubItems: { id: ManagerTab; label: string }[] = [
+    { id: 'paie_journal',         label: 'Journal de Paie' },
+    { id: 'paie_bulletin',        label: 'Bulletin de Paie' },
+    { id: 'paie_ordre_virement',  label: 'Ordre de Virement' },
+    { id: 'paie_parametres',      label: 'Paramètres Paie' },
+    { id: 'paie_solde_compte',    label: 'Solde Tout Compte' },
   ];
 
   const suiviFields = [
@@ -2516,6 +2607,22 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
         {glOpen && (
           <div className="ml-6 mt-1 space-y-0.5">
             {glSubItems.map(sub => (
+              <button key={sub.id} onClick={() => { setActiveTab(sub.id); if (sidebarOpen) setSidebarOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === sub.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
+                {sub.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Gestion de Paie group */}
+        <button onClick={() => setPaieOpen(p => !p)}
+          className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer mt-1 ${paieOpen || activeTab.startsWith('paie_') ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <div className="flex items-center gap-3"><Users size={18} /><span>Gestion de Paie</span></div>
+          <span className="text-xs">{paieOpen ? '▼' : '▶'}</span>
+        </button>
+        {paieOpen && (
+          <div className="ml-6 mt-1 space-y-0.5">
+            {paieSubItems.map(sub => (
               <button key={sub.id} onClick={() => { setActiveTab(sub.id); if (sidebarOpen) setSidebarOpen(false); }}
                 className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === sub.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
                 {sub.label}
@@ -5814,6 +5921,152 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             )}
           </div>
         )}
+        {activeTab.startsWith('paie_') && PAIE_CONFIG[activeTab] && (() => {
+          const cfg = PAIE_CONFIG[activeTab];
+          const fmt2 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+          const filtered = paieList.filter((r: any) => {
+            if (paieFilter.name && !r.nom_prenom?.toLowerCase().includes(paieFilter.name.toLowerCase())) return false;
+            if (paieFilter.mois && r.mois !== paieFilter.mois) return false;
+            return true;
+          });
+          const numCols = cfg.columns.filter(c => c.type === 'number');
+          const displayCols = cfg.columns.slice(0, 10); // Show max 10 in table
+          const headers = [...displayCols.map(c => c.label), 'Actions'];
+
+          return (
+            <div>
+              <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-${cfg.color}-500 text-white mb-2`}><Users className="w-3.5 h-3.5" /> {cfg.label}</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight">{cfg.label}</h1>
+                    <p className="text-sm text-slate-400 mt-1">{filtered.length} lignes</p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => fetchPaie(activeTab)} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                    <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      <Upload size={14} /> Importer XLS
+                      <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                        const file = e.target.files?.[0]; if (!file) return;
+                        try {
+                          const buffer = await file.arrayBuffer(); const wb = XLSX.read(buffer, { type: 'array' });
+                          const ws = wb.Sheets[wb.SheetNames[0]];
+                          const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                          const headerIdx = rawRows.findIndex((r: any[]) => r.length > 3 && r.some((c: any) => String(c).toLowerCase().includes('nom') || String(c).toLowerCase().includes('matricule') || String(c).toLowerCase().includes('libellé')));
+                          const dataRows = rawRows.slice(headerIdx >= 0 ? headerIdx + 1 : 2).filter((r: any[]) => r.length > 1 && (r[0] || r[1]));
+                          const records = dataRows.map((r: any[]) => {
+                            const rec: any = { company_id: companyId };
+                            cfg.columns.forEach((col, i) => {
+                              if (i < r.length) rec[col.key] = col.type === 'number' ? (parseFloat(r[i]) || 0) : (String(r[i] || '').trim() || null);
+                            });
+                            return rec;
+                          });
+                          if (!records.length) { toast.error("Aucune donnée."); return; }
+                          const { error } = await supabase.from(cfg.table).insert(records);
+                          if (!error) { toast.success(`${records.length} lignes importées.`); fetchPaie(activeTab); } else toast.error(`Erreur: ${error.message}`);
+                        } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                        e.target.value = '';
+                      }} />
+                    </label>
+                    <button onClick={() => { if (!filtered.length) return; exportToXLS(filtered.map((r: any) => { const row: any = {}; cfg.columns.forEach(c => { row[c.label] = r[c.key] ?? ''; }); return row; }), cfg.table); }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                    {/* PDF */}
+                    <button onClick={() => {
+                      if (!filtered.length) { toast.error("Aucune ligne."); return; }
+                      const allCols = cfg.columns;
+                      const rowsHtml = filtered.map((r: any, i: number) => {
+                        const bg = i % 2 === 1 ? '#F8F8F8' : '#fff';
+                        return `<tr>${allCols.map(c => `<td style="padding:3px 4px;border:1px solid #ddd;font-size:7px;background:${bg};${c.type === 'number' ? 'text-align:right;font-family:monospace' : ''}">${c.type === 'number' && r[c.key] ? Number(r[c.key]).toLocaleString('fr-MA', { minimumFractionDigits: 2 }) : r[c.key] || ''}</td>`).join('')}</tr>`;
+                      }).join('');
+                      const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:8px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+                      <div style="width:297mm;min-height:210mm;padding:8mm">
+                        <div style="font-size:13px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:8px">${cfg.label}</div>
+                        <table style="width:100%;border-collapse:collapse">
+                          <thead><tr>${allCols.map(c => `<th style="background:#1F3864;color:#fff;font-size:7px;padding:3px 4px;border:1px solid #1F3864;text-align:center">${c.label}</th>`).join('')}</tr></thead>
+                          <tbody>${rowsHtml}</tbody>
+                        </table>
+                      </div></body></html>`;
+                      const win = window.open('', '_blank');
+                      if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+                    }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
+                    <button onClick={() => { setPaieForm({}); setEditingPaie(null); setShowPaieForm(true); }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom</label>
+                  <input type="text" placeholder="Rechercher..." value={paieFilter.name} onChange={e => setPaieFilter(p => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                  <input type="month" value={paieFilter.mois} onChange={e => setPaieFilter(p => ({...p, mois: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+                <button onClick={() => setPaieFilter({name:'',mois:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+              </div>
+
+              {/* Table */}
+              {loadingPaie ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div> : (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left min-w-[1000px]">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>{headers.map(h => (
+                          <th key={h} className="px-3 py-2 text-[8px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filtered.length === 0 ? (
+                          <tr><td colSpan={headers.length} className="px-4 py-10 text-center text-sm text-slate-400">Aucune ligne.</td></tr>
+                        ) : filtered.map((r: any) => (
+                          <tr key={r.id} className="hover:bg-slate-50">
+                            {displayCols.map(c => (
+                              <td key={c.key} className={`px-3 py-2 text-[10px] ${c.type === 'number' ? 'font-mono text-right font-bold text-slate-700' : 'text-slate-600'}`}>
+                                {c.type === 'number' && r[c.key] ? Number(r[c.key]).toLocaleString('fr-MA', { minimumFractionDigits: 2 }) : r[c.key] || '—'}
+                              </td>
+                            ))}
+                            <td className="px-3 py-2 flex gap-1">
+                              <button onClick={() => { setEditingPaie(r); const f: any = {}; cfg.columns.forEach(c => f[c.key] = String(r[c.key] ?? '')); setPaieForm(f); setShowPaieForm(true); }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={12} /></button>
+                              <button onClick={() => handleDeletePaie(activeTab, r.id)} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={12} /></button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+        {/* Paie Form */}
+<AnimatePresence>
+  {showPaieForm && activeTab.startsWith('paie_') && PAIE_CONFIG[activeTab] && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-4xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">{editingPaie ? 'Modifier' : 'Nouveau'} — {PAIE_CONFIG[activeTab].label}</h3>
+          <button onClick={() => { setShowPaieForm(false); setEditingPaie(null); setPaieForm({}); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {PAIE_CONFIG[activeTab].columns.map(col => (
+            <div key={col.key}>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{col.label}</label>
+              <input type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : col.type === 'month' ? 'month' : 'text'}
+                value={paieForm[col.key] || ''}
+                onChange={e => setPaieForm((p: any) => ({ ...p, [col.key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={() => handleSavePaie(activeTab)} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">{editingPaie ? 'Enregistrer' : 'Ajouter'}</button>
+          <button onClick={() => { setShowPaieForm(false); setEditingPaie(null); setPaieForm({}); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
 
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
