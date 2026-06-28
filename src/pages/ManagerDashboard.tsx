@@ -2417,7 +2417,11 @@ const handleGenerateInvoicePDF = () => {
   const fetchPaieParams = async () => {
     if (!companyId) return;
     const { data } = await supabase.from('paie_parametres').select('*').eq('company_id', companyId).order('row_index');
-    if (!data || data.length === 0) {
+    const validCats = PARAM_TABLES.map(t => t.id);
+    const validData = (data || []).filter((r: any) => validCats.includes(r.categorie));
+    if (validData.length === 0) {
+      // Delete any bad imports
+      if (data && data.length > 0) await supabase.from('paie_parametres').delete().eq('company_id', companyId);
       // Seed defaults
       const records: any[] = [];
       PARAM_TABLES.forEach(t => {
@@ -2425,15 +2429,16 @@ const handleGenerateInvoicePDF = () => {
           records.push({ company_id: companyId, categorie: t.id, row_index: i, row_data: row });
         });
       });
-      await supabase.from('paie_parametres').insert(records);
+      const { error } = await supabase.from('paie_parametres').insert(records);
+      if (error) { toast.error(`Erreur seed: ${error.message}`); return; }
       const { data: d2 } = await supabase.from('paie_parametres').select('*').eq('company_id', companyId).order('row_index');
-      data?.splice(0, data.length, ...(d2 || []));
+      const grouped: Record<string, any[]> = {};
+      (d2 || []).forEach((r: any) => { if (!grouped[r.categorie]) grouped[r.categorie] = []; grouped[r.categorie].push(r); });
+      setPaieParams(grouped);
+      return;
     }
     const grouped: Record<string, any[]> = {};
-    (data || []).forEach((r: any) => {
-      if (!grouped[r.categorie]) grouped[r.categorie] = [];
-      grouped[r.categorie].push(r);
-    });
+    validData.forEach((r: any) => { if (!grouped[r.categorie]) grouped[r.categorie] = []; grouped[r.categorie].push(r); });
     setPaieParams(grouped);
   };
 
