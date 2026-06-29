@@ -624,10 +624,10 @@ const fetchFleetDrivers = async () => {
   if (!companyId) return;
   setLoadingDrivers(true);
   const { data } = await supabase
-    .from('fleet_drivers')
-    .select('*')
-    .eq('company_id', companyId)
-    .order('created_at', { ascending: false });
+      .from('fleet_drivers')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('code', { ascending: true });
   setFleetDrivers(data || []);
   setLoadingDrivers(false);
 };
@@ -644,22 +644,36 @@ const handleXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
     const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[1]);
 
+    const toNum = (v: any): number => {
+      if (typeof v === 'number') return v;
+      if (!v) return 0;
+      const s = String(v).replace(/[^0-9.,-]/g, '').replace(',', '.');
+      return parseFloat(s) || 0;
+    };
+    const toDate = (v: any): string => {
+      if (typeof v === 'number' && v > 100) return new Date((v - 25569) * 86400000).toISOString().split('T')[0];
+      if (!v) return '';
+      const s = String(v).trim().split(' ')[0];
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) { const p = s.split('/'); return `${p[2]}-${p[1]}-${p[0]}`; }
+      return s;
+    };
     const records = dataRows.map((r: any[]) => ({
       company_id:          companyId,
       code:                String(r[0] || ''),
       nom_prenom:          String(r[1] || ''),
       immatriculation:     String(r[2] || ''),
-      consommation:        parseFloat(r[3]) || 0,
+      consommation:        toNum(r[3]),
       type_vehicule:       String(r[4] || ''),
       cin:                 String(r[5] || ''),
       imm_cnss:            String(r[6] || ''),
       fonction:            String(r[7] || ''),
-      date_naissance:      typeof r[8] === 'number' ? new Date((r[8] - 25569) * 86400000).toISOString().split('T')[0] : String(r[8] || '').split(' ')[0],
+      date_naissance:      toDate(r[8]),
       situation_familiale: String(r[9] || ''),
       nb_deduction:        parseInt(r[10]) || 0,
-      date_embauche:       typeof r[11] === 'number' ? new Date((r[11] - 25569) * 86400000).toISOString().split('T')[0] : String(r[11] || '').split(' ')[0],
+      date_embauche:       toDate(r[11]),
       adresse:             String(r[12] || ''),
-      salaire_base:        parseFloat(r[13]) || 0,
+      salaire_base:        toNum(r[13]),
       rip:                 String(r[14] || ''),
     }));
 
@@ -2563,7 +2577,7 @@ const handleGenerateInvoicePDF = () => {
   };
 
   const generateJournalPaie = (mois: string): any[] => {
-    return fleetDrivers.map((d: any) => {
+    return fleetDrivers.filter((d: any) => d.cin && d.imm_cnss).sort((a: any, b: any) => (parseInt(a.code) || 0) - (parseInt(b.code) || 0)).map((d: any) => {
       const override = paieList.find((p: any) => p.matricule === d.code && p.mois === mois) || {};
       const salaireBase = parseFloat(d.salaire_base) || 0;
       const { annees, taux: tauxAnc } = calcAnciennete(d.date_embauche);
