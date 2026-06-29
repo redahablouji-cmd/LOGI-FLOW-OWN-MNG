@@ -2586,6 +2586,7 @@ const handleGenerateInvoicePDF = () => {
   const generateJournalPaie = (mois: string): any[] => {
     return fleetDrivers.filter((d: any) => d.cin && d.imm_cnss).sort((a: any, b: any) => (parseInt(a.code) || 0) - (parseInt(b.code) || 0)).map((d: any) => {
       const override = paieList.find((p: any) => p.matricule === d.code && p.mois === mois) || {};
+      // STEP 1: Salaire Brut
       const salaireBase = parseFloat(d.salaire_base) || 0;
       const { annees, taux: tauxAnc } = calcAnciennete(d.date_embauche);
       const anciennete = parseFloat((salaireBase * tauxAnc).toFixed(2));
@@ -2593,17 +2594,26 @@ const handleGenerateInvoicePDF = () => {
       const primes = parseFloat(override.primes) || 0;
       const indemnites = parseFloat(override.indemnites) || 0;
       const salaireBrut = salaireBase + heuresSup + primes + indemnites + anciennete;
-      const cnss = parseFloat(calcCNSS(salaireBrut).toFixed(2));
-      const amo = parseFloat(calcAMO(salaireBrut).toFixed(2));
-      const { montant: fraisPro } = calcFraisPro(salaireBrut);
-      const baseImposable = Math.max(salaireBrut - cnss - amo - fraisPro, 0);
+      // STEP 2 & 3: CNSS + AMO
+      const cnss = parseFloat((Math.min(salaireBrut, 6000) * 0.0448).toFixed(2));
+      const amo = parseFloat((salaireBrut * 0.0226).toFixed(2));
+      // STEP 4: SBI
+      const sbi = salaireBrut - cnss - amo;
+      // STEP 5: Frais Professionnels (on SBI)
+      const fraisPro = sbi <= 6500 ? parseFloat((Math.min(sbi * 0.35, 2500)).toFixed(2)) : parseFloat((Math.min(sbi * 0.25, 2916.67)).toFixed(2));
+      // STEP 6: Base Imposable (SNI)
+      const baseImposable = Math.max(sbi - fraisPro, 0);
+      // STEP 7: IR Brut
+      const { taux: tauxIR, deduction: somDeduire, ir: irBrut } = calcIR(baseImposable);
+      // STEP 8: Déduction Famille
       const dedFam = calcDeductionFam(d.situation_familiale, parseInt(d.nb_deduction) || 0);
-      const { ir: irBrut } = calcIR(baseImposable);
-      const { taux: tauxIR, deduction: somDeduire, ir: irBrut2 } = calcIR(baseImposable);
+      // STEP 9: IR Net (can be negative)
       const irNet = parseFloat((irBrut - dedFam).toFixed(2));
+      // STEP 10: IR Net+ (min 0)
+      const irNetPos = Math.max(irNet, 0);
+      // STEP 11: Net à Payer
       const avances = parseFloat(override.avances) || 0;
       const fraisDeplacement = parseFloat(override.frais_deplacement) || 0;
-      const irNetPos = Math.max(irNet, 0);
       const netAPayer = parseFloat((salaireBrut - cnss - amo - irNetPos - avances + fraisDeplacement).toFixed(2));
 
       return {
@@ -2633,12 +2643,12 @@ const handleGenerateInvoicePDF = () => {
         ded_famille: dedFam,
         ir_brut: irBrut,
         ir_net: irNet,
-        ir_net_pos: Math.max(irNet, 0),
-        frais_pro: fraisPro,
-        base_imposable: baseImposable,
-        ded_famille: dedFam,
-        taux_ir: calcIR(baseImposable).taux,
-        som_deduire: calcIR(baseImposable).deduction,
+        ir_net_pos: irNetPos,
+        frais_pro: fraisPro || 0,
+        base_imposable: baseImposable || 0,
+        ded_famille: dedFam || 0,
+        taux_ir: tauxIR || 0,
+        som_deduire: somDeduire || 0,
         avances,
         frais_deplacement: fraisDeplacement,
         net_a_payer: netAPayer,
