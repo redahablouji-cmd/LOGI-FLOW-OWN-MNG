@@ -654,12 +654,12 @@ const handleXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       cin:                 String(r[5] || ''),
       imm_cnss:            String(r[6] || ''),
       fonction:            String(r[7] || ''),
-      date_naissance:      typeof r[8] === 'number' && r[8] > 100 ? new Date((r[8] - 25569) * 86400000).toISOString().split('T')[0] : String(r[8] || '').split(' ')[0],
+      date_naissance:      typeof r[8] === 'number' ? new Date((r[8] - 25569) * 86400000).toISOString().split('T')[0] : String(r[8] || '').split(' ')[0],
       situation_familiale: String(r[9] || ''),
       nb_deduction:        parseInt(r[10]) || 0,
-      date_embauche:       typeof r[11] === 'number' && r[11] > 100 ? new Date((r[11] - 25569) * 86400000).toISOString().split('T')[0] : String(r[11] || '').split(' ')[0],
+      date_embauche:       typeof r[11] === 'number' ? new Date((r[11] - 25569) * 86400000).toISOString().split('T')[0] : String(r[11] || '').split(' ')[0],
       adresse:             String(r[12] || ''),
-      salaire_base:        typeof r[13] === 'number' ? r[13] : parseFloat(String(r[13]).replace(/[^0-9.,]/g, '').replace(',', '.')) || 0,
+      salaire_base:        parseFloat(r[13]) || 0,
       rip:                 String(r[14] || ''),
     }));
 
@@ -3474,10 +3474,10 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   <td className="px-3 py-3 font-mono text-xs text-slate-600">{d.cin || '—'}</td>
                   <td className="px-3 py-3 font-mono text-xs text-slate-600">{d.imm_cnss || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{d.fonction || '—'}</td>
-                  <td className="px-3 py-3 text-xs text-slate-500">{(() => { const v = d.date_naissance; if (!v) return '—'; if (/^\d{4,5}$/.test(v)) return new Date((parseInt(v) - 25569) * 86400000).toISOString().split('T')[0]; return v; })()}</td>
+                  <td className="px-3 py-3 text-xs text-slate-500">{d.date_naissance || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-500">{d.situation_familiale || '—'}</td>
                   <td className="px-3 py-3 text-xs text-center text-slate-600">{d.nb_deduction ?? '—'}</td>
-                  <td className="px-3 py-3 text-xs text-slate-500">{(() => { const v = d.date_embauche; if (!v) return '—'; if (/^\d{4,5}$/.test(v)) return new Date((parseInt(v) - 25569) * 86400000).toISOString().split('T')[0]; return v; })()}</td>
+                  <td className="px-3 py-3 text-xs text-slate-500">{d.date_embauche || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-500 max-w-[150px] truncate">{d.adresse || '—'}</td>
                    <td className="px-3 py-3 font-mono text-xs text-slate-700">{d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', { minimumFractionDigits: 2 }) : '—'}</td>
                    <td className="px-3 py-3 text-[9px] text-slate-500 max-w-[120px] truncate">{d.rip || '—'}</td>
