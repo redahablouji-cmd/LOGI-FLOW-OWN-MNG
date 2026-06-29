@@ -2600,7 +2600,7 @@ const handleGenerateInvoicePDF = () => {
       const dedFam = calcDeductionFam(d.situation_familiale, parseInt(d.nb_deduction) || 0);
       const { ir: irBrut } = calcIR(baseImposable);
       const { taux: tauxIR, deduction: somDeduire, ir: irBrut2 } = calcIR(baseImposable);
-      const irNet = Math.max(parseFloat((irBrut - dedFam).toFixed(2)), 0);
+      const irNet = parseFloat((irBrut - dedFam).toFixed(2));
       const avances = parseFloat(override.avances) || 0;
       const fraisDeplacement = parseFloat(override.frais_deplacement) || 0;
       const netAPayer = parseFloat((salaireBrut - cnss - amo - irNet - avances + fraisDeplacement).toFixed(2));
@@ -2631,7 +2631,7 @@ const handleGenerateInvoicePDF = () => {
         base_imposable: baseImposable,
         ded_famille: dedFam,
         ir_brut: irBrut,
-        ir_net: irNet,
+        ir_net_pos: Math.max(irNet, 0),
         frais_pro: fraisPro,
         base_imposable: baseImposable,
         ded_famille: dedFam,
@@ -6355,13 +6355,37 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="overflow-x-auto">
                   <table className="w-full text-left min-w-[1400px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>{['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup ✎','Primes ✎','Indemn. ✎','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances ✎','Frais D. ✎','Net à Payer','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd','IR Brut',''].map(h => (
+                      <tr>{['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup ✎','Primes ✎','Indemn. ✎','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','IR Net+','Avances ✎','Frais D. ✎','Net à Payer','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd',''].map(h => (
                         <th key={h} className="px-2 py-2 text-[7px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                       ))}</tr>
+                      <tr className="bg-slate-100 border-b-2 border-slate-300">
+                        <td className="px-1 py-1.5 text-[7px] font-black text-slate-500" colSpan={9}>TOTAUX</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-slate-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.salaire_base, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.heures_sup, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.primes, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.indemnites, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-emerald-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.anciennete, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-slate-800">{fmt2(filtered.reduce((s: number, r: any) => s + r.salaire_brut, 0))}</td>
+                        <td className="px-1 py-1 text-[7px]"></td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.cnss_sal, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.amo, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-rose-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.ir_net, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-rose-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.ir_net_pos, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.avances, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-blue-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.frais_deplacement, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-emerald-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.net_a_payer, 0))}</td>
+                        <td className="px-1 py-1 text-[7px]"></td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-purple-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.frais_pro, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-slate-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.base_imposable, 0))}</td>
+                        <td className="px-1 py-1 font-mono text-[7px] font-black text-blue-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.ded_famille, 0))}</td>
+                        <td className="px-1 py-1 text-[7px]"></td>
+                        <td className="px-1 py-1 text-[7px]"></td>
+                        <td className="px-1 py-1 text-[7px]"></td>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filtered.length === 0 ? (
-                        <tr><td colSpan={30} className="px-4 py-10 text-center text-sm text-slate-400">Aucun salarié. Importez des chauffeurs d'abord.</td></tr>
+                        <tr><td colSpan={29} className="px-4 py-10 text-center text-sm text-slate-400">Aucun salarié. Importez des chauffeurs d'abord.</td></tr>
                       ) : filtered.map((r: any) => (
                         <tr key={r.id} className="hover:bg-slate-50">
                           <td className="px-1 py-1.5 font-mono text-[8px] text-blue-600 font-bold">{r.matricule}</td>
@@ -6394,7 +6418,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                           <td className="px-1 py-1.5 font-mono text-[8px] text-slate-500">{r.nb_annees}</td>
                           <td className="px-1 py-1.5 font-mono text-[8px] text-amber-700">{fmt2(r.cnss_sal)}</td>
                           <td className="px-1 py-1.5 font-mono text-[8px] text-amber-600">{fmt2(r.amo)}</td>
-                          <td className="px-1 py-1.5 font-mono text-[8px] text-rose-700 font-bold">{fmt2(r.ir_net)}</td>
+                          <td className={`px-1 py-1.5 font-mono text-[8px] font-bold ${r.ir_net < 0 ? 'text-emerald-600' : 'text-rose-700'}`}>{fmt2(r.ir_net)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] font-bold text-rose-600">{fmt2(r.ir_net_pos)}</td>
                           {/* Editable: avances */}
                           <td className="px-1 py-0.5"><input type="number" value={r.avances || ''} placeholder="0"
                             onBlur={e => saveJournalOverride(r, 'avances', e.target.value)}
@@ -6412,7 +6437,6 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                           <td className="px-1 py-1.5 font-mono text-[8px] text-blue-600">{fmt2(r.ded_famille)}</td>
                           <td className="px-1 py-1.5 font-mono text-[8px] text-rose-500">{(r.taux_ir * 100).toFixed(0)}%</td>
                           <td className="px-1 py-1.5 font-mono text-[8px] text-slate-500">{fmt2(r.som_deduire)}</td>
-                          <td className="px-1 py-1.5 font-mono text-[8px] text-rose-600">{fmt2(r.ir_brut)}</td>
                           <td className="px-1 py-1">
                             <div className="flex items-center gap-0.5">
                               <button onClick={() => {
