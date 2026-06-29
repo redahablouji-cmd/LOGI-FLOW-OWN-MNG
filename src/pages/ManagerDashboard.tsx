@@ -654,10 +654,10 @@ const handleXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       cin:                 String(r[5] || ''),
       imm_cnss:            String(r[6] || ''),
       fonction:            String(r[7] || ''),
-      date_naissance:      String(r[8] || '').split(' ')[0],
+      date_naissance:      typeof r[8] === 'number' ? new Date((r[8] - 25569) * 86400000).toISOString().split('T')[0] : String(r[8] || '').split(' ')[0],
       situation_familiale: String(r[9] || ''),
       nb_deduction:        parseInt(r[10]) || 0,
-      date_embauche:       String(r[11] || '').split(' ')[0],
+      date_embauche:       typeof r[11] === 'number' ? new Date((r[11] - 25569) * 86400000).toISOString().split('T')[0] : String(r[11] || '').split(' ')[0],
       adresse:             String(r[12] || ''),
       salaire_base:        parseFloat(r[13]) || 0,
       rip:                 String(r[14] || ''),
@@ -2481,7 +2481,18 @@ const handleGenerateInvoicePDF = () => {
 
   const calcAnciennete = (dateEmbauche: string): { annees: number; taux: number } => {
     if (!dateEmbauche) return { annees: 0, taux: 0 };
-    const d = new Date(dateEmbauche);
+    let d: Date;
+    const raw = String(dateEmbauche).trim();
+    if (!isNaN(Number(raw)) && Number(raw) > 10000) {
+      // Excel serial date
+      d = new Date((Number(raw) - 25569) * 86400000);
+    } else if (raw.includes('/')) {
+      const parts = raw.split('/');
+      d = parts[2]?.length === 4 ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}`) : new Date(raw);
+    } else {
+      d = new Date(raw.split(' ')[0]);
+    }
+    if (isNaN(d.getTime())) return { annees: 0, taux: 0 };
     const now = new Date();
     const annees = Math.floor((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
     const rows = getParamRows('anciennete');
