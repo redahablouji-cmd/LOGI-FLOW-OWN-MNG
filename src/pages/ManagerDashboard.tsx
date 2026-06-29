@@ -2595,7 +2595,7 @@ const handleGenerateInvoicePDF = () => {
       const salaireBrut = salaireBase + heuresSup + primes + indemnites + anciennete;
       const cnss = parseFloat(calcCNSS(salaireBrut).toFixed(2));
       const amo = parseFloat(calcAMO(salaireBrut).toFixed(2));
-      const { montant: fraisPro } = calcFraisPro(salaireBrut - cnss - amo);
+      const { montant: fraisPro } = calcFraisPro(salaireBrut);
       const baseImposable = Math.max(salaireBrut - cnss - amo - fraisPro, 0);
       const dedFam = calcDeductionFam(d.situation_familiale, parseInt(d.nb_deduction) || 0);
       const { ir: irBrut } = calcIR(baseImposable);
