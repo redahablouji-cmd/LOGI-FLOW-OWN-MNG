@@ -315,7 +315,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     { id: 'amo', title: 'AMO', color: 'amber', headers: ['Cotisation','Part Salariale','Part Patronale','Plafond'],
       defaults: [['AMO','2.26%','2.26%','Non plaf.'],['Participation AMO','—','1.85%','—'],['Total','2.26%','4.11%','6.37%']] },
     { id: 'ir_mensuel', title: 'IR Brut — Barème Mensuel', color: 'rose', headers: ['RNI du','RNI au','Taux','Déduction'],
-      defaults: [['0','3333','0%','0'],['3333.01','5000','10%','333.33'],['5000.01','6667','20%','833.33'],['6667.01','8333','30%','15000'],['8333.01','15000','34%','1833.33'],['15000.01','+','37%','2283.33']] },
+      defaults: [['0','3333','0%','0'],['3333.01','5000','10%','333.33'],['5000.01','6667','20%','833.33'],['6667.01','8333','30%','1500'],['8333.01','15000','34%','1833.33'],['15000.01','+','37%','2283.33']] },
     { id: 'ir_annuel', title: 'IR Brut — Barème Annuel', color: 'rose', headers: ['RNI du','RNI au','Taux','Déduction'],
       defaults: [['0','40000','0%','0'],['40000.01','60000','10%','4000'],['60000.01','80000','20%','10000'],['80000.01','100000','30%','18000'],['100000.01','180000','34%','22000'],['180000.01','+','37%','27400']] },
     { id: 'frais_pro', title: 'Frais Professionnels', color: 'purple', headers: ['SBI','Taux FP','Déduction FP','Plafond'],
@@ -2603,7 +2603,8 @@ const handleGenerateInvoicePDF = () => {
       const irNet = parseFloat((irBrut - dedFam).toFixed(2));
       const avances = parseFloat(override.avances) || 0;
       const fraisDeplacement = parseFloat(override.frais_deplacement) || 0;
-      const netAPayer = parseFloat((salaireBrut - cnss - amo - irNet - avances + fraisDeplacement).toFixed(2));
+      const irNetPos = Math.max(irNet, 0);
+      const netAPayer = parseFloat((salaireBrut - cnss - amo - irNetPos - avances + fraisDeplacement).toFixed(2));
 
       return {
         id: override.id || `gen-${d.id}`,
