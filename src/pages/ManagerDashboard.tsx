@@ -2631,6 +2631,7 @@ const handleGenerateInvoicePDF = () => {
         base_imposable: baseImposable,
         ded_famille: dedFam,
         ir_brut: irBrut,
+        ir_net: irNet,
         ir_net_pos: Math.max(irNet, 0),
         frais_pro: fraisPro,
         base_imposable: baseImposable,
