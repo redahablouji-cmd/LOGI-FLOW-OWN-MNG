@@ -640,7 +640,7 @@ const handleXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+   const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
 
     const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[1]);
 
@@ -736,7 +736,7 @@ const handleClientsXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
     const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[0]);
    const records = dataRows.map((r: any[]) => ({
       company_id:     companyId,
@@ -796,7 +796,7 @@ const handleFournisseursXLSUpload = async (e: React.ChangeEvent<HTMLInputElement
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
     const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[0]);
     const records = dataRows.map((r: any[]) => ({
       company_id:     companyId,
@@ -1084,7 +1084,7 @@ const handleFactXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
     const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && r[0]);
     const records = dataRows.map((r: any[]) => ({
       company_id:           companyId,
@@ -2484,7 +2484,6 @@ const handleGenerateInvoicePDF = () => {
     let d: Date;
     const raw = String(dateEmbauche).trim();
     if (!isNaN(Number(raw)) && Number(raw) > 10000) {
-      // Excel serial date
       d = new Date((Number(raw) - 25569) * 86400000);
     } else if (raw.includes('/')) {
       const parts = raw.split('/');
@@ -2494,20 +2493,34 @@ const handleGenerateInvoicePDF = () => {
     }
     if (isNaN(d.getTime())) return { annees: 0, taux: 0 };
     const now = new Date();
-    const annees = Math.floor((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    const annees = parseFloat((((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000))).toFixed(2));
+
     const rows = getParamRows('anciennete');
-    let taux = 0;
-    for (const r of rows) {
+    // Build brackets: extract numbers from labels and sort descending
+    const brackets: { min: number; taux: number }[] = rows.map(r => {
       const label = (r[0] || '').toLowerCase();
-      const t = parseFloat((r[1] || '0').replace('%', '')) / 100;
-      if (label.includes('+25') || label.includes('plus de 25')) { if (annees >= 25) taux = t; }
-      else if (label.includes('20')) { if (annees >= 20 && annees < 25) taux = t; }
-      else if (label.includes('12')) { if (annees >= 12 && annees < 20) taux = t; }
-      else if (label.includes('5')) { if (annees >= 5 && annees < 12) taux = t; }
-      else if (label.includes('2')) { if (annees >= 2 && annees < 5) taux = t; }
-      else { if (annees < 2) taux = t; }
+      const t = parseFloat((r[1] || '0').replace('%', '').replace(',', '.')) / 100;
+      // Extract the first number from the label
+      const nums = label.match(/\d+/g);
+      let min = 0;
+      if (label.includes('+') || label.includes('plus')) {
+        min = nums ? parseInt(nums[nums.length - 1]) : 25;
+      } else if (nums && nums.length >= 2) {
+        // "Entre X à Y" or "X à Y" → min is the second number (the start of this bracket)
+        // Actually: "0 à 2" means 0-2, "2 à 5" means 2-5
+        min = parseInt(nums[0]);
+      } else if (nums) {
+        min = parseInt(nums[0]);
+      }
+      return { min, taux: t };
+    }).sort((a, b) => b.min - a.min); // Sort descending so we check highest first
+
+    let taux = 0;
+    for (const b of brackets) {
+      if (annees >= b.min) { taux = b.taux; break; }
     }
-    return { annees, taux };
+
+    return { annees: Math.floor(annees), taux };
   };
 
   const calcCNSS = (brut: number): number => {
@@ -4115,7 +4128,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         const buffer = await file.arrayBuffer();
                         const wb = XLSX.read(buffer, { type: 'array' });
                         const ws = wb.Sheets[wb.SheetNames[0]];
-                        const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
                         const dataRows = rawRows.slice(1).filter((r: any[]) => r.length > 0 && (r[0] || r[1] || r[2]));
                         const records = dataRows.map((r: any[]) => {
                           const qty = parseFloat(r[8]) || 1;
