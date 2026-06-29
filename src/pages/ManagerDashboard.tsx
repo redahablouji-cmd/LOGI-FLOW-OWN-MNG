@@ -6479,7 +6479,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
         })()}
         {/* Paie Form */}
 <AnimatePresence>
-  {showPaieForm && activeTab.startsWith('paie_') && PAIE_CONFIG[activeTab] && (
+  {showPaieForm && activeTab.startsWith('paie_') && activeTab !== 'paie_journal' && PAIE_CONFIG[activeTab] && (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
         className="bg-white rounded-xl p-6 max-w-4xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
