@@ -2642,7 +2642,6 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'paie_parametres' && companyId) fetchPaieParams();
     if (activeTab === 'bilan' && companyId) fetchBilan();
     if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); }
-     console.log('fleetDrivers:', fleetDrivers.length, 'rows:', rows.length);
     if (['paie_bulletin','paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
