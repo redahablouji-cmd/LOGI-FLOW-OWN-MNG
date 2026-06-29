@@ -2474,6 +2474,145 @@ const handleGenerateInvoicePDF = () => {
     await supabase.from('paie_parametres').delete().eq('id', id);
     setPaieParams(prev => ({ ...prev, [categorie]: (prev[categorie] || []).filter(r => r.id !== id) }));
   };
+  // ── Paie Calculations ──
+  const getParamRows = (catId: string): string[][] => {
+    return (paieParams[catId] || []).map((r: any) => Array.isArray(r.row_data) ? r.row_data : []);
+  };
+
+  const calcAnciennete = (dateEmbauche: string): { annees: number; taux: number } => {
+    if (!dateEmbauche) return { annees: 0, taux: 0 };
+    const d = new Date(dateEmbauche);
+    const now = new Date();
+    const annees = Math.floor((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    const rows = getParamRows('anciennete');
+    let taux = 0;
+    for (const r of rows) {
+      const label = (r[0] || '').toLowerCase();
+      const t = parseFloat((r[1] || '0').replace('%', '')) / 100;
+      if (label.includes('+25') || label.includes('plus de 25')) { if (annees >= 25) taux = t; }
+      else if (label.includes('20')) { if (annees >= 20 && annees < 25) taux = t; }
+      else if (label.includes('12')) { if (annees >= 12 && annees < 20) taux = t; }
+      else if (label.includes('5')) { if (annees >= 5 && annees < 12) taux = t; }
+      else if (label.includes('2')) { if (annees >= 2 && annees < 5) taux = t; }
+      else { if (annees < 2) taux = t; }
+    }
+    return { annees, taux };
+  };
+
+  const calcCNSS = (brut: number): number => {
+    return Math.min(brut, 6000) * 0.0448;
+  };
+
+  const calcAMO = (brut: number): number => {
+    return brut * 0.0226;
+  };
+
+  const calcFraisPro = (sbi: number): { taux: number; montant: number } => {
+    if (sbi <= 6500) return { taux: 0.35, montant: Math.min(sbi * 0.35, 2500) };
+    return { taux: 0.25, montant: Math.min(sbi * 0.25, 2916.67) };
+  };
+
+  const calcDeductionFam = (situation: string, nbEnfants: number): number => {
+    const rows = getParamRows('charges_fam');
+    const sitUpper = (situation || '').toUpperCase();
+    if (sitUpper === 'C' || sitUpper.includes('CELIB')) return 0;
+    for (const r of rows) {
+      if (parseInt(r[1]) === nbEnfants) return parseFloat(r[2]) || 0;
+    }
+    if (nbEnfants >= 6) return 250;
+    return 0;
+  };
+
+  const calcIR = (baseImposable: number): { taux: number; deduction: number; ir: number } => {
+    const rows = getParamRows('ir_mensuel');
+    let taux = 0, deduction = 0;
+    for (const r of rows) {
+      const du = parseFloat(r[0]) || 0;
+      const au = r[1] === '+' ? Infinity : (parseFloat(r[1]) || 0);
+      const t = parseFloat((r[2] || '0').replace('%', '')) / 100;
+      const d = parseFloat(r[3]) || 0;
+      if (baseImposable >= du && baseImposable <= au) {
+        taux = t; deduction = d; break;
+      }
+    }
+    return { taux, deduction, ir: Math.max(baseImposable * taux - deduction, 0) };
+  };
+
+  const generateJournalPaie = (mois: string): any[] => {
+    return fleetDrivers.map((d: any) => {
+      const override = paieList.find((p: any) => p.matricule === d.code && p.mois === mois) || {};
+      const salaireBase = parseFloat(d.salaire_base) || 0;
+      const { annees, taux: tauxAnc } = calcAnciennete(d.date_embauche);
+      const anciennete = parseFloat((salaireBase * tauxAnc).toFixed(2));
+      const heuresSup = parseFloat(override.heures_sup) || 0;
+      const primes = parseFloat(override.primes) || 0;
+      const indemnites = parseFloat(override.indemnites) || 0;
+      const salaireBrut = salaireBase + heuresSup + primes + indemnites + anciennete;
+      const cnss = parseFloat(calcCNSS(salaireBrut).toFixed(2));
+      const amo = parseFloat(calcAMO(salaireBrut).toFixed(2));
+      const { montant: fraisPro } = calcFraisPro(salaireBrut - cnss - amo);
+      const baseImposable = Math.max(salaireBrut - cnss - amo - fraisPro, 0);
+      const dedFam = calcDeductionFam(d.situation_familiale, parseInt(d.nb_deduction) || 0);
+      const { ir: irBrut } = calcIR(baseImposable);
+      const irNet = Math.max(parseFloat((irBrut - dedFam).toFixed(2)), 0);
+      const avances = parseFloat(override.avances) || 0;
+      const fraisDeplacement = parseFloat(override.frais_deplacement) || 0;
+      const netAPayer = parseFloat((salaireBrut - cnss - amo - irNet - avances + fraisDeplacement).toFixed(2));
+
+      return {
+        id: override.id || `gen-${d.id}`,
+        driver_id: d.id,
+        mois,
+        matricule: d.code,
+        nom_prenom: d.nom_prenom,
+        fonction: d.fonction,
+        date_embauche: d.date_embauche,
+        date_naissance: d.date_naissance,
+        situation_fam: d.situation_familiale,
+        nb_deduction: d.nb_deduction,
+        cnss_num: d.imm_cnss,
+        salaire_base: salaireBase,
+        nb_annees: annees,
+        taux_anciennete: tauxAnc,
+        anciennete,
+        heures_sup: heuresSup,
+        primes,
+        indemnites,
+        salaire_brut: salaireBrut,
+        cnss_sal: cnss,
+        amo,
+        frais_pro: fraisPro,
+        base_imposable: baseImposable,
+        ded_famille: dedFam,
+        ir_brut: irBrut,
+        ir_net: irNet,
+        avances,
+        frais_deplacement: fraisDeplacement,
+        net_a_payer: netAPayer,
+        mode_paiement: override.mode_paiement || 'Virement',
+        has_override: !!override.id,
+      };
+    });
+  };
+
+  const saveJournalOverride = async (row: any, field: string, value: string) => {
+    const mois = paieFilter.mois || new Date().toISOString().slice(0, 7);
+    if (row.has_override) {
+      await supabase.from('paie_journal').update({ [field]: parseFloat(value) || 0 }).eq('id', row.id);
+    } else {
+      const payload: any = {
+        company_id: companyId, mois, matricule: row.matricule, nom_prenom: row.nom_prenom,
+        fonction: row.fonction, date_embauche: row.date_embauche, situation_fam: row.situation_fam,
+        nb_deduction: row.nb_deduction, cnss_num: row.cnss_num, salaire_base: row.salaire_base,
+        heures_sup: 0, primes: 0, indemnites: 0, avances: 0, frais_deplacement: 0,
+        [field]: parseFloat(value) || 0,
+      };
+      const { data } = await supabase.from('paie_journal').insert(payload).select().single();
+      if (data) row.id = data.id;
+      row.has_override = true;
+    }
+    fetchPaie('paie_journal');
+  };
   useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
@@ -2502,7 +2641,9 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'plan_comptable' && companyId) fetchPlanComptable();
     if (activeTab === 'paie_parametres' && companyId) fetchPaieParams();
     if (activeTab === 'bilan' && companyId) fetchBilan();
-    if (['paie_journal','paie_bulletin','paie_ordre_virement','paie_parametres','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
+    if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); }
+     console.log('fleetDrivers:', fleetDrivers.length, 'rows:', rows.length);
+    if (['paie_bulletin','paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
@@ -6101,8 +6242,125 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             </div>
           </div>
         )}
+        {activeTab === 'paie_journal' && (() => {
+          const mois = paieFilter.mois || new Date().toISOString().slice(0, 7);
+          const rows = generateJournalPaie(mois);
+          const filtered = rows.filter((r: any) => {
+            if (paieFilter.name && !r.nom_prenom?.toLowerCase().includes(paieFilter.name.toLowerCase())) return false;
+            return true;
+          });
+          const fmt2 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+          const totalNet = filtered.reduce((s: number, r: any) => s + r.net_a_payer, 0);
+          const totalBrut = filtered.reduce((s: number, r: any) => s + r.salaire_brut, 0);
+          const totalCNSS = filtered.reduce((s: number, r: any) => s + r.cnss_sal, 0);
+          const totalIR = filtered.reduce((s: number, r: any) => s + r.ir_net, 0);
 
-        {activeTab.startsWith('paie_') && activeTab !== 'paie_parametres' && PAIE_CONFIG[activeTab] && (() => {
+          return (
+            <div>
+              <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-blue-500 text-white mb-2"><Users className="w-3.5 h-3.5" /> Journal de Paie</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight">Journal de Paie — {mois}</h1>
+                    <p className="text-sm text-slate-400 mt-1">{filtered.length} salariés (auto-calculé)</p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                    <button onClick={() => { if (!filtered.length) return; exportToXLS(filtered.map(r => ({ 'Matricule':r.matricule,'Nom':r.nom_prenom,'Fonction':r.fonction,'Salaire Base':r.salaire_base,'Ancienneté':r.anciennete,'H.Sup':r.heures_sup,'Primes':r.primes,'Indemnités':r.indemnites,'Brut':r.salaire_brut,'CNSS':r.cnss_sal,'AMO':r.amo,'IR Net':r.ir_net,'Avances':r.avances,'Frais Dépl.':r.frais_deplacement,'Net à Payer':r.net_a_payer,'Mode':r.mode_paiement })), 'journal_paie'); }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                    <button onClick={() => {
+                      if (!filtered.length) return;
+                      const rowsHtml = filtered.map((r: any, i: number) => {
+                        const bg = i%2===1?'#F8F8F8':'#fff';
+                        return `<tr>${[r.matricule,r.nom_prenom,r.fonction,fmt2(r.salaire_base),fmt2(r.anciennete),fmt2(r.heures_sup),fmt2(r.primes),fmt2(r.indemnites),fmt2(r.salaire_brut),fmt2(r.cnss_sal),fmt2(r.amo),fmt2(r.ir_net),fmt2(r.avances),fmt2(r.frais_deplacement),fmt2(r.net_a_payer),r.mode_paiement].map(v=>`<td style="padding:3px 4px;border:1px solid #ddd;font-size:7px;background:${bg}">${v}</td>`).join('')}</tr>`;
+                      }).join('');
+                      const headers = ['Mat.','Nom','Fonction','Sal.Base','Anc.','H.Sup','Primes','Indemn.','Brut','CNSS','AMO','IR Net','Avances','Frais D.','Net à Payer','Mode'];
+                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:8px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div style="width:297mm;min-height:210mm;padding:8mm"><div style="font-size:13px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:8px">Journal de Paie — ${mois}</div><table style="width:100%;border-collapse:collapse"><thead><tr>${headers.map(h=>`<th style="background:#1F3864;color:#fff;font-size:7px;padding:3px 4px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table></div></body></html>`;
+                      const win = window.open('','_blank');
+                      if(win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
+                    }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                  <input type="month" value={paieFilter.mois} onChange={e => setPaieFilter(p => ({...p, mois: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom</label>
+                  <input type="text" placeholder="Rechercher..." value={paieFilter.name} onChange={e => setPaieFilter(p => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                <button onClick={() => setPaieFilter({name:'',mois:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+              </div>
+
+              {/* Totals */}
+              <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex gap-6 items-center flex-wrap">
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Brut</span><span className="text-sm font-bold text-slate-700">{fmt2(totalBrut)}</span></div>
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total CNSS</span><span className="text-sm font-bold text-amber-700">{fmt2(totalCNSS)}</span></div>
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total IR</span><span className="text-sm font-bold text-rose-700">{fmt2(totalIR)}</span></div>
+                <div><span className="text-[9px] font-black text-slate-400 uppercase block">Total Net à Payer</span><span className="text-lg font-black text-emerald-700">{fmt2(totalNet)}</span></div>
+              </div>
+
+              {/* Table */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[1400px]">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>{['Mat.','Nom / Prénom','Fonction','Sal. Base','Anc.','H.Sup ✎','Primes ✎','Indemn. ✎','Brut','CNSS','AMO','IR Net','Avances ✎','Frais D. ✎','Net à Payer','Mode'].map(h => (
+                        <th key={h} className="px-2 py-2 text-[7px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filtered.length === 0 ? (
+                        <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">Aucun salarié. Importez des chauffeurs d'abord.</td></tr>
+                      ) : filtered.map((r: any) => (
+                        <tr key={r.id} className="hover:bg-slate-50">
+                          <td className="px-2 py-2 font-mono text-[10px] text-blue-600 font-bold">{r.matricule}</td>
+                          <td className="px-2 py-2 text-[10px] font-semibold text-slate-800">{r.nom_prenom}</td>
+                          <td className="px-2 py-2 text-[10px] text-slate-600">{r.fonction}</td>
+                          <td className="px-2 py-2 font-mono text-[10px] text-slate-700">{fmt2(r.salaire_base)}</td>
+                          <td className="px-2 py-2 font-mono text-[10px] text-emerald-700" title={`${r.nb_annees} ans × ${(r.taux_anciennete*100).toFixed(0)}%`}>{fmt2(r.anciennete)}</td>
+                          {/* Editable: heures_sup */}
+                          <td className="px-2 py-1"><input type="number" value={r.heures_sup || ''} placeholder="0"
+                            onBlur={e => saveJournalOverride(r, 'heures_sup', e.target.value)}
+                            onChange={e => { r.heures_sup = parseFloat(e.target.value) || 0; }}
+                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                          {/* Editable: primes */}
+                          <td className="px-2 py-1"><input type="number" value={r.primes || ''} placeholder="0"
+                            onBlur={e => saveJournalOverride(r, 'primes', e.target.value)}
+                            onChange={e => { r.primes = parseFloat(e.target.value) || 0; }}
+                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                          {/* Editable: indemnites */}
+                          <td className="px-2 py-1"><input type="number" value={r.indemnites || ''} placeholder="0"
+                            onBlur={e => saveJournalOverride(r, 'indemnites', e.target.value)}
+                            onChange={e => { r.indemnites = parseFloat(e.target.value) || 0; }}
+                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                          <td className="px-2 py-2 font-mono text-[10px] font-bold text-slate-800">{fmt2(r.salaire_brut)}</td>
+                          <td className="px-2 py-2 font-mono text-[10px] text-amber-700">{fmt2(r.cnss_sal)}</td>
+                          <td className="px-2 py-2 font-mono text-[10px] text-amber-600">{fmt2(r.amo)}</td>
+                          <td className="px-2 py-2 font-mono text-[10px] text-rose-700 font-bold">{fmt2(r.ir_net)}</td>
+                          {/* Editable: avances */}
+                          <td className="px-2 py-1"><input type="number" value={r.avances || ''} placeholder="0"
+                            onBlur={e => saveJournalOverride(r, 'avances', e.target.value)}
+                            onChange={e => { r.avances = parseFloat(e.target.value) || 0; }}
+                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                          {/* Editable: frais_deplacement */}
+                          <td className="px-2 py-1"><input type="number" value={r.frais_deplacement || ''} placeholder="0"
+                            onBlur={e => saveJournalOverride(r, 'frais_deplacement', e.target.value)}
+                            onChange={e => { r.frais_deplacement = parseFloat(e.target.value) || 0; }}
+                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                          <td className="px-2 py-2 font-mono text-[10px] font-black text-emerald-700">{fmt2(r.net_a_payer)}</td>
+                          <td className="px-2 py-2 text-[9px] text-slate-500">{r.mode_paiement}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {activeTab.startsWith('paie_') && activeTab !== 'paie_parametres' && activeTab !== 'paie_journal' && PAIE_CONFIG[activeTab] && (() => {
           const cfg = PAIE_CONFIG[activeTab];
           const fmt2 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
           const filtered = paieList.filter((r: any) => {
