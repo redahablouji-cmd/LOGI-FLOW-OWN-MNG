@@ -650,15 +650,17 @@ const handleXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       nom_prenom:          String(r[1] || ''),
       immatriculation:     String(r[2] || ''),
       type_vehicule:       String(r[3] || ''),
-      consommation:        parseFloat(r[4]) || 0,
+      consommation:        0,
       cin:                 String(r[4] || ''),
       imm_cnss:            String(r[5] || ''),
       fonction:            String(r[6] || ''),
-      date_naissance:      String(r[7] || ''),
+      date_naissance:      String(r[7] || '').split(' ')[0],
       situation_familiale: String(r[8] || ''),
       nb_deduction:        parseInt(r[9]) || 0,
-      date_embauche:       String(r[10] || ''),
+      date_embauche:       String(r[10] || '').split(' ')[0],
       adresse:             String(r[11] || ''),
+      salaire_base:        parseFloat(r[12]) || 0,
+      rip:                 String(r[13] || ''),
     }));
 
     if (records.length === 0) {
@@ -705,6 +707,8 @@ const handleEditDriverSave = async () => {
     nb_deduction:        parseInt(driverEditForm.nb_deduction) || 0,
     date_embauche:       driverEditForm.date_embauche,
     adresse:             driverEditForm.adresse,
+    salaire_base:        parseFloat(driverEditForm.salaire_base) || 0,
+    rip:                 driverEditForm.rip,
   }).eq('id', editingDriver.id);
   if (!error) {
     toast.success("Chauffeur modifié.");
@@ -3245,7 +3249,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             'Type': d.type_vehicule, 'Consommation': d.consommation, 'CIN': d.cin, 'IMM CNSS': d.imm_cnss,
             'Fonction': d.fonction, 'Date Naissance': d.date_naissance,
             'Situation Familiale': d.situation_familiale, 'Nb Déduction': d.nb_deduction,
-            'Date Embauche': d.date_embauche, 'Adresse': d.adresse,
+            'Date Embauche': d.date_embauche, 'Adresse': d.adresse, 'Salaire Base': d.salaire_base, 'RIP': d.rip,
           })), 'chauffeurs_export')}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Download size={14} /> Export XLS
@@ -3274,7 +3278,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
           <table className="w-full text-left min-w-[1100px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Code','Nom / Prénom','Immat.','Type','Consommation','CIN','IMM CNSS','Fonction','Naissance','Situation','Déductions','Embauche','Adresse','Actions'].map(h => (
+                {['Code','Nom / Prénom','Immat.','Type','Conso.','CIN','IMM CNSS','Fonction','Naissance','Situation','Déductions','Embauche','Adresse','Salaire Base','RIP','Actions'].map(h => (
                   <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -3305,9 +3309,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   <td className="px-3 py-3 text-xs text-center text-slate-600">{d.nb_deduction ?? '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-500">{d.date_embauche || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-500 max-w-[150px] truncate">{d.adresse || '—'}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => { setEditingDriver(d); setDriverEditForm({ ...d }); }}
+                   <td className="px-3 py-3 font-mono text-xs text-slate-700">{d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', { minimumFractionDigits: 2 }) : '—'}</td>
+                   <td className="px-3 py-3 text-[9px] text-slate-500 max-w-[120px] truncate">{d.rip || '—'}</td>
+                   <td className="px-3 py-3">
+                     <div className="flex items-center gap-1">
+                       <button onClick={() => { setEditingDriver(d); setDriverEditForm({ ...d }); }}
                         className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
                         <Pencil size={13} />
                       </button>
@@ -6915,6 +6921,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             { label: 'Nombre de Déductions', key: 'nb_deduction',        type: 'number' },
             { label: 'Date d\'Embauche',     key: 'date_embauche',       type: 'text'   },
             { label: 'Adresse',              key: 'adresse',             type: 'text'   },
+            { label: 'Salaire de Base',      key: 'salaire_base',        type: 'number' },
+            { label: 'RIP',                  key: 'rip',                 type: 'text'   },
           ].map(({ label, key, type }) => (
             <div key={key}>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
