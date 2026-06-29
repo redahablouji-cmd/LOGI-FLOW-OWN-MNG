@@ -2565,6 +2565,7 @@ const handleGenerateInvoicePDF = () => {
       const baseImposable = Math.max(salaireBrut - cnss - amo - fraisPro, 0);
       const dedFam = calcDeductionFam(d.situation_familiale, parseInt(d.nb_deduction) || 0);
       const { ir: irBrut } = calcIR(baseImposable);
+      const { taux: tauxIR, deduction: somDeduire, ir: irBrut2 } = calcIR(baseImposable);
       const irNet = Math.max(parseFloat((irBrut - dedFam).toFixed(2)), 0);
       const avances = parseFloat(override.avances) || 0;
       const fraisDeplacement = parseFloat(override.frais_deplacement) || 0;
@@ -2597,6 +2598,11 @@ const handleGenerateInvoicePDF = () => {
         ded_famille: dedFam,
         ir_brut: irBrut,
         ir_net: irNet,
+        frais_pro: fraisPro,
+        base_imposable: baseImposable,
+        ded_famille: dedFam,
+        taux_ir: calcIR(baseImposable).taux,
+        som_deduire: calcIR(baseImposable).deduction,
         avances,
         frais_deplacement: fraisDeplacement,
         net_a_payer: netAPayer,
@@ -3907,7 +3913,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
     ) : (
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[1400px]">
+          <table className="w-full text-left min-w-[2200px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-3 py-3 w-10">
@@ -6276,15 +6282,15 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <button onClick={() => { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
-                    <button onClick={() => { if (!filtered.length) return; exportToXLS(filtered.map(r => ({ 'Matricule':r.matricule,'Nom':r.nom_prenom,'Fonction':r.fonction,'Salaire Base':r.salaire_base,'Ancienneté':r.anciennete,'H.Sup':r.heures_sup,'Primes':r.primes,'Indemnités':r.indemnites,'Brut':r.salaire_brut,'CNSS':r.cnss_sal,'AMO':r.amo,'IR Net':r.ir_net,'Avances':r.avances,'Frais Dépl.':r.frais_deplacement,'Net à Payer':r.net_a_payer,'Mode':r.mode_paiement })), 'journal_paie'); }}
+                    <button onClick={() => { if (!filtered.length) return; exportToXLS(filtered.map(r => ({ 'Matricule':r.matricule,'Nom':r.nom_prenom,'Fonction':r.fonction,'Date Embauche':r.date_embauche,'Date Naissance':r.date_naissance,'Paie de':r.mois,'Sit.Fam':r.situation_fam,'NB Déd':r.nb_deduction,'N° CNSS':r.cnss_num,'Salaire Base':r.salaire_base,'H.Sup':r.heures_sup,'Primes':r.primes,'Indemnités':r.indemnites,'Ancienneté':r.anciennete,'Brut':r.salaire_brut,'Nb Ans':r.nb_annees,'CNSS':r.cnss_sal,'AMO':r.amo,'IR Net':r.ir_net,'Avances':r.avances,'Frais Dépl.':r.frais_deplacement,'Net à Payer':r.net_a_payer,'Mode':r.mode_paiement,'Frais Pro':r.frais_pro,'Base Imp.':r.base_imposable,'Déd.Fam':r.ded_famille,'Taux IR':r.taux_ir,'Som.Déd':r.som_deduire,'IR Brut':r.ir_brut })), 'journal_paie'); }}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     <button onClick={() => {
                       if (!filtered.length) return;
                       const rowsHtml = filtered.map((r: any, i: number) => {
                         const bg = i%2===1?'#F8F8F8':'#fff';
-                        return `<tr>${[r.matricule,r.nom_prenom,r.fonction,fmt2(r.salaire_base),fmt2(r.anciennete),fmt2(r.heures_sup),fmt2(r.primes),fmt2(r.indemnites),fmt2(r.salaire_brut),fmt2(r.cnss_sal),fmt2(r.amo),fmt2(r.ir_net),fmt2(r.avances),fmt2(r.frais_deplacement),fmt2(r.net_a_payer),r.mode_paiement].map(v=>`<td style="padding:3px 4px;border:1px solid #ddd;font-size:7px;background:${bg}">${v}</td>`).join('')}</tr>`;
+                        return `<tr>${[r.matricule,r.nom_prenom,r.fonction,r.date_embauche||'',r.date_naissance||'',r.mois,r.situation_fam,r.nb_deduction,r.cnss_num||'',fmt2(r.salaire_base),fmt2(r.heures_sup),fmt2(r.primes),fmt2(r.indemnites),fmt2(r.anciennete),fmt2(r.salaire_brut),r.nb_annees,fmt2(r.cnss_sal),fmt2(r.amo),fmt2(r.ir_net),fmt2(r.avances),fmt2(r.frais_deplacement),fmt2(r.net_a_payer),r.mode_paiement,fmt2(r.frais_pro),fmt2(r.base_imposable),fmt2(r.ded_famille),(r.taux_ir*100).toFixed(0)+'%',fmt2(r.som_deduire),fmt2(r.ir_brut)].map(v=>`<td style="padding:2px 3px;border:1px solid #ddd;font-size:6px;background:${bg}">${v}</td>`).join('')}</tr>`;
                       }).join('');
-                      const headers = ['Mat.','Nom','Fonction','Sal.Base','Anc.','H.Sup','Primes','Indemn.','Brut','CNSS','AMO','IR Net','Avances','Frais D.','Net à Payer','Mode'];
+                      const headers = ['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup','Primes','Indemn.','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances','Frais D.','Net','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd','IR Brut'];
                       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:8px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div style="width:297mm;min-height:210mm;padding:8mm"><div style="font-size:13px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:8px">Journal de Paie — ${mois}</div><table style="width:100%;border-collapse:collapse"><thead><tr>${headers.map(h=>`<th style="background:#1F3864;color:#fff;font-size:7px;padding:3px 4px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table></div></body></html>`;
                       const win = window.open('','_blank');
                       if(win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
@@ -6315,51 +6321,91 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="overflow-x-auto">
                   <table className="w-full text-left min-w-[1400px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>{['Mat.','Nom / Prénom','Fonction','Sal. Base','Anc.','H.Sup ✎','Primes ✎','Indemn. ✎','Brut','CNSS','AMO','IR Net','Avances ✎','Frais D. ✎','Net à Payer','Mode'].map(h => (
+                      <tr>{['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup ✎','Primes ✎','Indemn. ✎','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances ✎','Frais D. ✎','Net à Payer','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd','IR Brut',''].map(h => (
                         <th key={h} className="px-2 py-2 text-[7px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                       ))}</tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filtered.length === 0 ? (
-                        <tr><td colSpan={16} className="px-4 py-10 text-center text-sm text-slate-400">Aucun salarié. Importez des chauffeurs d'abord.</td></tr>
+                        <tr><td colSpan={30} className="px-4 py-10 text-center text-sm text-slate-400">Aucun salarié. Importez des chauffeurs d'abord.</td></tr>
                       ) : filtered.map((r: any) => (
                         <tr key={r.id} className="hover:bg-slate-50">
-                          <td className="px-2 py-2 font-mono text-[10px] text-blue-600 font-bold">{r.matricule}</td>
-                          <td className="px-2 py-2 text-[10px] font-semibold text-slate-800">{r.nom_prenom}</td>
-                          <td className="px-2 py-2 text-[10px] text-slate-600">{r.fonction}</td>
-                          <td className="px-2 py-2 font-mono text-[10px] text-slate-700">{fmt2(r.salaire_base)}</td>
-                          <td className="px-2 py-2 font-mono text-[10px] text-emerald-700" title={`${r.nb_annees} ans × ${(r.taux_anciennete*100).toFixed(0)}%`}>{fmt2(r.anciennete)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-blue-600 font-bold">{r.matricule}</td>
+                          <td className="px-1 py-1.5 text-[8px] font-semibold text-slate-800 max-w-[100px] truncate">{r.nom_prenom}</td>
+                          <td className="px-1 py-1.5 text-[8px] text-slate-600 max-w-[80px] truncate">{r.fonction}</td>
+                          <td className="px-1 py-1.5 text-[8px] text-slate-500">{r.date_embauche || '—'}</td>
+                          <td className="px-1 py-1.5 text-[8px] text-slate-500">{r.date_naissance || '—'}</td>
+                          <td className="px-1 py-1.5 text-[8px] text-slate-500">{r.mois}</td>
+                          <td className="px-1 py-1.5 text-[8px] text-slate-500">{r.situation_fam}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-slate-600">{r.nb_deduction}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-slate-500">{r.cnss_num || '—'}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-slate-700">{fmt2(r.salaire_base)}</td>
                           {/* Editable: heures_sup */}
-                          <td className="px-2 py-1"><input type="number" value={r.heures_sup || ''} placeholder="0"
+                          <td className="px-1 py-0.5"><input type="number" value={r.heures_sup || ''} placeholder="0"
                             onBlur={e => saveJournalOverride(r, 'heures_sup', e.target.value)}
                             onChange={e => { r.heures_sup = parseFloat(e.target.value) || 0; }}
-                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                            className="w-12 h-5 rounded border border-amber-200 bg-amber-50 px-1 text-[8px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
                           {/* Editable: primes */}
-                          <td className="px-2 py-1"><input type="number" value={r.primes || ''} placeholder="0"
+                          <td className="px-1 py-0.5"><input type="number" value={r.primes || ''} placeholder="0"
                             onBlur={e => saveJournalOverride(r, 'primes', e.target.value)}
                             onChange={e => { r.primes = parseFloat(e.target.value) || 0; }}
-                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                            className="w-12 h-5 rounded border border-amber-200 bg-amber-50 px-1 text-[8px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
                           {/* Editable: indemnites */}
-                          <td className="px-2 py-1"><input type="number" value={r.indemnites || ''} placeholder="0"
+                          <td className="px-1 py-0.5"><input type="number" value={r.indemnites || ''} placeholder="0"
                             onBlur={e => saveJournalOverride(r, 'indemnites', e.target.value)}
                             onChange={e => { r.indemnites = parseFloat(e.target.value) || 0; }}
-                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
-                          <td className="px-2 py-2 font-mono text-[10px] font-bold text-slate-800">{fmt2(r.salaire_brut)}</td>
-                          <td className="px-2 py-2 font-mono text-[10px] text-amber-700">{fmt2(r.cnss_sal)}</td>
-                          <td className="px-2 py-2 font-mono text-[10px] text-amber-600">{fmt2(r.amo)}</td>
-                          <td className="px-2 py-2 font-mono text-[10px] text-rose-700 font-bold">{fmt2(r.ir_net)}</td>
+                            className="w-12 h-5 rounded border border-amber-200 bg-amber-50 px-1 text-[8px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-emerald-700" title={`${r.nb_annees} ans × ${(r.taux_anciennete*100).toFixed(0)}%`}>{fmt2(r.anciennete)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] font-bold text-slate-800">{fmt2(r.salaire_brut)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-slate-500">{r.nb_annees}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-amber-700">{fmt2(r.cnss_sal)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-amber-600">{fmt2(r.amo)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-rose-700 font-bold">{fmt2(r.ir_net)}</td>
                           {/* Editable: avances */}
-                          <td className="px-2 py-1"><input type="number" value={r.avances || ''} placeholder="0"
+                          <td className="px-1 py-0.5"><input type="number" value={r.avances || ''} placeholder="0"
                             onBlur={e => saveJournalOverride(r, 'avances', e.target.value)}
                             onChange={e => { r.avances = parseFloat(e.target.value) || 0; }}
-                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                            className="w-12 h-5 rounded border border-amber-200 bg-amber-50 px-1 text-[8px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
                           {/* Editable: frais_deplacement */}
-                          <td className="px-2 py-1"><input type="number" value={r.frais_deplacement || ''} placeholder="0"
+                          <td className="px-1 py-0.5"><input type="number" value={r.frais_deplacement || ''} placeholder="0"
                             onBlur={e => saveJournalOverride(r, 'frais_deplacement', e.target.value)}
                             onChange={e => { r.frais_deplacement = parseFloat(e.target.value) || 0; }}
-                            className="w-14 h-6 rounded border border-amber-200 bg-amber-50 px-1 text-[9px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
-                          <td className="px-2 py-2 font-mono text-[10px] font-black text-emerald-700">{fmt2(r.net_a_payer)}</td>
-                          <td className="px-2 py-2 text-[9px] text-slate-500">{r.mode_paiement}</td>
+                            className="w-12 h-5 rounded border border-amber-200 bg-amber-50 px-1 text-[8px] font-mono text-amber-700 focus:outline-none focus:border-amber-500 text-right" /></td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] font-black text-emerald-700">{fmt2(r.net_a_payer)}</td>
+                          <td className="px-1 py-1.5 text-[8px] text-slate-500">{r.mode_paiement}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-purple-600">{fmt2(r.frais_pro)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-slate-600">{fmt2(r.base_imposable)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-blue-600">{fmt2(r.ded_famille)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-rose-500">{(r.taux_ir * 100).toFixed(0)}%</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-slate-500">{fmt2(r.som_deduire)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] text-rose-600">{fmt2(r.ir_brut)}</td>
+                          <td className="px-1 py-1">
+                            <div className="flex items-center gap-0.5">
+                              <button onClick={() => {
+                                setEditingPaie(r);
+                                setPaieForm({
+                                  matricule: r.matricule, nom_prenom: r.nom_prenom, fonction: r.fonction,
+                                  salaire_base: String(r.salaire_base), anciennete: String(r.anciennete),
+                                  heures_sup: String(r.heures_sup), primes: String(r.primes), indemnites: String(r.indemnites),
+                                  salaire_brut: String(r.salaire_brut), cnss_sal: String(r.cnss_sal), amo: String(r.amo),
+                                  ir_net: String(r.ir_net), avances: String(r.avances), frais_deplacement: String(r.frais_deplacement),
+                                  net_a_payer: String(r.net_a_payer), mode_paiement: r.mode_paiement,
+                                  situation_fam: r.situation_fam, nb_deduction: String(r.nb_deduction), cnss_num: r.cnss_num,
+                                  date_embauche: r.date_embauche, date_naissance: r.date_naissance,
+                                  mois: r.mois, driver_id: r.driver_id,
+                                  frais_pro: String(r.frais_pro), base_imposable: String(r.base_imposable),
+                                  ded_famille: String(r.ded_famille), taux_ir: String(r.taux_ir),
+                                  som_deduire: String(r.som_deduire), ir_brut: String(r.ir_brut),
+                                });
+                                setShowPaieForm(true);
+                              }} className="text-slate-400 hover:text-blue-600 cursor-pointer"><Pencil size={10} /></button>
+                              {r.has_override && <button onClick={async () => {
+                                if (!confirm('Supprimer cette ligne ?')) return;
+                                await supabase.from('paie_journal').delete().eq('id', r.id);
+                                toast.success("Supprimé."); fetchPaie('paie_journal');
+                              }} className="text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 size={10} /></button>}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -6489,6 +6535,82 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
         })()}
         {/* Paie Form */}
 <AnimatePresence>
+{showPaieForm && activeTab === 'paie_journal' && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-4xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Modifier la ligne — {paieForm.nom_prenom}</h3>
+          <button onClick={() => { setShowPaieForm(false); setEditingPaie(null); setPaieForm({}); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { label: 'Matricule', key: 'matricule', type: 'text', auto: true },
+            { label: 'Nom / Prénom', key: 'nom_prenom', type: 'text', auto: true },
+            { label: 'Fonction', key: 'fonction', type: 'text', auto: true },
+            { label: 'Situation Fam.', key: 'situation_fam', type: 'text', auto: true },
+            { label: 'Nb Déduction', key: 'nb_deduction', type: 'number', auto: true },
+            { label: 'N° CNSS', key: 'cnss_num', type: 'text', auto: true },
+            { label: 'Date Embauche', key: 'date_embauche', type: 'text', auto: true },
+            { label: 'Salaire Base', key: 'salaire_base', type: 'number', auto: false },
+            { label: 'Ancienneté', key: 'anciennete', type: 'number', auto: false },
+            { label: 'Heures Sup', key: 'heures_sup', type: 'number', auto: false },
+            { label: 'Primes', key: 'primes', type: 'number', auto: false },
+            { label: 'Indemnités', key: 'indemnites', type: 'number', auto: false },
+            { label: 'Salaire Brut', key: 'salaire_brut', type: 'number', auto: false },
+            { label: 'CNSS', key: 'cnss_sal', type: 'number', auto: false },
+            { label: 'AMO', key: 'amo', type: 'number', auto: false },
+            { label: 'IR Net', key: 'ir_net', type: 'number', auto: false },
+            { label: 'Avances', key: 'avances', type: 'number', auto: false },
+            { label: 'Frais Déplacement', key: 'frais_deplacement', type: 'number', auto: false },
+            { label: 'Net à Payer', key: 'net_a_payer', type: 'number', auto: false },
+            { label: 'Mode Paiement', key: 'mode_paiement', type: 'text', auto: false },
+            { label: 'Frais Pro', key: 'frais_pro', type: 'number', auto: false },
+            { label: 'Base Imposable', key: 'base_imposable', type: 'number', auto: false },
+            { label: 'Déduction Famille', key: 'ded_famille', type: 'number', auto: false },
+            { label: 'Taux IR', key: 'taux_ir', type: 'number', auto: false },
+            { label: 'Somme à Déduire', key: 'som_deduire', type: 'number', auto: false },
+            { label: 'IR Brut', key: 'ir_brut', type: 'number', auto: false },
+          ].map(({ label, key, type, auto }) => (
+            <div key={key}>
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label} {auto && <span className="text-blue-400">(auto)</span>}</label>
+              <input type={type === 'number' ? 'number' : 'text'} value={paieForm[key] || ''}
+                onChange={e => setPaieForm((p: any) => ({ ...p, [key]: e.target.value }))}
+                className={`w-full mt-1 h-8 rounded-lg border-2 px-2 text-sm focus:outline-none ${auto ? 'border-blue-100 bg-blue-50 focus:border-blue-400' : 'border-slate-200 focus:border-blue-500'}`} />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3 pt-5">
+          <button onClick={async () => {
+            const mois = paieFilter.mois || new Date().toISOString().slice(0, 7);
+            const payload: any = {
+              company_id: companyId, mois,
+              matricule: paieForm.matricule, nom_prenom: paieForm.nom_prenom, fonction: paieForm.fonction,
+              situation_fam: paieForm.situation_fam, nb_deduction: parseInt(paieForm.nb_deduction) || 0,
+              cnss_num: paieForm.cnss_num, date_embauche: paieForm.date_embauche,
+              salaire_base: parseFloat(paieForm.salaire_base) || 0, anciennete: parseFloat(paieForm.anciennete) || 0,
+              heures_sup: parseFloat(paieForm.heures_sup) || 0, primes: parseFloat(paieForm.primes) || 0,
+              indemnites: parseFloat(paieForm.indemnites) || 0, salaire_brut: parseFloat(paieForm.salaire_brut) || 0,
+              cnss_sal: parseFloat(paieForm.cnss_sal) || 0, amo: parseFloat(paieForm.amo) || 0,
+              ir_net: parseFloat(paieForm.ir_net) || 0, avances: parseFloat(paieForm.avances) || 0,
+              frais_deplacement: parseFloat(paieForm.frais_deplacement) || 0, net_a_payer: parseFloat(paieForm.net_a_payer) || 0,
+              mode_paiement: paieForm.mode_paiement || 'Virement',
+            };
+            if (editingPaie?.has_override && editingPaie?.id && !editingPaie.id.startsWith('gen-')) {
+              const { error } = await supabase.from('paie_journal').update(payload).eq('id', editingPaie.id);
+              if (!error) toast.success("Modifié."); else { toast.error(`Erreur: ${error.message}`); return; }
+            } else {
+              const { error } = await supabase.from('paie_journal').insert(payload);
+              if (!error) toast.success("Enregistré."); else { toast.error(`Erreur: ${error.message}`); return; }
+            }
+            setShowPaieForm(false); setEditingPaie(null); setPaieForm({});
+            fetchPaie('paie_journal');
+          }} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">Enregistrer</button>
+          <button onClick={() => { setShowPaieForm(false); setEditingPaie(null); setPaieForm({}); }} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+        </div>
+      </motion.div>
+    </div>
+  )}
   {showPaieForm && activeTab.startsWith('paie_') && activeTab !== 'paie_journal' && PAIE_CONFIG[activeTab] && (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
