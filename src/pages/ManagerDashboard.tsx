@@ -15,8 +15,15 @@ import { motion, AnimatePresence } from 'motion/react';
 const exportToXLS = (data: any[], filename: string) => {
   if (!data.length) return;
   const headers = Object.keys(data[0]);
-  const rows    = data.map(row => headers.map(h => row[h] ?? '').join('\t'));
-  const blob    = new Blob([[headers.join('\t'), ...rows].join('\n')], { type: 'application/vnd.ms-excel' });
+  const rows = data.map(row => headers.map(h => {
+  const v = row[h];
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'number') return v.toString().replace('.', ',');
+  const s = String(v);
+  if (/^\d+\.\d+$/.test(s)) return s.replace('.', ',');
+  return s;
+}).join('\t'));
+const blob = new Blob([[headers.join('\t'), ...rows].join('\n')], { type: 'application/vnd.ms-excel' });
   const a       = document.createElement('a');
   a.href        = URL.createObjectURL(blob);
   a.download    = `${filename}.xls`;
