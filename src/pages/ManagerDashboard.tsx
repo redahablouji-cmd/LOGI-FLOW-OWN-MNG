@@ -6476,7 +6476,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
 
         {activeTab.startsWith('paie_') && activeTab !== 'paie_parametres' && activeTab !== 'paie_journal' && PAIE_CONFIG[activeTab] && (() => {
           const cfg = PAIE_CONFIG[activeTab];
-          const fmt2 = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+          const fmt2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
           const filtered = paieList.filter((r: any) => {
             if (paieFilter.name && !r.nom_prenom?.toLowerCase().includes(paieFilter.name.toLowerCase())) return false;
             if (paieFilter.mois && r.mois !== paieFilter.mois) return false;
