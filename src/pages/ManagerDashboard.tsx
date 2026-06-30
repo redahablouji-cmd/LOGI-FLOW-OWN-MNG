@@ -101,6 +101,11 @@ export default function ManagerDashboard() {
     const { data } = await supabase.from('attestations').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
     setAttestationsList(data || []); setLoadingAttestations(false);
   };
+  const fetchContrats = async () => {
+    if (!companyId) return; setLoadingContrats(true);
+    const { data } = await supabase.from('contrats').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setContratsList(data || []); setLoadingContrats(false);
+  };
   const [contratType, setContratType] = useState('cdi');
   const [contratDriver, setContratDriver] = useState('');
   const [contratsList, setContratsList] = useState<any[]>([]);
