@@ -300,6 +300,24 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [paieOpen, setPaieOpen] = useState(false);
   const [paieFilter, setPaieFilter] = useState({ name: '', mois: '' });
   const [paieParams, setPaieParams] = useState<Record<string, any[]>>({});
+  const [selectedPaieMois, setSelectedPaieMois] = useState<string | null>(null);
+  const [paieValidatedMonths, setPaieValidatedMonths] = useState<any[]>([]);
+  const fetchPaieValidatedMonths = async () => {
+    if (!companyId) return;
+    const { data } = await supabase.from('paie_journal').select('mois, count:id').eq('company_id', companyId);
+    if (!data) return;
+    const grouped: Record<string, number> = {};
+    data.forEach((r: any) => { grouped[r.mois] = (grouped[r.mois] || 0) + 1; });
+    // Get unique months with their counts
+    const { data: raw } = await supabase.from('paie_journal').select('mois, net_a_payer, created_at').eq('company_id', companyId).order('created_at', { ascending: false });
+    const months: Record<string, { mois: string; count: number; total_net: number; date: string }> = {};
+    (raw || []).forEach((r: any) => {
+      if (!months[r.mois]) months[r.mois] = { mois: r.mois, count: 0, total_net: 0, date: r.created_at };
+      months[r.mois].count++;
+      months[r.mois].total_net += parseFloat(r.net_a_payer) || 0;
+    });
+    setPaieValidatedMonths(Object.values(months).sort((a, b) => b.mois.localeCompare(a.mois)));
+  };
 
   const PARAM_TABLES = [
     { id: 'heures_sup', title: 'Heures Supplémentaires', color: 'blue', headers: ['Activité','Période','Horaire','Jours ouv.','Jours fér.'],
@@ -2733,7 +2751,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'plan_comptable' && companyId) fetchPlanComptable();
     if (activeTab === 'paie_parametres' && companyId) fetchPaieParams();
     if (activeTab === 'bilan' && companyId) fetchBilan();
-    if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); }
+    if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); fetchPaieValidatedMonths(); }
     if (['paie_bulletin','paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
@@ -6334,7 +6352,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
           </div>
         )}
         {activeTab === 'paie_journal' && (() => {
-          const mois = paieFilter.mois || new Date().toISOString().slice(0, 7);
+          const mois = selectedPaieMois || paieFilter.mois || new Date().toISOString().slice(0, 7);
           const rows = generateJournalPaie(mois);
           const filtered = rows.filter((r: any) => {
             if (paieFilter.name && !r.nom_prenom?.toLowerCase().includes(paieFilter.name.toLowerCase())) return false;
@@ -6443,10 +6461,57 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       }
                       toast.success(`${count} lignes validées pour ${mois}.`);
                       fetchPaie('paie_journal');
+                      fetchPaieValidatedMonths();
+                      setSelectedPaieMois(mois);
                     }} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Check size={14} /> Valider le mois</button>
                   </div>
                 </div>
               </div>
+
+              {/* Validated Months Registry */}
+              {!selectedPaieMois && paieValidatedMonths.length > 0 && (
+                <div className="mb-4 space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Mois validés</p>
+                  {paieValidatedMonths.map((m: any) => (
+                    <div key={m.mois} onClick={() => { setSelectedPaieMois(m.mois); setPaieFilter(p => ({...p, mois: m.mois})); fetchPaie('paie_journal'); }}
+                      className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                          <Check size={20} className="text-emerald-600" />
+                        </div>
+                        <div>
+                          <span className="text-lg font-black text-slate-800">{m.mois}</span>
+                          <div className="flex gap-3 mt-1">
+                            <span className="text-[10px] text-slate-500">{m.count} salariés</span>
+                            <span className="text-[10px] text-slate-400">Validé le {new Date(m.date).toLocaleDateString('fr-MA')}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <span className="text-[9px] text-slate-400 uppercase block">Total Net à Payer</span>
+                          <span className="text-sm font-black text-emerald-700">{fmt2(m.total_net)}</span>
+                        </div>
+                        <span className="text-[9px] font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded uppercase">Validé</span>
+                        <span className="text-slate-400">▶</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="border-t border-slate-200 pt-3 mt-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nouveau mois (non validé)</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Back button when viewing a validated month */}
+              {selectedPaieMois && (
+                <div className="mb-4">
+                  <button onClick={() => { setSelectedPaieMois(null); setPaieFilter({name:'',mois:''}); }}
+                    className="flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700 cursor-pointer mb-3">
+                    ← Retour aux mois
+                  </button>
+                </div>
+              )}
 
               {/* Filters */}
               <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
