@@ -301,6 +301,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [paieFilter, setPaieFilter] = useState({ name: '', mois: '' });
   const [paieParams, setPaieParams] = useState<Record<string, any[]>>({});
   const [selectedPaieMois, setSelectedPaieMois] = useState<string | null>(null);
+  const [checkedPaie, setCheckedPaie] = useState<string[]>([]);
   const [paieValidatedMonths, setPaieValidatedMonths] = useState<any[]>([]);
   const fetchPaieValidatedMonths = async () => {
     if (!companyId) return;
@@ -2609,6 +2610,7 @@ const handleGenerateInvoicePDF = () => {
       return savedForMonth.sort((a: any, b: any) => (parseInt(a.matricule) || 0) - (parseInt(b.matricule) || 0)).map((p: any) => ({
         ...p,
         has_override: true,
+        paid: p.paid || false,
         ir_net: Math.max(parseFloat(p.ir_net) || 0, 0),
         net_a_payer: parseFloat(p.net_a_payer) || 0,
         salaire_base: parseFloat(p.salaire_base) || 0,
@@ -2701,6 +2703,7 @@ const handleGenerateInvoicePDF = () => {
         net_a_payer: netAPayer,
         mode_paiement: override.mode_paiement || 'Virement',
         has_override: !!override.id,
+        paid: override.paid || false,
       };
     });
   };
@@ -6464,6 +6467,67 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       fetchPaieValidatedMonths();
                       setSelectedPaieMois(mois);
                     }} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Check size={14} /> Valider le mois</button>
+                    <button onClick={() => {
+                      const unpaid = filtered.filter((r: any) => !r.paid);
+                      if (checkedPaie.length === unpaid.length) setCheckedPaie([]);
+                      else setCheckedPaie(unpaid.map((r: any) => r.id));
+                    }}
+                      className="bg-white/10 hover:bg-white/15 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      {checkedPaie.length === filtered.filter((r: any) => !r.paid).length && filtered.filter((r: any) => !r.paid).length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
+                    </button>
+                    {checkedPaie.length > 0 && (
+                      <button onClick={async () => {
+                        const selected = filtered.filter((r: any) => checkedPaie.includes(r.id));
+                        if (!selected.length) return;
+                        if (!confirm(`Générer un ordre de virement pour ${selected.length} salarié(s) ?`)) return;
+
+                        // Get company bank info from RIP
+                        const { data: ripData } = await supabase.from('bank_rip').select('*').eq('company_id', companyId).limit(1);
+                        const rip = ripData?.[0] || {};
+
+                        const ordreRef = `OV-${mois}-${Date.now().toString(36).toUpperCase()}`;
+                        const totalNet = selected.reduce((s: number, r: any) => s + (r.net_a_payer || 0), 0);
+
+                        // Create ordre de virement rows
+                        const records = selected.map((r: any, i: number) => {
+                          const driver = fleetDrivers.find((d: any) => d.code === r.matricule) || {};
+                          return {
+                            company_id: companyId,
+                            mois,
+                            societe: rip.banque || '',
+                            date_virement: new Date().toISOString().split('T')[0],
+                            montant_total: totalNet,
+                            banque: rip.banque || '',
+                            agence: rip.agence || '',
+                            rib: rip.numero_compte || '',
+                            ref_ordre: ordreRef,
+                            numero: i + 1,
+                            nom_prenom: r.nom_prenom,
+                            rib_salarie: driver.rip || '',
+                            net_a_payer: r.net_a_payer || 0,
+                            ordre_ref: ordreRef,
+                            total_ordre: totalNet,
+                          };
+                        });
+
+                        const { error } = await supabase.from('paie_ordre_virement').insert(records);
+                        if (error) { toast.error(`Erreur: ${error.message}`); return; }
+
+                        // Mark as paid in paie_journal
+                        for (const r of selected) {
+                          if (r.has_override && r.id && !r.id.startsWith('gen-')) {
+                            await supabase.from('paie_journal').update({ paid: true }).eq('id', r.id);
+                          }
+                        }
+
+                        toast.success(`Ordre de virement ${ordreRef} créé pour ${selected.length} salarié(s). Total: ${fmt2(totalNet)} MAD`);
+                        setCheckedPaie([]);
+                        fetchPaie('paie_journal');
+                      }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                        <Banknote size={14} /> Payer ({checkedPaie.length})
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -6535,7 +6599,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="overflow-x-auto">
                   <table className="w-full text-left min-w-[1400px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>{['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup ✎','Primes ✎','Indemn. ✎','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances ✎','Frais D. ✎','Net à Payer','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd',''].map(h => (
+                      <tr>{['✓','Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup ✎','Primes ✎','Indemn. ✎','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances ✎','Frais D. ✎','Net à Payer','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd',''].map(h => (
                         <th key={h} className="px-2 py-2 text-[7px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                       ))}</tr>
                       <tr className="bg-slate-100 border-b-2 border-slate-300">
@@ -6566,7 +6630,15 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       {filtered.length === 0 ? (
                         <tr><td colSpan={29} className="px-4 py-10 text-center text-sm text-slate-400">Aucun salarié. Importez des chauffeurs d'abord.</td></tr>
                       ) : filtered.map((r: any) => (
-                        <tr key={r.id} className="hover:bg-slate-50">
+                        <tr key={r.id} className={`hover:bg-slate-50 ${r.paid ? 'bg-emerald-50/50' : ''}`}>
+                          <td className="px-1 py-1.5">
+                            <div className="flex items-center gap-1">
+                              <input type="checkbox" checked={checkedPaie.includes(r.id)} disabled={r.paid}
+                                onChange={e => setCheckedPaie(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))}
+                                className="accent-emerald-600" />
+                              {r.paid && <span className="text-[7px] font-black text-emerald-500">✓</span>}
+                            </div>
+                          </td>
                           <td className="px-1 py-1.5 font-mono text-[8px] text-blue-600 font-bold">{r.matricule}</td>
                           <td className="px-1 py-1.5 text-[8px] font-semibold text-slate-800 max-w-[100px] truncate">{r.nom_prenom}</td>
                           <td className="px-1 py-1.5 text-[8px] text-slate-600 max-w-[80px] truncate">{r.fonction}</td>
@@ -6651,8 +6723,125 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             </div>
           );
         })()}
+        {activeTab === 'paie_ordre_virement' && (() => {
+          const fmt2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+          // Group by ordre_ref
+          const grouped: Record<string, any[]> = {};
+          paieList.forEach((r: any) => {
+            const ref = r.ordre_ref || r.ref_ordre || 'Sans référence';
+            if (!grouped[ref]) grouped[ref] = [];
+            grouped[ref].push(r);
+          });
+          const ordreKeys = Object.keys(grouped).sort().reverse();
 
-        {activeTab.startsWith('paie_') && activeTab !== 'paie_parametres' && activeTab !== 'paie_journal' && PAIE_CONFIG[activeTab] && (() => {
+          return (
+            <div>
+              <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-amber-500 text-white mb-2"><Users className="w-3.5 h-3.5" /> Ordre de Virement</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight">Ordres de Virement (Paie)</h1>
+                    <p className="text-sm text-slate-400 mt-1">{ordreKeys.length} ordre(s) — {paieList.length} virement(s)</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => fetchPaie('paie_ordre_virement')} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  </div>
+                </div>
+              </div>
+
+              {ordreKeys.length === 0 ? (
+                <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">Aucun ordre. Sélectionnez des salariés dans le Journal de Paie et cliquez "Payer".</div>
+              ) : ordreKeys.map(ref => {
+                const items = grouped[ref];
+                const first = items[0];
+                const total = items.reduce((s: number, r: any) => s + (parseFloat(r.net_a_payer) || 0), 0);
+                return (
+                  <div key={ref} className="mb-4 bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="bg-amber-50 border-b border-amber-200 p-4 flex items-center justify-between">
+                      <div>
+                        <span className="font-mono text-sm font-black text-amber-800">{ref}</span>
+                        <div className="flex gap-3 mt-1">
+                          <span className="text-[10px] text-slate-500">Mois: {first.mois}</span>
+                          <span className="text-[10px] text-slate-500">Date: {first.date_virement}</span>
+                          <span className="text-[10px] text-slate-500">Banque: {first.banque}</span>
+                          <span className="text-[10px] text-slate-500">Agence: {first.agence}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] text-slate-400 uppercase block">Total</span>
+                        <span className="text-lg font-black text-emerald-700">{fmt2(total)} MAD</span>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>{['N°','Nom / Prénom','RIB / IBAN','Net à Payer'].map(h => (
+                            <th key={h} className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                          ))}</tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {items.map((r: any, i: number) => (
+                            <tr key={r.id} className="hover:bg-slate-50">
+                              <td className="px-4 py-2 font-mono text-xs text-slate-500">{r.numero || i + 1}</td>
+                              <td className="px-4 py-2 text-xs font-semibold text-slate-800">{r.nom_prenom}</td>
+                              <td className="px-4 py-2 font-mono text-[10px] text-slate-600">{r.rib_salarie || '—'}</td>
+                              <td className="px-4 py-2 font-mono text-xs font-bold text-emerald-700">{fmt2(parseFloat(r.net_a_payer) || 0)}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-slate-100">
+                            <td colSpan={3} className="px-4 py-2 text-right text-xs font-black text-slate-600">TOTAL</td>
+                            <td className="px-4 py-2 font-mono text-xs font-black text-emerald-700">{fmt2(total)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="p-3 border-t border-slate-200 flex gap-2">
+                      <button onClick={() => {
+                        const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+                        const rowsHtml = items.map((r: any, i: number) => {
+                          const bg = i%2===1?'#F8F8F8':'#fff';
+                          return `<tr><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.numero||i+1}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.nom_prenom}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;background:${bg}">${r.rib_salarie||'—'}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;text-align:right;background:${bg}">${f2(parseFloat(r.net_a_payer)||0)}</td></tr>`;
+                        }).join('');
+                        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:10px}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+                        <div style="width:210mm;min-height:297mm;padding:15mm">
+                          <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:5px">Ordre de Virement</div>
+                          <div style="font-size:10px;text-align:center;color:#555;margin-bottom:15px">Réf: ${ref} — Mois: ${first.mois}</div>
+                          <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:9px">
+                            <div><strong>Banque:</strong> ${first.banque||''}<br/><strong>Agence:</strong> ${first.agence||''}<br/><strong>RIB:</strong> ${first.rib||''}</div>
+                            <div style="text-align:right"><strong>Date:</strong> ${first.date_virement||''}<br/><strong>Montant Total:</strong> ${f2(total)} MAD</div>
+                          </div>
+                          <table style="width:100%;border-collapse:collapse">
+                            <thead><tr>${['N°','Nom / Prénom','RIB / IBAN','Net à Payer (MAD)'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:9px;padding:6px 8px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead>
+                            <tbody>${rowsHtml}
+                              <tr><td colspan="3" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;padding:6px 8px;border:1px solid #ddd">TOTAL</td><td style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;font-family:monospace;padding:6px 8px;border:1px solid #ddd">${f2(total)}</td></tr>
+                            </tbody>
+                          </table>
+                        </div></body></html>`;
+                        const win = window.open('','_blank');
+                        if(win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
+                      }} className="bg-violet-600 hover:bg-violet-700 text-white px-2 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer"><FileText size={12} /> PDF</button>
+                      <button onClick={() => { exportToXLS(items.map((r:any,i:number) => ({ 'N°':r.numero||i+1,'Nom':r.nom_prenom,'RIB':r.rib_salarie,'Net à Payer':r.net_a_payer })), `ordre_virement_${ref}`); }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer"><Download size={12} /> XLS</button>
+                      <button onClick={async () => {
+                        if (!confirm(`Supprimer l'ordre ${ref} ?`)) return;
+                        for (const r of items) await supabase.from('paie_ordre_virement').delete().eq('id', r.id);
+                        // Unmark paid in paie_journal
+                        for (const r of items) {
+                          const { data } = await supabase.from('paie_journal').select('id').eq('company_id', companyId).eq('nom_prenom', r.nom_prenom).eq('mois', r.mois).eq('paid', true).limit(1);
+                          if (data?.[0]) await supabase.from('paie_journal').update({ paid: false }).eq('id', data[0].id);
+                        }
+                        toast.success(`Ordre ${ref} supprimé.`);
+                        fetchPaie('paie_ordre_virement');
+                      }} className="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer"><Trash2 size={12} /> Supprimer</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {activeTab.startsWith('paie_') && activeTab !== 'paie_parametres' && activeTab !== 'paie_journal' && activeTab !== 'paie_ordre_virement' && PAIE_CONFIG[activeTab] && (() => {
           const cfg = PAIE_CONFIG[activeTab];
           const fmt2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
           const filtered = paieList.filter((r: any) => {
