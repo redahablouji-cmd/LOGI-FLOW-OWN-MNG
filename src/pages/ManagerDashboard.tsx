@@ -6484,8 +6484,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         if (!confirm(`Générer un ordre de virement pour ${selected.length} salarié(s) ?`)) return;
 
                         // Get company bank info from RIP
-                        const { data: ripData } = await supabase.from('bank_rip').select('*').eq('company_id', companyId).limit(1);
-                        const rip = ripData?.[0] || {};
+                         const { data: ripData } = await supabase.from('bank_rip').select('*').eq('company_id', companyId).limit(1);
+                        const bankRip = ripData?.[0] || {};
                         const { data: compData } = await supabase.from('companies').select('name').eq('id', companyId).limit(1);
                         const companyName = compData?.[0]?.name || 'FOTRAL';
 
@@ -6498,12 +6498,12 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                           return {
                             company_id: companyId,
                             mois,
-                            societe: companyName,
+                            societe: companyName || 'FOTRAL',
                             date_virement: new Date().toISOString().split('T')[0],
                             montant_total: totalNet,
-                            banque: rip.banque || '',
-                            agence: rip.agence || '',
-                            rib: rip.numero_compte || rip.rib || rip.n_compte || '',
+                            banque: bankRip.banque || '',
+                            agence: bankRip.agence || '',
+                            rib: bankRip.numero_compte || bankRip.n_compte || '',
                             ref_ordre: ordreRef,
                             numero: i + 1,
                             nom_prenom: r.nom_prenom,
