@@ -30,7 +30,7 @@ const blob = new Blob([[headers.join('\t'), ...rows].join('\n')], { type: 'appli
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements'| 'bank_rip' | 'bank_releve' | 'bank_base_rip' | 'bank_virement' | 'bank_etat_explicatif' | 'bank_tva'| 'gl_achat' | 'gl_vente' | 'j_achat' | 'j_vente'| 'plan_comptable'| 'bilan'| 'paie_journal' | 'paie_bulletin' | 'paie_ordre_virement' | 'paie_parametres' | 'paie_solde_compte'| 'attestations';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements'| 'bank_rip' | 'bank_releve' | 'bank_base_rip' | 'bank_virement' | 'bank_etat_explicatif' | 'bank_tva'| 'gl_achat' | 'gl_vente' | 'j_achat' | 'j_vente'| 'plan_comptable'| 'bilan'| 'paie_journal' | 'paie_bulletin' | 'paie_ordre_virement' | 'paie_parametres' | 'paie_solde_compte'| 'attestations'| 'contrats';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -101,6 +101,10 @@ export default function ManagerDashboard() {
     const { data } = await supabase.from('attestations').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
     setAttestationsList(data || []); setLoadingAttestations(false);
   };
+  const [contratType, setContratType] = useState('cdi');
+  const [contratDriver, setContratDriver] = useState('');
+  const [contratsList, setContratsList] = useState<any[]>([]);
+  const [loadingContrats, setLoadingContrats] = useState(false);
   const [uploadingXLS,     setUploadingXLS]     = useState(false);
   const [clientsList,      setClientsList]      = useState<any[]>([]);
   const [loadingClients,   setLoadingClients]   = useState(false);
@@ -2739,7 +2743,8 @@ const handleGenerateInvoicePDF = () => {
     }
     fetchPaie('paie_journal');
   };
-  useEffect(() => {
+  
+    useEffect(() => {
     if (!loading) { if (!user) navigate('/login'); else fetchCompany(); }
   }, [user, loading]);
 
@@ -2770,6 +2775,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); fetchPaieValidatedMonths(); }
     if (activeTab === 'paie_bulletin' && companyId) { fetchPaie('paie_bulletin'); fetchFleetDrivers(); fetchPaieParams(); }
     if (activeTab === 'attestations' && companyId) { fetchFleetDrivers(); fetchAttestations(); }
+    if (activeTab === 'contrats' && companyId) { fetchFleetDrivers(); fetchContrats(); }
     if (['paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
@@ -2991,6 +2997,10 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
         <button onClick={() => { setActiveTab('attestations' as ManagerTab); if (sidebarOpen) setSidebarOpen(false); }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer mt-1 ${activeTab === 'attestations' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50'}`}>
           <FileText size={18} /><span>Attestations</span>
+        </button>
+        <button onClick={() => { setActiveTab('contrats' as ManagerTab); if (sidebarOpen) setSidebarOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${activeTab === 'contrats' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <FileText size={18} /><span>Contrats</span>
         </button>
         {/* Settings item */}
         <button key={item.id} onClick={() => { setActiveTab(item.id); if (sidebarOpen) setSidebarOpen(false); }}
@@ -7692,6 +7702,252 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          );
+        })()}
+        {activeTab === 'contrats' && (() => {
+          const driverC = fleetDrivers.find((d: any) => d.code === contratDriver) || null;
+          const today = new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const pageStyle = `*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:12px;line-height:1.7}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}h1{font-size:16px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:20px;text-decoration:underline}h2{font-size:13px;font-weight:900;color:#1F3864;margin:15px 0 8px}p{margin-bottom:8px;text-align:justify}.page{width:210mm;min-height:297mm;padding:20mm}`;
+
+          const contratTemplates: Record<string, { label: string; generate: (d: any) => string }> = {
+            cdi: { label: 'Contrat CDI', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${pageStyle}</style></head><body>
+              <div class="page">
+                <h1>CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE</h1>
+                <h2>ENTRE LES SOUSSIGNÉS</h2>
+                <p><strong>FOTRAL SARL</strong>, société à responsabilité limitée au capital de ____________ MAD, immatriculée au Registre du Commerce de Casablanca sous le n° ____________, dont le siège social est situé à Imm 45, 1ère étage, Rue 6, Hay Rekbout, Sidi Moumen, Casablanca, représentée par M. HABLOUJI Bouchaib, en sa qualité de Gérant.</p>
+                <p>Ci-après désignée « <strong>L'Employeur</strong> »,</p>
+                <p style="text-align:center"><strong>D'UNE PART,</strong></p>
+                <p><strong>ET</strong></p>
+                <p>M./Mme <strong>${d.nom_prenom}</strong>, né(e) le <strong>${d.date_naissance || '___________'}</strong>, titulaire de la CIN n° <strong>${d.cin || '___________'}</strong>, immatriculé(e) à la CNSS sous le n° <strong>${d.imm_cnss || '___________'}</strong>, demeurant à <strong>${d.adresse || '___________'}</strong>.</p>
+                <p>Ci-après désigné(e) « <strong>L'Employé(e)</strong> »,</p>
+                <p style="text-align:center"><strong>D'AUTRE PART,</strong></p>
+                <h2>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</h2>
+                <h2>ARTICLE 1 – NATURE ET OBJET DU CONTRAT</h2>
+                <p>Le présent contrat est conclu à durée indéterminée (CDI) conformément aux articles 16, 17, 18 et 19 de la Loi n° 65-99 formant Code du Travail du Royaume du Maroc.</p>
+                <h2>ARTICLE 2 – PÉRIODE D'ESSAI</h2>
+                <p>Conformément aux articles 13 et 14 du Code du Travail, le présent contrat est soumis à une période d'essai de trois (3) mois pour les cadres, un mois et demi (1,5 mois) pour les employés, quinze (15) jours pour les ouvriers. Cette période est renouvelable une (1) seule fois.</p>
+                <h2>ARTICLE 3 – POSTE ET ATTRIBUTIONS</h2>
+                <p>L'Employé est engagé(e) au poste de : <strong>${d.fonction || '___________'}</strong></p>
+                <p>Date de prise de fonction : <strong>${d.date_embauche || '___________'}</strong></p>
+                <h2>ARTICLE 4 – RÉMUNÉRATION</h2>
+                <p>L'Employé percevra un salaire mensuel brut de <strong>${d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits:2}) : '___________'}</strong> MAD, soumis aux retenues légales (CNSS, AMO, IR).</p>
+                <h2>ARTICLE 5 – DURÉE DU TRAVAIL</h2>
+                <p>La durée hebdomadaire de travail est fixée à 44 heures, conformément à l'article 184 du Code du Travail.</p>
+                <h2>ARTICLE 6 – LIEU DE TRAVAIL</h2>
+                <p>Le lieu principal de travail est situé au siège de la Société. L'Employé pourra être amené à se déplacer dans le cadre de ses fonctions.</p>
+                <h2>ARTICLE 7 – OBLIGATIONS</h2>
+                <p>L'Employé s'engage à respecter le Règlement Intérieur de la Société, les consignes de sécurité et les directives de la hiérarchie. Il est tenu à une obligation de confidentialité sur toutes les informations relatives à l'activité de la Société.</p>
+                <h2>ARTICLE 8 – RUPTURE DU CONTRAT</h2>
+                <p>Le contrat peut être résilié par l'une ou l'autre des parties, sous réserve du respect des dispositions légales en matière de préavis et d'indemnités, conformément aux articles 51 à 60 du Code du Travail.</p>
+                <div style="margin-top:50px;display:flex;justify-content:space-between">
+                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employeur</strong><br/>Lu et approuvé</div></div>
+                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employé(e)</strong><br/>Lu et approuvé</div></div>
+                </div>
+                <p style="text-align:center;margin-top:30px;font-size:10px">Fait à Casablanca, le ${today}, en deux (2) exemplaires originaux.</p>
+              </div></body></html>` },
+
+            cdd: { label: 'Contrat CDD', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${pageStyle}</style></head><body>
+              <div class="page">
+                <h1>CONTRAT DE TRAVAIL À DURÉE DÉTERMINÉE</h1>
+                <h2>ENTRE LES SOUSSIGNÉS</h2>
+                <p><strong>FOTRAL SARL</strong>, société à responsabilité limitée, dont le siège social est situé à Imm 45, 1ère étage, Rue 6, Hay Rekbout, Sidi Moumen, Casablanca, représentée par M. HABLOUJI Bouchaib, en sa qualité de Gérant.</p>
+                <p>Ci-après désignée « <strong>L'Employeur</strong> »,</p>
+                <p style="text-align:center"><strong>D'UNE PART,</strong></p>
+                <p><strong>ET</strong></p>
+                <p>M./Mme <strong>${d.nom_prenom}</strong>, né(e) le <strong>${d.date_naissance || '___________'}</strong>, titulaire de la CIN n° <strong>${d.cin || '___________'}</strong>, immatriculé(e) à la CNSS sous le n° <strong>${d.imm_cnss || '___________'}</strong>, demeurant à <strong>${d.adresse || '___________'}</strong>.</p>
+                <p>Ci-après désigné(e) « <strong>L'Employé(e)</strong> »,</p>
+                <p style="text-align:center"><strong>D'AUTRE PART,</strong></p>
+                <h2>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</h2>
+                <h2>ARTICLE 1 – NATURE ET OBJET DU CONTRAT</h2>
+                <p>Le présent contrat est conclu à durée déterminée (CDD) conformément aux articles 16 à 28 de la Loi n° 65-99 formant Code du Travail du Royaume du Maroc.</p>
+                <p>Le recours au CDD est justifié par : ________________________________________________</p>
+                <h2>ARTICLE 2 – DURÉE DU CONTRAT</h2>
+                <p>Le présent contrat prend effet à compter du : <strong>${d.date_embauche || '___________'}</strong></p>
+                <p>Il prend fin le : <strong>___________</strong></p>
+                <p>La durée totale du CDD, renouvellements inclus, ne peut excéder une (1) année.</p>
+                <h2>ARTICLE 3 – POSTE</h2>
+                <p>L'Employé est engagé(e) pour exercer les fonctions de : <strong>${d.fonction || '___________'}</strong></p>
+                <h2>ARTICLE 4 – RÉMUNÉRATION</h2>
+                <p>L'Employé percevra un salaire mensuel brut de <strong>${d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits:2}) : '___________'}</strong> MAD.</p>
+                <h2>ARTICLE 5 – DURÉE DU TRAVAIL</h2>
+                <p>La durée hebdomadaire de travail est fixée à 44 heures conformément à l'article 184 du Code du Travail.</p>
+                <h2>ARTICLE 6 – FIN DU CONTRAT</h2>
+                <p>Le contrat prend fin automatiquement à son terme. Toute rupture anticipée non justifiée donne lieu au versement de dommages et intérêts conformément à l'article 33 du Code du Travail.</p>
+                <div style="margin-top:50px;display:flex;justify-content:space-between">
+                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employeur</strong><br/>Lu et approuvé</div></div>
+                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employé(e)</strong><br/>Lu et approuvé</div></div>
+                </div>
+                <p style="text-align:center;margin-top:30px;font-size:10px">Fait à Casablanca, le ${today}, en deux (2) exemplaires originaux.</p>
+              </div></body></html>` },
+
+            provisoire: { label: 'Contrat Provisoire (Essai)', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${pageStyle}</style></head><body>
+              <div class="page">
+                <h1>CONTRAT DE TRAVAIL PROVISOIRE — PÉRIODE D'ESSAI</h1>
+                <h2>ENTRE LES SOUSSIGNÉS</h2>
+                <p><strong>FOTRAL SARL</strong>, société à responsabilité limitée, dont le siège social est situé à Imm 45, 1ère étage, Rue 6, Hay Rekbout, Sidi Moumen, Casablanca, représentée par M. HABLOUJI Bouchaib, en sa qualité de Gérant.</p>
+                <p>Ci-après désignée « <strong>L'Employeur</strong> »,</p>
+                <p style="text-align:center"><strong>D'UNE PART,</strong></p>
+                <p><strong>ET</strong></p>
+                <p>M./Mme <strong>${d.nom_prenom}</strong>, né(e) le <strong>${d.date_naissance || '___________'}</strong>, titulaire de la CIN n° <strong>${d.cin || '___________'}</strong>, demeurant à <strong>${d.adresse || '___________'}</strong>.</p>
+                <p>Ci-après désigné(e) « <strong>L'Employé(e)</strong> »,</p>
+                <h2>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</h2>
+                <h2>ARTICLE 1 – NATURE DU CONTRAT</h2>
+                <p>Le présent contrat est conclu à titre provisoire, constituant une période d'essai préalable à la conclusion d'un CDI, conformément aux articles 13 à 15 du Code du Travail.</p>
+                <h2>ARTICLE 2 – DURÉE DE LA PÉRIODE D'ESSAI</h2>
+                <p>Trois (3) mois pour les cadres, un mois et demi (1,5 mois) pour les employés, quinze (15) jours pour les ouvriers. Renouvelable une (1) seule fois.</p>
+                <p>Date de début : <strong>${d.date_embauche || '___________'}</strong></p>
+                <h2>ARTICLE 3 – POSTE</h2>
+                <p>L'Employé est engagé(e) à titre d'essai pour le poste de : <strong>${d.fonction || '___________'}</strong></p>
+                <h2>ARTICLE 4 – RÉMUNÉRATION</h2>
+                <p>Salaire brut mensuel : <strong>${d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits:2}) : '___________'}</strong> MAD.</p>
+                <p>En cas de confirmation en CDI, la rémunération définitive sera précisée dans le contrat CDI.</p>
+                <h2>ARTICLE 5 – RUPTURE</h2>
+                <p>Durant la période d'essai, le contrat peut être résilié par l'une ou l'autre des parties sans préavis (8 jours pour l'Employeur, 48h pour l'Employé).</p>
+                <h2>ARTICLE 6 – CONFIRMATION</h2>
+                <p>Si l'Employé est maintenu en poste au-delà de la période d'essai sans notification de rupture, le contrat sera réputé transformé en CDI à compter de la date d'embauche initiale.</p>
+                <div style="margin-top:50px;display:flex;justify-content:space-between">
+                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employeur</strong><br/>Lu et approuvé</div></div>
+                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employé(e)</strong><br/>Lu et approuvé</div></div>
+                </div>
+                <p style="text-align:center;margin-top:30px;font-size:10px">Fait à Casablanca, le ${today}, en deux (2) exemplaires originaux.</p>
+              </div></body></html>` },
+          };
+
+          return (
+            <div>
+              <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-cyan-500 text-white mb-2"><FileText className="w-3.5 h-3.5" /> Contrats</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight">Contrats de Travail</h1>
+                    <p className="text-sm text-slate-400 mt-1">{contratsList.length} contrat(s) sauvegardé(s)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Salarié</label>
+                    <select value={contratDriver} onChange={e => setContratDriver(e.target.value)}
+                      className="w-full mt-1 h-10 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                      <option value="">— Sélectionner —</option>
+                      {fleetDrivers.sort((a: any, b: any) => (parseInt(a.code)||0) - (parseInt(b.code)||0)).map((d: any) => (
+                        <option key={d.id} value={d.code}>{d.code} — {d.nom_prenom}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type de contrat</label>
+                    <select value={contratType} onChange={e => setContratType(e.target.value)}
+                      className="w-full mt-1 h-10 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                      {Object.entries(contratTemplates).map(([key, val]) => (
+                        <option key={key} value={key}>{val.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={async () => {
+                      if (!driverC) { toast.error("Sélectionnez un salarié."); return; }
+                      const tmpl = contratTemplates[contratType];
+                      if (!tmpl) return;
+                      const html = tmpl.generate(driverC);
+                      const label = `${tmpl.label} — ${driverC.nom_prenom} — ${today}`;
+                      await supabase.from('contrats').insert({
+                        company_id: companyId, driver_code: driverC.code, nom_prenom: driverC.nom_prenom,
+                        type_contrat: contratType, label, driver_data: driverC,
+                      });
+                      fetchContrats();
+                      toast.success(`Contrat sauvegardé: ${label}`);
+                      const win = window.open('', '_blank');
+                      if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+                    }}
+                      className="w-full h-10 bg-violet-600 hover:bg-violet-700 text-white text-sm font-black uppercase rounded-lg flex items-center justify-center gap-2 cursor-pointer">
+                      <FileText size={16} /> Générer Contrat
+                    </button>
+                  </div>
+                </div>
+
+                {/* Driver preview */}
+                {driverC && (
+                  <div className="border-t border-slate-200 pt-4 mt-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div><span className="text-slate-400">Nom:</span> <span className="font-bold">{driverC.nom_prenom}</span></div>
+                      <div><span className="text-slate-400">CIN:</span> <span className="font-mono font-bold">{driverC.cin || '—'}</span></div>
+                      <div><span className="text-slate-400">CNSS:</span> <span className="font-mono font-bold">{driverC.imm_cnss || '—'}</span></div>
+                      <div><span className="text-slate-400">Fonction:</span> <span className="font-bold">{driverC.fonction || '—'}</span></div>
+                      <div><span className="text-slate-400">Embauche:</span> <span className="font-bold">{driverC.date_embauche || '—'}</span></div>
+                      <div><span className="text-slate-400">Salaire:</span> <span className="font-mono font-bold text-emerald-700">{driverC.salaire_base ? Number(driverC.salaire_base).toLocaleString('fr-MA',{minimumFractionDigits:2}) : '—'}</span></div>
+                      <div><span className="text-slate-400">Adresse:</span> <span className="font-bold">{driverC.adresse || '—'}</span></div>
+                      <div><span className="text-slate-400">Naissance:</span> <span className="font-bold">{driverC.date_naissance || '—'}</span></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Contract type cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                {Object.entries(contratTemplates).map(([key, val]) => (
+                  <div key={key} onClick={() => setContratType(key)}
+                    className={`bg-white rounded-xl border p-4 cursor-pointer transition-all ${contratType === key ? 'border-cyan-400 bg-cyan-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${contratType === key ? 'bg-cyan-100' : 'bg-slate-100'}`}>
+                        <FileText size={16} className={contratType === key ? 'text-cyan-600' : 'text-slate-400'} />
+                      </div>
+                      <span className={`text-sm font-bold ${contratType === key ? 'text-cyan-700' : 'text-slate-700'}`}>{val.label}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Saved contracts */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Contrats générés ({contratsList.length})</h3>
+                {loadingContrats ? <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 text-blue-600 animate-spin" /></div> :
+                contratsList.length === 0 ? (
+                  <p className="text-center text-sm text-slate-400 py-6">Aucun contrat généré.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {contratsList.map((c: any) => {
+                      const tmpl = contratTemplates[c.type_contrat];
+                      return (
+                        <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-all">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center">
+                              <FileText size={16} className="text-cyan-600" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-slate-800">{c.label}</span>
+                              <div className="flex gap-2 mt-0.5">
+                                <span className="text-[9px] text-cyan-600 font-bold">{tmpl?.label || c.type_contrat}</span>
+                                <span className="text-[9px] text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-MA')} à {new Date(c.created_at).toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => {
+                              if (!tmpl) { toast.error("Type inconnu."); return; }
+                              const html = tmpl.generate(c.driver_data || {});
+                              const win = window.open('', '_blank');
+                              if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+                            }} className="px-2 py-1 bg-violet-50 hover:bg-violet-100 text-violet-700 text-[9px] font-black uppercase rounded flex items-center gap-1 cursor-pointer">
+                              <FileText size={10} /> PDF
+                            </button>
+                            <button onClick={async () => {
+                              if (!confirm(`Supprimer "${c.label}" ?`)) return;
+                              await supabase.from('contrats').delete().eq('id', c.id);
+                              toast.success("Supprimé."); fetchContrats();
+                            }} className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[9px] font-black uppercase rounded flex items-center gap-1 cursor-pointer">
+                              <Trash2 size={10} /> Suppr.
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           );
