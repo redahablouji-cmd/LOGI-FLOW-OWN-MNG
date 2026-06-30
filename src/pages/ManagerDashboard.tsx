@@ -94,6 +94,13 @@ export default function ManagerDashboard() {
   const [newDriver, setNewDriver] = useState<any>({});
   const [attestationType, setAttestationType] = useState('travail');
   const [attestationDriver, setAttestationDriver] = useState('');
+  const [attestationsList, setAttestationsList] = useState<any[]>([]);
+  const [loadingAttestations, setLoadingAttestations] = useState(false);
+  const fetchAttestations = async () => {
+    if (!companyId) return; setLoadingAttestations(true);
+    const { data } = await supabase.from('attestations').select('*').eq('company_id', companyId).order('created_at', { ascending: false });
+    setAttestationsList(data || []); setLoadingAttestations(false);
+  };
   const [uploadingXLS,     setUploadingXLS]     = useState(false);
   const [clientsList,      setClientsList]      = useState<any[]>([]);
   const [loadingClients,   setLoadingClients]   = useState(false);
@@ -2762,7 +2769,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'bilan' && companyId) fetchBilan();
     if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); fetchPaieValidatedMonths(); }
     if (activeTab === 'paie_bulletin' && companyId) { fetchPaie('paie_bulletin'); fetchFleetDrivers(); fetchPaieParams(); }
-    if (activeTab === 'attestations' && companyId) fetchFleetDrivers();
+    if (activeTab === 'attestations' && companyId) { fetchFleetDrivers(); fetchAttestations(); }
     if (['paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
@@ -7579,11 +7586,23 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </select>
                   </div>
                   <div className="flex items-end">
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       if (!driver) { toast.error("Sélectionnez un salarié."); return; }
                       const tmpl = templates[attestationType];
                       if (!tmpl) return;
                       const html = tmpl.generate(driver);
+                      // Save to database
+                      const label = `${tmpl.label} — ${driver.nom_prenom} — ${today}`;
+                      await supabase.from('attestations').insert({
+                        company_id: companyId,
+                        driver_code: driver.code,
+                        nom_prenom: driver.nom_prenom,
+                        type_attestation: attestationType,
+                        label,
+                        driver_data: driver,
+                      });
+                      fetchAttestations();
+                      toast.success(`Attestation sauvegardée: ${label}`);
                       const win = window.open('', '_blank');
                       if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
                     }}
@@ -7607,6 +7626,55 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       <div><span className="text-slate-400">Adresse:</span> <span className="font-bold">{driver.adresse || '—'}</span></div>
                       <div><span className="text-slate-400">RIP:</span> <span className="font-mono text-[10px]">{driver.rip || '—'}</span></div>
                     </div>
+                  </div>
+                )}
+              </div>
+              {/* Saved attestations */}
+              <div className="mt-6 bg-white rounded-xl border border-slate-200 p-4">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Attestations générées ({attestationsList.length})</h3>
+                {loadingAttestations ? <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 text-blue-600 animate-spin" /></div> :
+                attestationsList.length === 0 ? (
+                  <p className="text-center text-sm text-slate-400 py-6">Aucune attestation générée.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {attestationsList.map((a: any) => {
+                      const tmpl = templates[a.type_attestation];
+                      return (
+                        <div key={a.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-all">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                              <FileText size={16} className="text-indigo-600" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-slate-800">{a.label}</span>
+                              <div className="flex gap-2 mt-0.5">
+                                <span className="text-[9px] text-indigo-600 font-bold">{tmpl?.label || a.type_attestation}</span>
+                                <span className="text-[9px] text-slate-400">{new Date(a.created_at).toLocaleDateString('fr-MA')} à {new Date(a.created_at).toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => {
+                              if (!tmpl) { toast.error("Type inconnu."); return; }
+                              const d = a.driver_data || {};
+                              const html = tmpl.generate(d);
+                              const win = window.open('', '_blank');
+                              if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+                            }} className="px-2 py-1 bg-violet-50 hover:bg-violet-100 text-violet-700 text-[9px] font-black uppercase rounded flex items-center gap-1 cursor-pointer">
+                              <FileText size={10} /> PDF
+                            </button>
+                            <button onClick={async () => {
+                              if (!confirm(`Supprimer "${a.label}" ?`)) return;
+                              await supabase.from('attestations').delete().eq('id', a.id);
+                              toast.success("Supprimé.");
+                              fetchAttestations();
+                            }} className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[9px] font-black uppercase rounded flex items-center gap-1 cursor-pointer">
+                              <Trash2 size={10} /> Suppr.
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
