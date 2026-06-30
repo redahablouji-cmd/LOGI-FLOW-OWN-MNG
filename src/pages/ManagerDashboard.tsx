@@ -30,7 +30,7 @@ const blob = new Blob([[headers.join('\t'), ...rows].join('\n')], { type: 'appli
   a.click();
 };
 
-type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements'| 'bank_rip' | 'bank_releve' | 'bank_base_rip' | 'bank_virement' | 'bank_etat_explicatif' | 'bank_tva'| 'gl_achat' | 'gl_vente' | 'j_achat' | 'j_vente'| 'plan_comptable'| 'bilan'| 'paie_journal' | 'paie_bulletin' | 'paie_ordre_virement' | 'paie_parametres' | 'paie_solde_compte';
+type ManagerTab = 'staff' | 'purchases' | 'fleetfix' | 'suivi' | 'chauffeurs' | 'cout_revient' | 'clients' | 'fournisseurs' | 'truck_docs' | 'facturation' | 'settings' |'devis' | 'bon_commande' | 'reglements'| 'bank_rip' | 'bank_releve' | 'bank_base_rip' | 'bank_virement' | 'bank_etat_explicatif' | 'bank_tva'| 'gl_achat' | 'gl_vente' | 'j_achat' | 'j_vente'| 'plan_comptable'| 'bilan'| 'paie_journal' | 'paie_bulletin' | 'paie_ordre_virement' | 'paie_parametres' | 'paie_solde_compte'| 'attestations';
 
 interface Purchase {
   id: string; category: string; fournisseur: string; numero_facture: string;
@@ -92,6 +92,8 @@ export default function ManagerDashboard() {
   const [driverEditForm,   setDriverEditForm]   = useState<any>({});
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [newDriver, setNewDriver] = useState<any>({});
+  const [attestationType, setAttestationType] = useState('travail');
+  const [attestationDriver, setAttestationDriver] = useState('');
   const [uploadingXLS,     setUploadingXLS]     = useState(false);
   const [clientsList,      setClientsList]      = useState<any[]>([]);
   const [loadingClients,   setLoadingClients]   = useState(false);
@@ -2760,6 +2762,7 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'bilan' && companyId) fetchBilan();
     if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); fetchPaieValidatedMonths(); }
     if (activeTab === 'paie_bulletin' && companyId) { fetchPaie('paie_bulletin'); fetchFleetDrivers(); fetchPaieParams(); }
+    if (activeTab === 'attestations' && companyId) fetchFleetDrivers();
     if (['paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
@@ -2977,6 +2980,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             ))}
           </div>
         )}
+        {/* Attestations */}
+        <button onClick={() => { setActiveTab('attestations' as ManagerTab); if (sidebarOpen) setSidebarOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer mt-1 ${activeTab === 'attestations' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <FileText size={18} /><span>Attestations</span>
+        </button>
         {/* Settings item */}
         <button key={item.id} onClick={() => { setActiveTab(item.id); if (sidebarOpen) setSidebarOpen(false); }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer mt-1 ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50'}`}>
@@ -7446,7 +7454,180 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
     </div>
   )}
 </AnimatePresence>
+{activeTab === 'attestations' && (() => {
+          const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+          const driver = fleetDrivers.find((d: any) => d.code === attestationDriver) || null;
+          const today = new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+          const templates: Record<string, { label: string; generate: (d: any) => string }> = {
+            travail: { label: 'Attestation de Travail', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+              <div style="width:210mm;height:297mm;padding:25mm 20mm">
+                <div style="text-align:right;margin-bottom:40px;font-size:12px">Casablanca le ${today}</div>
+                <div style="text-align:center;font-size:18px;font-weight:900;text-decoration:underline;margin-bottom:40px">ATTESTATION DE TRAVAIL</div>
+                <p style="text-indent:40px;margin-bottom:20px">Nous soussignés <strong>FOTRAL SARL</strong>, Sisè à Casablanca, Hay Rekbout Rue 6 n° 45 Sidi Moumen.</p>
+                <p style="text-indent:40px;margin-bottom:20px"><strong>Attestons par la présente que :</strong></p>
+                <p style="text-indent:40px;margin-bottom:20px">Mr/Mme <strong>${d.nom_prenom}</strong>, CIN N° <strong>${d.cin || '—'}</strong>, Immaticulé(e) à la CNSS sous le n° <strong>${d.imm_cnss || '—'}</strong></p>
+                <p style="text-indent:40px;margin-bottom:20px">Employé(e) au sein de notre Établissement en qualité de <strong>${d.fonction || 'Chauffeur'}</strong> depuis le <strong>${d.date_embauche || '—'}</strong> jusqu'au jour d'aujourd'hui.</p>
+                <p style="text-indent:40px;margin-bottom:20px">La présente attestation est délivrée à la demande de l'intéressé(e) en date du ${today} pour servir et valoir de ce que de droit.</p>
+                <div style="text-align:right;margin-top:60px"><strong>La Direction</strong></div>
+              </div></body></html>` },
+
+            travail_demission: { label: 'Attestation de Travail (Démission)', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+              <div style="width:210mm;height:297mm;padding:25mm 20mm">
+                <div style="text-align:right;margin-bottom:40px;font-size:12px">Casablanca le ${today}</div>
+                <div style="text-align:center;font-size:18px;font-weight:900;text-decoration:underline;margin-bottom:40px">ATTESTATION DE TRAVAIL</div>
+                <p style="text-indent:40px;margin-bottom:20px">Nous soussignés <strong>FOTRAL SARL</strong>, Sisè à Casablanca, Hay Rekbout Rue 6 n° 45 Sidi Moumen.</p>
+                <p style="text-indent:40px;margin-bottom:20px"><strong>Attestons par la présente que :</strong></p>
+                <p style="text-indent:40px;margin-bottom:20px">Mr/Mme <strong>${d.nom_prenom}</strong>, CIN N° <strong>${d.cin || '—'}</strong>, Immaticulé(e) à la CNSS sous le n° <strong>${d.imm_cnss || '—'}</strong></p>
+                <p style="text-indent:40px;margin-bottom:20px">Employé(e) au sein de notre Établissement en qualité de <strong>${d.fonction || 'Chauffeur'}</strong> depuis le <strong>${d.date_embauche || '—'}</strong> jusqu'au <strong>${today}</strong>.</p>
+                <p style="text-indent:40px;margin-bottom:20px">La présente attestation est délivrée à la demande de l'intéressé(e) en date du ${today} pour servir et valoir de ce que de droit.</p>
+                <div style="text-align:right;margin-top:60px"><strong>La Direction</strong></div>
+              </div></body></html>` },
+
+            salaire: { label: 'Attestation de Salaire', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+              <div style="width:210mm;height:297mm;padding:25mm 20mm">
+                <div style="text-align:center;font-size:18px;font-weight:900;text-decoration:underline;margin-bottom:40px">ATTESTATION DE SALAIRE</div>
+                <p style="text-indent:40px;margin-bottom:20px">Nous soussignés : <strong>FOTRAL</strong></p>
+                <p style="text-indent:40px;margin-bottom:20px"><strong>Attestons Par La Présente Que :</strong></p>
+                <p style="text-indent:40px;margin-bottom:20px">Mr/Mme <strong>${d.nom_prenom}</strong>, N°CIN <strong>${d.cin || '—'}</strong>, Immatriculation à la CNSS sous le numéro <strong>${d.imm_cnss || '—'}</strong>, est employé(e) au sein de notre société en tant que <strong>${d.fonction || 'chauffeur'}</strong> avec un salaire mensuel net de <strong>${f2(d.salaire_base || 0)}</strong> Dirhams.</p>
+                <p style="text-indent:40px;margin-bottom:20px">La présente attestation est délivrée à l'intéressé(e) pour servir et valoir ce que de droit.</p>
+                <div style="text-align:right;margin-top:60px">Fait à Casablanca le ${today}</div>
+              </div></body></html>` },
+
+            demission: { label: 'Lettre de Démission (FR)', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+              <div style="width:210mm;height:297mm;padding:25mm 20mm">
+                <div style="margin-bottom:20px;font-size:12px"><strong>${d.nom_prenom}</strong><br/>Adresse : ${d.adresse || '—'}</div>
+                <div style="text-align:right;margin-bottom:30px">
+                  <strong>FOTRAL</strong><br/>Hay Rekbout rue el wifak n° 45<br/>1er étage Sidi moumen<br/>Casablanca, le ${today}
+                </div>
+                <p style="margin-bottom:20px">Monsieur,</p>
+                <p style="text-indent:40px;margin-bottom:15px">J'ai l'honneur de porter à votre connaissance que je suis démissionnaire de mes fonctions de <strong>${d.fonction || 'Chauffeur'}</strong> que j'occupe depuis le <strong>${d.date_embauche || '—'}</strong> au sein de votre société.</p>
+                <p style="text-indent:40px;margin-bottom:15px">Par dérogation aux dispositions de mon contrat de travail, je vous remercie de bien vouloir me dispenser du préavis afin que mon départ devienne effectif le <strong>_____________</strong>.</p>
+                <p style="text-indent:40px;margin-bottom:15px">Je vous saurais gré également de bien vouloir tenir à ma disposition mon Certificat de travail.</p>
+                <p style="margin-bottom:30px">Avec mes remerciements, je vous prie de bien vouloir agréer, Monsieur, l'expression de mes salutations distinguées.</p>
+                <div style="text-align:right;margin-top:40px">Signature</div>
+              </div></body></html>` },
+
+            istiqala: { label: 'استقالة (Démission AR)', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:14px;line-height:2;direction:rtl;text-align:right}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+              <div style="width:210mm;height:297mm;padding:25mm 20mm">
+                <div style="text-align:center;font-size:20px;font-weight:900;text-decoration:underline;margin-bottom:30px">إستقالة</div>
+                <p style="margin-bottom:15px">الدار البيضاء في <strong>${today}</strong></p>
+                <p style="margin-bottom:15px">من: <strong>${d.nom_prenom}</strong> (ب.ت.و رقم <strong>${d.cin || '—'}</strong>)</p>
+                <p style="margin-bottom:15px">إلــــى السيد المحترم:</p>
+                <p style="margin-bottom:25px;text-indent:40px">حبلوجي بوشعيب ممثل شركة FOTRAL</p>
+                <p style="margin-bottom:15px"><strong>الموضوع: اسـتـقـالــة عن العمل.</strong></p>
+                <p style="margin-bottom:15px">سلام تام بوجود مولانا الإمام أيده الله ونصره.</p>
+                <p style="margin-bottom:15px;text-indent:40px">وبعد:</p>
+                <p style="text-indent:40px;margin-bottom:15px">يشرفني أن أتقدم إلى سيادتكم المحترمة بهذا الطلب، قصد تقديم استقالتي عن العمل لدى شركتكم وكذا جميع المهام الأخرى المنوطة بي وبالتالي الانسحاب من الشركة بصفة نهائية.</p>
+                <p style="text-indent:40px;margin-bottom:15px">وأخبركم أن قرار استقالتي هذا اتخذته بمحض إرادتي وعن قناعة تامة وذلك لأسباب ذاتية وموضوعية ولظروف خاصة تتعلق بي شخصيا.</p>
+                <p style="text-indent:40px;margin-bottom:15px">وأتقدم الى سيادتكم بجزيل الشكر وعظيم التقدير على ما لقيته من دعم متواصل وحسن معاملة منكم شخصيا ومن زملائي الأفاضل خلال فترة عملي بشركتكم.</p>
+                <p style="text-indent:40px;margin-bottom:15px">وفي انتظار ذلك، تفضلوا بقبول تحياتي الخالصة واحترامي العظيم.</p>
+                <p style="margin-bottom:15px">والسلام.</p>
+                <div style="margin-top:40px">إمضــــاء:</div>
+              </div></body></html>` },
+
+            domiciliation: { label: 'Domiciliation de Salaire', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+              <div style="width:210mm;height:297mm;padding:25mm 20mm">
+                <div style="text-align:center;font-size:16px;font-weight:900;text-decoration:underline;margin-bottom:35px">ORDRE DE VIREMENT IRRÉVOCABLE DE SALAIRE</div>
+                <p style="margin-bottom:15px">Nous soussigné</p>
+                <p style="margin-bottom:8px">Société : <strong>FOTRAL SARL</strong></p>
+                <p style="margin-bottom:8px">Adresse : Imm 45 1ère étage rue 6 hay rekbout sidi moumen Casablanca</p>
+                <p style="margin-bottom:8px">IF : 02801217</p>
+                <p style="margin-bottom:20px">Gérant : HABLOUJI BOUCHAIB</p>
+                <p style="margin-bottom:15px">Nous nous engageons à virer irrévocablement le salaire intégral et toutes indemnités de Mr/Mme :</p>
+                <p style="margin-bottom:8px">Nom : <strong>${d.nom_prenom}</strong></p>
+                <p style="margin-bottom:8px">Fonction : <strong>${d.fonction || '—'}</strong></p>
+                <p style="margin-bottom:8px">Adresse : <strong>${d.adresse || '—'}</strong></p>
+                <p style="margin-bottom:8px">CIN : <strong>${d.cin || '—'}</strong></p>
+                <p style="margin-bottom:20px">à son Compte <strong>${d.rip || '—'}</strong> ouvert dans le livre de la banque.</p>
+                <p style="margin-bottom:10px">En cas de licenciement ou de démission et en général en cas de cessation des fonctions de l'intéressé(e) pour quelque motif que ce soit, nous nous engageons à en aviser la banque dans les meilleurs délais et à assurer la liquidation définitive de ses droits vis-à-vis de notre établissement par l'intermédiaire de son compte bancaire précité.</p>
+                <div style="text-align:right;margin-top:40px">Casablanca le ${today}</div>
+              </div></body></html>` },
+          };
+
+          return (
+            <div>
+              <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-indigo-500 text-white mb-2"><FileText className="w-3.5 h-3.5" /> Attestations</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight">Attestations & Documents</h1>
+                    <p className="text-sm text-slate-400 mt-1">Sélectionnez un salarié et le type de document</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Salarié</label>
+                    <select value={attestationDriver} onChange={e => setAttestationDriver(e.target.value)}
+                      className="w-full mt-1 h-10 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                      <option value="">— Sélectionner —</option>
+                      {fleetDrivers.sort((a: any, b: any) => (parseInt(a.code)||0) - (parseInt(b.code)||0)).map((d: any) => (
+                        <option key={d.id} value={d.code}>{d.code} — {d.nom_prenom}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type de document</label>
+                    <select value={attestationType} onChange={e => setAttestationType(e.target.value)}
+                      className="w-full mt-1 h-10 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                      {Object.entries(templates).map(([key, val]) => (
+                        <option key={key} value={key}>{val.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={() => {
+                      if (!driver) { toast.error("Sélectionnez un salarié."); return; }
+                      const tmpl = templates[attestationType];
+                      if (!tmpl) return;
+                      const html = tmpl.generate(driver);
+                      const win = window.open('', '_blank');
+                      if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+                    }}
+                      className="w-full h-10 bg-violet-600 hover:bg-violet-700 text-white text-sm font-black uppercase rounded-lg flex items-center justify-center gap-2 cursor-pointer">
+                      <FileText size={16} /> Générer PDF
+                    </button>
+                  </div>
+                </div>
+
+                {/* Preview of selected driver */}
+                {driver && (
+                  <div className="border-t border-slate-200 pt-4 mt-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Aperçu des données</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div><span className="text-slate-400">Nom:</span> <span className="font-bold text-slate-800">{driver.nom_prenom}</span></div>
+                      <div><span className="text-slate-400">CIN:</span> <span className="font-mono font-bold">{driver.cin || '—'}</span></div>
+                      <div><span className="text-slate-400">CNSS:</span> <span className="font-mono font-bold">{driver.imm_cnss || '—'}</span></div>
+                      <div><span className="text-slate-400">Fonction:</span> <span className="font-bold">{driver.fonction || '—'}</span></div>
+                      <div><span className="text-slate-400">Embauche:</span> <span className="font-bold">{driver.date_embauche || '—'}</span></div>
+                      <div><span className="text-slate-400">Salaire:</span> <span className="font-mono font-bold text-emerald-700">{f2(driver.salaire_base || 0)}</span></div>
+                      <div><span className="text-slate-400">Adresse:</span> <span className="font-bold">{driver.adresse || '—'}</span></div>
+                      <div><span className="text-slate-400">RIP:</span> <span className="font-mono text-[10px]">{driver.rip || '—'}</span></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Available templates */}
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Object.entries(templates).map(([key, val]) => (
+                  <div key={key} onClick={() => setAttestationType(key)}
+                    className={`bg-white rounded-xl border p-4 cursor-pointer transition-all ${attestationType === key ? 'border-violet-400 bg-violet-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${attestationType === key ? 'bg-violet-100' : 'bg-slate-100'}`}>
+                        <FileText size={16} className={attestationType === key ? 'text-violet-600' : 'text-slate-400'} />
+                      </div>
+                      <span className={`text-sm font-bold ${attestationType === key ? 'text-violet-700' : 'text-slate-700'}`}>{val.label}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 {activeTab === 'settings' && (
           <InvoiceEngine companyId={companyId} logoPreviewUrl={logoPreviewUrl} />
         )}
