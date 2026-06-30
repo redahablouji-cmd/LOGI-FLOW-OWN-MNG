@@ -2602,7 +2602,7 @@ const handleGenerateInvoicePDF = () => {
       // STEP 5: Frais Professionnels (on SBI)
       const fraisPro = sbi <= 6500 ? parseFloat((Math.min(sbi * 0.35, 2500)).toFixed(2)) : parseFloat((Math.min(sbi * 0.25, 2916.67)).toFixed(2));
       // STEP 6: Base Imposable (SNI)
-      const baseImposable = Math.max(sbi - fraisPro, 0);
+      const baseImposable = Math.max(sbi - cnss - amo - fraisPro, 0);
       // STEP 7: IR Brut
       const { taux: tauxIR, deduction: somDeduire, ir: irBrut } = calcIR(baseImposable);
       // STEP 8: Déduction Famille
