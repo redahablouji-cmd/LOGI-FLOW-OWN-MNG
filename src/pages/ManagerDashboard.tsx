@@ -90,6 +90,8 @@ export default function ManagerDashboard() {
   const [loadingDrivers,   setLoadingDrivers]   = useState(false);
   const [editingDriver,    setEditingDriver]     = useState<any | null>(null);
   const [driverEditForm,   setDriverEditForm]   = useState<any>({});
+  const [showDriverForm, setShowDriverForm] = useState(false);
+  const [newDriver, setNewDriver] = useState<any>({});
   const [uploadingXLS,     setUploadingXLS]     = useState(false);
   const [clientsList,      setClientsList]      = useState<any[]>([]);
   const [loadingClients,   setLoadingClients]   = useState(false);
@@ -3510,6 +3512,10 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Download size={14} /> Export XLS
           </button>
+          <button onClick={() => { setNewDriver({}); setShowDriverForm(true); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Plus size={14} /> Nouveau
+                  </button>
           {/* XLS Upload */}
           <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingXLS ? 'bg-slate-600 opacity-60' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
             <Upload size={14} />
@@ -8089,6 +8095,69 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
       </AnimatePresence>
       {/* Edit Driver Modal */}
 <AnimatePresence>
+{showDriverForm && (
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+      className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Nouveau Chauffeur</h3>
+        <button onClick={() => setShowDriverForm(false)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[
+          { label: 'Code', key: 'code', type: 'text' },
+          { label: 'Nom / Prénom', key: 'nom_prenom', type: 'text' },
+          { label: 'Immatriculation', key: 'immatriculation', type: 'text' },
+          { label: 'Consommation (L/100km)', key: 'consommation', type: 'number' },
+          { label: 'Type Véhicule', key: 'type_vehicule', type: 'text' },
+          { label: 'CIN', key: 'cin', type: 'text' },
+          { label: 'IMM CNSS', key: 'imm_cnss', type: 'text' },
+          { label: 'Fonction', key: 'fonction', type: 'text' },
+          { label: 'Date de Naissance', key: 'date_naissance', type: 'date' },
+          { label: 'Situation Familiale', key: 'situation_familiale', type: 'text' },
+          { label: 'Nombre de Déductions', key: 'nb_deduction', type: 'number' },
+          { label: "Date d'Embauche", key: 'date_embauche', type: 'date' },
+          { label: 'Adresse', key: 'adresse', type: 'text' },
+          { label: 'Salaire de Base', key: 'salaire_base', type: 'number' },
+          { label: 'RIP', key: 'rip', type: 'text' },
+        ].map(({ label, key, type }) => (
+          <div key={key}>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+            <input type={type} value={newDriver[key] || ''}
+              onChange={e => setNewDriver((p: any) => ({ ...p, [key]: e.target.value }))}
+              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-3 pt-5">
+        <button onClick={async () => {
+          if (!newDriver.nom_prenom) { toast.error("Le nom est requis."); return; }
+          const { error } = await supabase.from('fleet_drivers').insert({
+            company_id: companyId,
+            code: newDriver.code || '',
+            nom_prenom: newDriver.nom_prenom || '',
+            immatriculation: newDriver.immatriculation || '',
+            consommation: parseFloat(newDriver.consommation) || 0,
+            type_vehicule: newDriver.type_vehicule || '',
+            cin: newDriver.cin || '',
+            imm_cnss: newDriver.imm_cnss || '',
+            fonction: newDriver.fonction || '',
+            date_naissance: newDriver.date_naissance || null,
+            situation_familiale: newDriver.situation_familiale || '',
+            nb_deduction: parseInt(newDriver.nb_deduction) || 0,
+            date_embauche: newDriver.date_embauche || null,
+            adresse: newDriver.adresse || '',
+            salaire_base: parseFloat(newDriver.salaire_base) || 0,
+            rip: newDriver.rip || '',
+          });
+          if (!error) { toast.success("Chauffeur ajouté."); setShowDriverForm(false); setNewDriver({}); fetchFleetDrivers(); }
+          else toast.error(`Erreur: ${error.message}`);
+        }} className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">Ajouter</button>
+        <button onClick={() => setShowDriverForm(false)} className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer">Annuler</button>
+      </div>
+    </motion.div>
+  </div>
+)}
   {editingDriver && (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
