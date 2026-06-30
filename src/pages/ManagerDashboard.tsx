@@ -6803,13 +6803,40 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   ${rowsHtml}${emptyRows}
                   <tr><td colspan="3" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:11px;padding:8px 10px;border:1px solid #999">TOTAL</td>
                   <td style="text-align:right;background:#E8EDF3;font-weight:900;font-size:11px;font-family:monospace;padding:8px 10px;border:1px solid #999">${f2(total)}</td></tr>
+                  <tr><td colspan="4" style="padding:6px 10px;border:1px solid #999;font-size:9px;font-style:italic;background:#FFFDE7"><strong>Arrêté le présent ordre à la somme de :</strong> ${(() => {
+                    const units = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf'];
+                    const teens = ['dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+                    const tens = ['','dix','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+                    const toW = (n: number): string => {
+                      if (n === 0) return 'zéro';
+                      if (n < 0) return 'moins ' + toW(-n);
+                      let r = '';
+                      if (n >= 1000000) { r += toW(Math.floor(n/1000000)) + ' million' + (Math.floor(n/1000000)>1?'s':'') + ' '; n %= 1000000; }
+                      if (n >= 1000) { const t = Math.floor(n/1000); r += (t===1?'mille':toW(t)+' mille') + ' '; n %= 1000; }
+                      if (n >= 100) { const c = Math.floor(n/100); r += (c===1?'cent':units[c]+' cent') + (n%100===0&&c>1?'s':'') + ' '; n %= 100; }
+                      if (n >= 20) {
+                        const d = Math.floor(n/10);
+                        if (d===7||d===9) { r += tens[d] + (n%10===1&&d===7?'-et-':'-') + (d===7?teens[n%10]:teens[n%10]); return r.trim(); }
+                        r += tens[d] + (d===8&&n%10===0?'s':'') + (n%10===1&&d!==8?'-et-':n%10>0?'-':'');
+                        n %= 10;
+                      }
+                      if (n >= 10) { r += teens[n-10]; return r.trim(); }
+                      if (n > 0) r += units[n];
+                      return r.trim();
+                    };
+                    const ent = Math.floor(Math.abs(total));
+                    const dec = Math.round((Math.abs(total) - ent) * 100);
+                    return toW(ent).toUpperCase() + ' DIRHAMS' + (dec > 0 ? ' ET ' + toW(dec).toUpperCase() + ' CENTIMES' : '');
+                  })()}</td></tr>
                 </tbody>
               </table>
-              <div style="display:flex;justify-content:space-between;margin-top:40px;font-size:10px;position:absolute;bottom:20mm;left:15mm;right:15mm">
-                <div style="text-align:center;width:30%"><div style="border-top:1px solid #999;padding-top:5px;font-weight:700">Signature & Cachet Société</div></div>
-                <div style="text-align:center;width:30%"><div style="border-top:1px solid #999;padding-top:5px;font-weight:700">Visa Banque</div></div>
-                <div style="text-align:center;width:30%"><div style="border-top:1px solid #999;padding-top:5px;font-weight:700">Date</div></div>
-              </div>
+              <table style="width:100%;border-collapse:collapse;position:absolute;bottom:20mm;left:15mm;right:15mm;width:calc(100% - 30mm)">
+                <tr>
+                  <td style="width:33%;border:1px solid #999;padding:40px 10px 8px;text-align:center;font-size:10px;font-weight:700;vertical-align:bottom">Signature & Cachet Société</td>
+                  <td style="width:33%;border:1px solid #999;padding:40px 10px 8px;text-align:center;font-size:10px;font-weight:700;vertical-align:bottom">Visa Banque</td>
+                  <td style="width:34%;border:1px solid #999;padding:40px 10px 8px;text-align:center;font-size:10px;font-weight:700;vertical-align:bottom">Date</td>
+                </tr>
+              </table>
             </div></body></html>`;
           };
 
