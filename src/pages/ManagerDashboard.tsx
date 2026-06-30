@@ -6513,10 +6513,27 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         const { error } = await supabase.from('paie_ordre_virement').insert(records);
                         if (error) { toast.error(`Erreur: ${error.message}`); return; }
 
-                        // Mark as paid in paie_journal
+                        // Save + mark as paid in paie_journal
                         for (const r of selected) {
                           if (r.has_override && r.id && !r.id.startsWith('gen-')) {
                             await supabase.from('paie_journal').update({ paid: true }).eq('id', r.id);
+                          } else {
+                            // Auto-save the row first, then mark paid
+                            const savePayload: any = {
+                              company_id: companyId, mois, matricule: r.matricule, nom_prenom: r.nom_prenom,
+                              fonction: r.fonction, date_embauche: r.date_embauche, date_naissance: r.date_naissance,
+                              situation_fam: r.situation_fam, nb_deduction: r.nb_deduction, cnss_num: r.cnss_num,
+                              salaire_base: r.salaire_base, anciennete: r.anciennete, heures_sup: r.heures_sup,
+                              primes: r.primes, indemnites: r.indemnites, salaire_brut: r.salaire_brut,
+                              cnss_sal: r.cnss_sal, amo: r.amo, ir_net: r.ir_net, avances: r.avances,
+                              frais_deplacement: r.frais_deplacement, net_a_payer: r.net_a_payer,
+                              mode_paiement: r.mode_paiement, frais_pro: r.frais_pro,
+                              base_imposable: r.base_imposable, ded_famille: r.ded_famille,
+                              taux_ir: r.taux_ir, som_deduire: r.som_deduire,
+                              nb_annees: r.nb_annees, taux_anciennete: r.taux_anciennete,
+                              paid: true,
+                            };
+                            await supabase.from('paie_journal').insert(savePayload);
                           }
                         }
 
