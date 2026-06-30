@@ -6525,7 +6525,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         fetchPaie('paie_journal');
                       }}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
-                        <Banknote size={14} /> Payer ({checkedPaie.length})
+                        <FileText size={14} /> Payer ({checkedPaie.length})
                       </button>
                     )}
                   </div>
@@ -6745,6 +6745,65 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => fetchPaie('paie_ordre_virement')} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                    <button onClick={() => { if (!paieList.length) return; exportToXLS(paieList.map((r:any,i:number) => ({ 'Réf':r.ordre_ref||r.ref_ordre||'','Mois':r.mois,'N°':r.numero||i+1,'Nom':r.nom_prenom,'RIB':r.rib_salarie,'Net à Payer':r.net_a_payer,'Banque':r.banque,'Agence':r.agence,'Date':r.date_virement })), 'ordres_virement'); }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
+                    <button onClick={() => {
+                      if (!paieList.length) { toast.error("Aucun ordre."); return; }
+                      const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+                      const grouped: Record<string, any[]> = {};
+                      paieList.forEach((r: any) => { const ref = r.ordre_ref || r.ref_ordre || 'Sans ref'; if (!grouped[ref]) grouped[ref] = []; grouped[ref].push(r); });
+                      let allHtml = '';
+                      Object.keys(grouped).forEach(ref => {
+                        const items = grouped[ref];
+                        const first = items[0];
+                        const total = items.reduce((s: number, r: any) => s + (parseFloat(r.net_a_payer) || 0), 0);
+                        const rowsHtml = items.map((r: any, i: number) => {
+                          const bg = i%2===1?'#F8F8F8':'#fff';
+                          return `<tr><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.numero||i+1}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.nom_prenom}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;background:${bg}">${r.rib_salarie||'—'}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;text-align:right;background:${bg}">${f2(parseFloat(r.net_a_payer)||0)}</td></tr>`;
+                        }).join('');
+                        allHtml += `<div style="page-break-after:always;width:210mm;min-height:297mm;padding:15mm">
+                          <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:5px">Ordre de Virement</div>
+                          <div style="font-size:10px;text-align:center;color:#555;margin-bottom:15px">Réf: ${ref} — Mois: ${first.mois}</div>
+                          <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:9px">
+                            <div><strong>Banque:</strong> ${first.banque||''}<br/><strong>Agence:</strong> ${first.agence||''}<br/><strong>RIB:</strong> ${first.rib||''}</div>
+                            <div style="text-align:right"><strong>Date:</strong> ${first.date_virement||''}<br/><strong>Montant Total:</strong> ${f2(total)} MAD</div>
+                          </div>
+                          <table style="width:100%;border-collapse:collapse">
+                            <thead><tr>${['N°','Nom / Prénom','RIB / IBAN','Net à Payer (MAD)'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:9px;padding:6px 8px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead>
+                            <tbody>${rowsHtml}
+                              <tr><td colspan="3" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;padding:6px 8px;border:1px solid #ddd">TOTAL</td><td style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;font-family:monospace;padding:6px 8px;border:1px solid #ddd">${f2(total)}</td></tr>
+                            </tbody>
+                          </table>
+                        </div>`;
+                      });
+                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:10px}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>${allHtml}</body></html>`;
+                      const win = window.open('','_blank');
+                      if(win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
+                    }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
+                    <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      <Upload size={14} /> Importer XLS
+                      <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                        const file = e.target.files?.[0]; if (!file) return;
+                        try {
+                          const buffer = await file.arrayBuffer(); const wb = XLSX.read(buffer, { type: 'array', raw: true, defval: '' });
+                          const ws = wb.Sheets[wb.SheetNames[0]];
+                          const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+                          const headerIdx = rawRows.findIndex((r: any[]) => r.some((c: any) => String(c).toLowerCase().includes('nom')));
+                          const dataRows = rawRows.slice(headerIdx >= 0 ? headerIdx + 1 : 1).filter((r: any[]) => r.length > 1 && (r[0] || r[1]));
+                          const records = dataRows.map((r: any[], i: number) => ({
+                            company_id: companyId, mois: new Date().toISOString().slice(0, 7),
+                            numero: parseInt(r[0]) || i + 1, nom_prenom: String(r[1] || ''),
+                            rib_salarie: String(r[2] || ''), net_a_payer: typeof r[3] === 'number' ? r[3] : parseFloat(String(r[3]).replace(',','.')) || 0,
+                            banque: String(r[4] || ''), agence: String(r[5] || ''),
+                            ordre_ref: `IMP-${Date.now().toString(36).toUpperCase()}`,
+                          }));
+                          if (!records.length) { toast.error("Aucune donnée."); return; }
+                          const { error } = await supabase.from('paie_ordre_virement').insert(records);
+                          if (!error) { toast.success(`${records.length} virements importés.`); fetchPaie('paie_ordre_virement'); } else toast.error(`Erreur: ${error.message}`);
+                        } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                        e.target.value = '';
+                      }} />
+                    </label>
                   </div>
                 </div>
               </div>
