@@ -2757,7 +2757,8 @@ const handleGenerateInvoicePDF = () => {
     if (activeTab === 'paie_parametres' && companyId) fetchPaieParams();
     if (activeTab === 'bilan' && companyId) fetchBilan();
     if (activeTab === 'paie_journal' && companyId) { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); fetchPaieValidatedMonths(); }
-    if (['paie_bulletin','paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
+    if (activeTab === 'paie_bulletin' && companyId) { fetchPaie('paie_bulletin'); fetchFleetDrivers(); fetchPaieParams(); }
+    if (['paie_ordre_virement','paie_solde_compte'].includes(activeTab) && companyId) fetchPaie(activeTab);
     if (['j_achat','j_vente'].includes(activeTab) && companyId) { fetchPlanComptable(); }
     if (activeTab === 'facturation' && companyId) {
       fetchFacturation(); fetchSuivi(); fetchClients(); fetchInvoiceSettings();
@@ -7098,7 +7099,58 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     <h1 className="text-2xl font-extrabold tracking-tight">Bulletins de Paie</h1>
                     <p className="text-sm text-slate-400 mt-1">{paieList.length} bulletin(s)</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <select value={paieForm._driver || ''} onChange={e => setPaieForm((p: any) => ({...p, _driver: e.target.value}))}
+                      className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none">
+                      <option value="">— Sélectionner salarié —</option>
+                      {fleetDrivers.filter((d: any) => d.cin && d.imm_cnss).sort((a: any, b: any) => (parseInt(a.code)||0) - (parseInt(b.code)||0)).map((d: any) => (
+                        <option key={d.id} value={d.code}>{d.code} — {d.nom_prenom}</option>
+                      ))}
+                    </select>
+                    <input type="month" value={paieForm._mois || ''} onChange={e => setPaieForm((p: any) => ({...p, _mois: e.target.value}))}
+                      className="h-9 rounded-lg border-2 border-white/20 bg-white/10 px-3 text-xs text-white focus:outline-none" />
+                    <button onClick={async () => {
+                      const code = paieForm._driver;
+                      const moisBul = paieForm._mois;
+                      if (!code || !moisBul) { toast.error("Sélectionnez un salarié et un mois."); return; }
+                      const d = fleetDrivers.find((dr: any) => dr.code === code);
+                      if (!d) { toast.error("Salarié non trouvé."); return; }
+                      // Check duplicate
+                      const { data: existing } = await supabase.from('paie_bulletin').select('id').eq('company_id', companyId).eq('matricule', code).eq('mois', moisBul).limit(1);
+                      if (existing && existing.length > 0) { toast.error("Bulletin déjà existant pour ce salarié ce mois."); return; }
+                      // Calculate
+                      const salaireBase = parseFloat(d.salaire_base) || 0;
+                      const { annees, taux: tauxAnc } = calcAnciennete(d.date_embauche);
+                      const anciennete = parseFloat((salaireBase * tauxAnc).toFixed(2));
+                      const salaireBrut = salaireBase + anciennete;
+                      const cnss = parseFloat((Math.min(salaireBrut, 6000) * 0.0448).toFixed(2));
+                      const amo = parseFloat((salaireBrut * 0.0226).toFixed(2));
+                      const sbi = salaireBrut;
+                      const fraisPro = sbi <= 6500 ? parseFloat((Math.min(sbi * 0.35, 2500)).toFixed(2)) : parseFloat((Math.min(sbi * 0.25, 2916.67)).toFixed(2));
+                      const baseImposable = Math.max(sbi - cnss - amo - fraisPro, 0);
+                      const { taux: tauxIR, deduction: somDeduire, ir: irBrut } = calcIR(baseImposable);
+                      const dedFam = calcDeductionFam(d.situation_familiale, parseInt(d.nb_deduction) || 0);
+                      const irNet = Math.max(parseFloat((irBrut - dedFam).toFixed(2)), 0);
+                      const netAPayer = parseFloat((salaireBrut - cnss - amo - irNet).toFixed(2));
+                      const label = `${d.nom_prenom} — ${moisBul}`;
+                      const { error } = await supabase.from('paie_bulletin').insert({
+                        company_id: companyId, mois: moisBul, matricule: code, nom_prenom: d.nom_prenom,
+                        qualification: d.fonction, mode_paiement: 'Virement', periode: moisBul,
+                        date_naissance: d.date_naissance, date_embauche: d.date_embauche,
+                        cnss_num: d.imm_cnss, cin: d.cin, sf: d.situation_familiale, nb_deduction: d.nb_deduction,
+                        fonction: d.fonction, label, situation_fam: d.situation_familiale,
+                        salaire_base: salaireBase, heures_sup: 0, anciennete, primes: 0, indemnites: 0,
+                        salaire_brut: salaireBrut, cnss_sal: cnss, amo, ir_net: irNet, avances: 0,
+                        frais_deplacement: 0, net_a_payer: netAPayer, frais_pro: fraisPro,
+                        base_imposable: baseImposable, ded_famille: dedFam, taux_ir: tauxIR,
+                        som_deduire: somDeduire, taux_anciennete: tauxAnc,
+                      });
+                      if (!error) { toast.success(`Bulletin créé: ${label}`); setPaieForm({}); fetchPaie('paie_bulletin'); }
+                      else toast.error(`Erreur: ${error.message}`);
+                    }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      <Plus size={14} /> Générer Bulletin
+                    </button>
                     <button onClick={() => fetchPaie('paie_bulletin')} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                   </div>
                 </div>
