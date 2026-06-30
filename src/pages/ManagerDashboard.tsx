@@ -2642,8 +2642,7 @@ const handleGenerateInvoicePDF = () => {
         base_imposable: baseImposable,
         ded_famille: dedFam,
         ir_brut: irBrut,
-        ir_net: irNet,
-        ir_net_pos: irNetPos,
+        ir_net: irNetPos,
         frais_pro: fraisPro || 0,
         base_imposable: baseImposable || 0,
         ded_famille: dedFam || 0,
@@ -6328,7 +6327,30 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <button onClick={() => { fetchFleetDrivers(); fetchPaieParams(); fetchPaie('paie_journal'); }} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
-                    <button onClick={() => { if (!filtered.length) return; exportToXLS(filtered.map(r => ({ 'Matricule':r.matricule,'Nom':r.nom_prenom,'Fonction':r.fonction,'Date Embauche':r.date_embauche,'Date Naissance':r.date_naissance,'Paie de':r.mois,'Sit.Fam':r.situation_fam,'NB Déd':r.nb_deduction,'N° CNSS':r.cnss_num,'Salaire Base':r.salaire_base,'H.Sup':r.heures_sup,'Primes':r.primes,'Indemnités':r.indemnites,'Ancienneté':r.anciennete,'Brut':r.salaire_brut,'Nb Ans':r.nb_annees,'CNSS':r.cnss_sal,'AMO':r.amo,'IR Net':r.ir_net,'Avances':r.avances,'Frais Dépl.':r.frais_deplacement,'Net à Payer':r.net_a_payer,'Mode':r.mode_paiement,'Frais Pro':r.frais_pro,'Base Imp.':r.base_imposable,'Déd.Fam':r.ded_famille,'Taux IR':r.taux_ir,'Som.Déd':r.som_deduire,'IR Brut':r.ir_brut })), 'journal_paie'); }}
+                    <button onClick={() => { if (!filtered.length) return;
+                      const dataRows = filtered.map(r => ({ 'Matricule':r.matricule,'Nom':r.nom_prenom,'Fonction':r.fonction,'Date Embauche':r.date_embauche,'Date Naissance':r.date_naissance,'Paie de':r.mois,'Sit.Fam':r.situation_fam,'NB Déd':r.nb_deduction,'N° CNSS':r.cnss_num,'Salaire Base':r.salaire_base,'H.Sup':r.heures_sup,'Primes':r.primes,'Indemnités':r.indemnites,'Ancienneté':r.anciennete,'Brut':r.salaire_brut,'Nb Ans':r.nb_annees,'CNSS':r.cnss_sal,'AMO':r.amo,'IR Net':r.ir_net,'Avances':r.avances,'Frais Dépl.':r.frais_deplacement,'Net à Payer':r.net_a_payer,'Mode':r.mode_paiement,'Frais Pro':r.frais_pro,'Base Imp.':r.base_imposable,'Déd.Fam':r.ded_famille,'Taux IR':r.taux_ir,'Som.Déd':r.som_deduire }));
+                      const totals: any = { 'Matricule':'TOTAUX','Nom':'','Fonction':'','Date Embauche':'','Date Naissance':'','Paie de':'','Sit.Fam':'','NB Déd':'','N° CNSS':'',
+                        'Salaire Base':filtered.reduce((s:number,r:any)=>s+r.salaire_base,0),
+                        'H.Sup':filtered.reduce((s:number,r:any)=>s+r.heures_sup,0),
+                        'Primes':filtered.reduce((s:number,r:any)=>s+r.primes,0),
+                        'Indemnités':filtered.reduce((s:number,r:any)=>s+r.indemnites,0),
+                        'Ancienneté':filtered.reduce((s:number,r:any)=>s+r.anciennete,0),
+                        'Brut':filtered.reduce((s:number,r:any)=>s+r.salaire_brut,0),
+                        'Nb Ans':'',
+                        'CNSS':filtered.reduce((s:number,r:any)=>s+r.cnss_sal,0),
+                        'AMO':filtered.reduce((s:number,r:any)=>s+r.amo,0),
+                        'IR Net':filtered.reduce((s:number,r:any)=>s+r.ir_net,0),
+                        'Avances':filtered.reduce((s:number,r:any)=>s+r.avances,0),
+                        'Frais Dépl.':filtered.reduce((s:number,r:any)=>s+r.frais_deplacement,0),
+                        'Net à Payer':filtered.reduce((s:number,r:any)=>s+r.net_a_payer,0),
+                        'Mode':'',
+                        'Frais Pro':filtered.reduce((s:number,r:any)=>s+r.frais_pro,0),
+                        'Base Imp.':filtered.reduce((s:number,r:any)=>s+r.base_imposable,0),
+                        'Déd.Fam':filtered.reduce((s:number,r:any)=>s+r.ded_famille,0),
+                        'Taux IR':'',
+                        'Som.Déd':filtered.reduce((s:number,r:any)=>s+r.som_deduire,0),
+                      };
+                      exportToXLS([...dataRows, totals], 'journal_paie'); }}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     <button onClick={() => {
                       if (!filtered.length) return;
@@ -6367,7 +6389,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 <div className="overflow-x-auto">
                   <table className="w-full text-left min-w-[1400px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>{['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup ✎','Primes ✎','Indemn. ✎','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','IR Net+','Avances ✎','Frais D. ✎','Net à Payer','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd',''].map(h => (
+                      <tr>{['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup ✎','Primes ✎','Indemn. ✎','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances ✎','Frais D. ✎','Net à Payer','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd',''].map(h => (
                         <th key={h} className="px-2 py-2 text-[7px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                       ))}</tr>
                       <tr className="bg-slate-100 border-b-2 border-slate-300">
@@ -6382,7 +6404,6 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.cnss_sal, 0))}</td>
                         <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.amo, 0))}</td>
                         <td className="px-1 py-1 font-mono text-[7px] font-black text-rose-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.ir_net, 0))}</td>
-                        <td className="px-1 py-1 font-mono text-[7px] font-black text-rose-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.ir_net_pos, 0))}</td>
                         <td className="px-1 py-1 font-mono text-[7px] font-black text-amber-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.avances, 0))}</td>
                         <td className="px-1 py-1 font-mono text-[7px] font-black text-blue-600">{fmt2(filtered.reduce((s: number, r: any) => s + r.frais_deplacement, 0))}</td>
                         <td className="px-1 py-1 font-mono text-[7px] font-black text-emerald-700">{fmt2(filtered.reduce((s: number, r: any) => s + r.net_a_payer, 0))}</td>
@@ -6430,8 +6451,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                           <td className="px-1 py-1.5 font-mono text-[8px] text-slate-500">{r.nb_annees}</td>
                           <td className="px-1 py-1.5 font-mono text-[8px] text-amber-700">{fmt2(r.cnss_sal)}</td>
                           <td className="px-1 py-1.5 font-mono text-[8px] text-amber-600">{fmt2(r.amo)}</td>
-                          <td className={`px-1 py-1.5 font-mono text-[8px] font-bold ${r.ir_net < 0 ? 'text-emerald-600' : 'text-rose-700'}`}>{fmt2(r.ir_net)}</td>
-                          <td className="px-1 py-1.5 font-mono text-[8px] font-bold text-rose-600">{fmt2(r.ir_net_pos)}</td>
+                          <td className="px-1 py-1.5 font-mono text-[8px] font-bold text-rose-700">{fmt2(r.ir_net)}</td>
                           {/* Editable: avances */}
                           <td className="px-1 py-0.5"><input type="number" value={r.avances || ''} placeholder="0"
                             onBlur={e => saveJournalOverride(r, 'avances', e.target.value)}
