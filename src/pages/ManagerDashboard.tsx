@@ -6830,13 +6830,6 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   })()}</td></tr>
                 </tbody>
               </table>
-              <table style="width:100%;border-collapse:collapse;position:absolute;bottom:20mm;left:15mm;right:15mm;width:calc(100% - 30mm)">
-                <tr>
-                  <td style="width:33%;border:1px solid #999;padding:40px 10px 8px;text-align:center;font-size:10px;font-weight:700;vertical-align:bottom">Signature & Cachet Société</td>
-                  <td style="width:33%;border:1px solid #999;padding:40px 10px 8px;text-align:center;font-size:10px;font-weight:700;vertical-align:bottom">Visa Banque</td>
-                  <td style="width:34%;border:1px solid #999;padding:40px 10px 8px;text-align:center;font-size:10px;font-weight:700;vertical-align:bottom">Date</td>
-                </tr>
-              </table>
             </div></body></html>`;
           };
 
