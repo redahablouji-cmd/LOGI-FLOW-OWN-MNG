@@ -2605,7 +2605,9 @@ const handleGenerateInvoicePDF = () => {
   const generateJournalPaie = (mois: string): any[] => {
     // Check if month is validated (all drivers have saved overrides)
     const savedForMonth = paieList.filter((p: any) => p.mois === mois);
-    if (savedForMonth.length > 0) {
+    const driversWithCINandCNSS = fleetDrivers.filter((d: any) => d.cin && d.imm_cnss);
+    // Only use pure saved data if ALL drivers are saved (fully validated month)
+    if (savedForMonth.length >= driversWithCINandCNSS.length && savedForMonth.length > 0 && driversWithCINandCNSS.length > 0) {
       // Month validated — return saved data, don't recalculate
       return savedForMonth.sort((a: any, b: any) => (parseInt(a.matricule) || 0) - (parseInt(b.matricule) || 0)).map((p: any) => ({
         ...p,
@@ -2633,9 +2635,9 @@ const handleGenerateInvoicePDF = () => {
         nb_deduction: parseInt(p.nb_deduction) || 0,
       }));
     }
-    // Month not validated — calculate live
+    // Month not fully validated — merge saved + live generated
     return fleetDrivers.filter((d: any) => d.cin && d.imm_cnss).sort((a: any, b: any) => (parseInt(a.code) || 0) - (parseInt(b.code) || 0)).map((d: any) => {
-      const override = paieList.find((p: any) => p.matricule === d.code && p.mois === mois) || {};
+      const override = savedForMonth.find((p: any) => p.matricule === d.code) || {};
       // STEP 1: Salaire Brut
       const salaireBase = parseFloat(d.salaire_base) || 0;
       const { annees, taux: tauxAnc } = calcAnciennete(d.date_embauche);
@@ -6484,6 +6486,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         // Get company bank info from RIP
                         const { data: ripData } = await supabase.from('bank_rip').select('*').eq('company_id', companyId).limit(1);
                         const rip = ripData?.[0] || {};
+                        const { data: compData } = await supabase.from('companies').select('name').eq('id', companyId).limit(1);
+                        const companyName = compData?.[0]?.name || 'FOTRAL';
 
                         const ordreRef = `OV-${mois}-${Date.now().toString(36).toUpperCase()}`;
                         const totalNet = selected.reduce((s: number, r: any) => s + (r.net_a_payer || 0), 0);
@@ -6494,12 +6498,12 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                           return {
                             company_id: companyId,
                             mois,
-                            societe: rip.banque || '',
+                            societe: companyName,
                             date_virement: new Date().toISOString().split('T')[0],
                             montant_total: totalNet,
                             banque: rip.banque || '',
                             agence: rip.agence || '',
-                            rib: rip.numero_compte || '',
+                            rib: rip.numero_compte || rip.rib || rip.n_compte || '',
                             ref_ordre: ordreRef,
                             numero: i + 1,
                             nom_prenom: r.nom_prenom,
@@ -6780,7 +6784,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
               <div style="font-size:16px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:20px;text-decoration:underline">ORDRE DE VIREMENT DE SALAIRES</div>
               <div style="display:flex;justify-content:space-between;margin-bottom:20px">
                 <div style="font-size:10px;line-height:1.8">
-                  <div><strong>Société :</strong> ${first.societe || 'FOTRAL SARL'}</div>
+                  <div><strong>Société :</strong> ${first.societe || 'FOTRAL'}</div>
                   <div><strong>Mois :</strong> ${first.mois || ''}</div>
                   <div><strong>Date virement :</strong> ${first.date_virement || ''}</div>
                   <div><strong>Montant total :</strong> ${f2(total)} MAD</div>
@@ -6788,7 +6792,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 <div style="font-size:10px;line-height:1.8;text-align:right">
                   <div><strong>Banque :</strong> ${first.banque || ''}</div>
                   <div><strong>Agence :</strong> ${first.agence || ''}</div>
-                  <div><strong>RIB :</strong> ${first.rib || ''}</div>
+                  <div><strong>N° Compte :</strong> ${first.rib || ''}</div>
                   <div><strong>Réf. ordre :</strong> ${ref}</div>
                 </div>
               </div>
