@@ -6741,15 +6741,77 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
           );
         })()}
         {activeTab === 'paie_ordre_virement' && (() => {
-          const fmt2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
-          // Group by ordre_ref
+          const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+          const [ovFilter, setOvFilter] = [paieFilter, setPaieFilter];
           const grouped: Record<string, any[]> = {};
           paieList.forEach((r: any) => {
-            const ref = r.ordre_ref || r.ref_ordre || 'Sans référence';
+            const ref = r.ordre_ref || r.ref_ordre || 'Sans ref';
             if (!grouped[ref]) grouped[ref] = [];
             grouped[ref].push(r);
           });
-          const ordreKeys = Object.keys(grouped).sort().reverse();
+          const ordreKeys = Object.keys(grouped).sort().reverse().filter(ref => {
+            const items = grouped[ref];
+            const first = items[0];
+            if (ovFilter.mois && first.mois !== ovFilter.mois) return false;
+            if (ovFilter.name && !items.some((r: any) => r.nom_prenom?.toLowerCase().includes(ovFilter.name.toLowerCase()))) return false;
+            return true;
+          });
+
+          const generateOVPdf = (ref: string, items: any[]) => {
+            const first = items[0];
+            const total = items.reduce((s: number, r: any) => s + (parseFloat(r.net_a_payer) || 0), 0);
+            const rowsHtml = items.map((r: any, i: number) => {
+              const bg = i % 2 === 1 ? '#F8F8F8' : '#fff';
+              return `<tr>
+                <td style="padding:6px 10px;border:1px solid #999;font-size:10px;text-align:center;background:${bg}">${r.numero || i + 1}</td>
+                <td style="padding:6px 10px;border:1px solid #999;font-size:10px;background:${bg}">${r.nom_prenom}</td>
+                <td style="padding:6px 10px;border:1px solid #999;font-size:10px;font-family:monospace;background:${bg}">${r.rib_salarie || '—'}</td>
+                <td style="padding:6px 10px;border:1px solid #999;font-size:10px;font-family:monospace;text-align:right;background:${bg}">${f2(parseFloat(r.net_a_payer) || 0)}</td>
+              </tr>`;
+            }).join('');
+            // Empty rows to fill table
+            const emptyCount = Math.max(0, 10 - items.length);
+            const emptyRows = Array(emptyCount).fill(0).map((_, i) => {
+              const bg = (items.length + i) % 2 === 1 ? '#F8F8F8' : '#fff';
+              return `<tr><td style="padding:6px 10px;border:1px solid #999;background:${bg}">&nbsp;</td><td style="padding:6px 10px;border:1px solid #999;background:${bg}"></td><td style="padding:6px 10px;border:1px solid #999;background:${bg}"></td><td style="padding:6px 10px;border:1px solid #999;background:${bg}"></td></tr>`;
+            }).join('');
+            return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:10px}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+            <div style="width:210mm;height:297mm;padding:15mm;position:relative">
+              <div style="font-size:16px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:20px;text-decoration:underline">ORDRE DE VIREMENT DE SALAIRES</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:20px">
+                <div style="font-size:10px;line-height:1.8">
+                  <div><strong>Société :</strong> ${first.societe || 'FOTRAL SARL'}</div>
+                  <div><strong>Mois :</strong> ${first.mois || ''}</div>
+                  <div><strong>Date virement :</strong> ${first.date_virement || ''}</div>
+                  <div><strong>Montant total :</strong> ${f2(total)} MAD</div>
+                </div>
+                <div style="font-size:10px;line-height:1.8;text-align:right">
+                  <div><strong>Banque :</strong> ${first.banque || ''}</div>
+                  <div><strong>Agence :</strong> ${first.agence || ''}</div>
+                  <div><strong>RIB :</strong> ${first.rib || ''}</div>
+                  <div><strong>Réf. ordre :</strong> ${ref}</div>
+                </div>
+              </div>
+              <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+                <thead><tr>
+                  <th style="background:#1F3864;color:#fff;font-size:9px;padding:8px 10px;border:1px solid #1F3864;width:8%">N°</th>
+                  <th style="background:#1F3864;color:#fff;font-size:9px;padding:8px 10px;border:1px solid #1F3864;width:35%">Nom & Prénom<br/><span style="font-size:8px;font-weight:normal">الاسم الكامل</span></th>
+                  <th style="background:#1F3864;color:#fff;font-size:9px;padding:8px 10px;border:1px solid #1F3864;width:35%">RIB / IBAN<br/><span style="font-size:8px;font-weight:normal">رقم الحساب</span></th>
+                  <th style="background:#1F3864;color:#fff;font-size:9px;padding:8px 10px;border:1px solid #1F3864;width:22%">Net à Payer<br/><span style="font-size:8px;font-weight:normal">صافي الأجر</span></th>
+                </tr></thead>
+                <tbody>
+                  ${rowsHtml}${emptyRows}
+                  <tr><td colspan="3" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:11px;padding:8px 10px;border:1px solid #999">TOTAL</td>
+                  <td style="text-align:right;background:#E8EDF3;font-weight:900;font-size:11px;font-family:monospace;padding:8px 10px;border:1px solid #999">${f2(total)}</td></tr>
+                </tbody>
+              </table>
+              <div style="display:flex;justify-content:space-between;margin-top:40px;font-size:10px;position:absolute;bottom:20mm;left:15mm;right:15mm">
+                <div style="text-align:center;width:30%"><div style="border-top:1px solid #999;padding-top:5px;font-weight:700">Signature & Cachet Société</div></div>
+                <div style="text-align:center;width:30%"><div style="border-top:1px solid #999;padding-top:5px;font-weight:700">Visa Banque</div></div>
+                <div style="text-align:center;width:30%"><div style="border-top:1px solid #999;padding-top:5px;font-weight:700">Date</div></div>
+              </div>
+            </div></body></html>`;
+          };
 
           return (
             <div>
@@ -6760,43 +6822,17 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     <h1 className="text-2xl font-extrabold tracking-tight">Ordres de Virement (Paie)</h1>
                     <p className="text-sm text-slate-400 mt-1">{ordreKeys.length} ordre(s) — {paieList.length} virement(s)</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <button onClick={() => fetchPaie('paie_ordre_virement')} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
                     <button onClick={() => { if (!paieList.length) return; exportToXLS(paieList.map((r:any,i:number) => ({ 'Réf':r.ordre_ref||r.ref_ordre||'','Mois':r.mois,'N°':r.numero||i+1,'Nom':r.nom_prenom,'RIB':r.rib_salarie,'Net à Payer':r.net_a_payer,'Banque':r.banque,'Agence':r.agence,'Date':r.date_virement })), 'ordres_virement'); }}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     <button onClick={() => {
-                      if (!paieList.length) { toast.error("Aucun ordre."); return; }
-                      const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
-                      const grouped: Record<string, any[]> = {};
-                      paieList.forEach((r: any) => { const ref = r.ordre_ref || r.ref_ordre || 'Sans ref'; if (!grouped[ref]) grouped[ref] = []; grouped[ref].push(r); });
-                      let allHtml = '';
-                      Object.keys(grouped).forEach(ref => {
-                        const items = grouped[ref];
-                        const first = items[0];
-                        const total = items.reduce((s: number, r: any) => s + (parseFloat(r.net_a_payer) || 0), 0);
-                        const rowsHtml = items.map((r: any, i: number) => {
-                          const bg = i%2===1?'#F8F8F8':'#fff';
-                          return `<tr><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.numero||i+1}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.nom_prenom}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;background:${bg}">${r.rib_salarie||'—'}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;text-align:right;background:${bg}">${f2(parseFloat(r.net_a_payer)||0)}</td></tr>`;
-                        }).join('');
-                        allHtml += `<div style="page-break-after:always;width:210mm;min-height:297mm;padding:15mm">
-                          <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:5px">Ordre de Virement</div>
-                          <div style="font-size:10px;text-align:center;color:#555;margin-bottom:15px">Réf: ${ref} — Mois: ${first.mois}</div>
-                          <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:9px">
-                            <div><strong>Banque:</strong> ${first.banque||''}<br/><strong>Agence:</strong> ${first.agence||''}<br/><strong>RIB:</strong> ${first.rib||''}</div>
-                            <div style="text-align:right"><strong>Date:</strong> ${first.date_virement||''}<br/><strong>Montant Total:</strong> ${f2(total)} MAD</div>
-                          </div>
-                          <table style="width:100%;border-collapse:collapse">
-                            <thead><tr>${['N°','Nom / Prénom','RIB / IBAN','Net à Payer (MAD)'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:9px;padding:6px 8px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead>
-                            <tbody>${rowsHtml}
-                              <tr><td colspan="3" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;padding:6px 8px;border:1px solid #ddd">TOTAL</td><td style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;font-family:monospace;padding:6px 8px;border:1px solid #ddd">${f2(total)}</td></tr>
-                            </tbody>
-                          </table>
-                        </div>`;
-                      });
+                      if (!ordreKeys.length) { toast.error("Aucun ordre."); return; }
+                      const allHtml = ordreKeys.map(ref => generateOVPdf(ref, grouped[ref])).map(h => h.replace('<!DOCTYPE html><html><head>','').replace('</body></html>','').replace(/<head>.*?<\/head>/s,'')).join('');
                       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:10px}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>${allHtml}</body></html>`;
                       const win = window.open('','_blank');
                       if(win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
-                    }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
+                    }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF (tous)</button>
                     <label className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <Upload size={14} /> Importer XLS
                       <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
@@ -6810,8 +6846,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                           const records = dataRows.map((r: any[], i: number) => ({
                             company_id: companyId, mois: new Date().toISOString().slice(0, 7),
                             numero: parseInt(r[0]) || i + 1, nom_prenom: String(r[1] || ''),
-                            rib_salarie: String(r[2] || ''), net_a_payer: typeof r[3] === 'number' ? r[3] : parseFloat(String(r[3]).replace(',','.')) || 0,
-                            banque: String(r[4] || ''), agence: String(r[5] || ''),
+                            rib_salarie: String(r[2] || ''), net_a_payer: typeof r[3] === 'number' ? r[3] : parseFloat(String(r[3]).replace(',', '.')) || 0,
                             ordre_ref: `IMP-${Date.now().toString(36).toUpperCase()}`,
                           }));
                           if (!records.length) { toast.error("Aucune donnée."); return; }
@@ -6825,91 +6860,103 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 </div>
               </div>
 
+              {/* Filters */}
+              <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                  <input type="month" value={ovFilter.mois} onChange={e => setOvFilter((p: any) => ({...p, mois: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom</label>
+                  <input type="text" placeholder="Rechercher..." value={ovFilter.name} onChange={e => setOvFilter((p: any) => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                <button onClick={() => setOvFilter({name:'',mois:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+              </div>
+
+              {/* Orders list */}
               {ordreKeys.length === 0 ? (
                 <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">Aucun ordre. Sélectionnez des salariés dans le Journal de Paie et cliquez "Payer".</div>
               ) : ordreKeys.map(ref => {
                 const items = grouped[ref];
                 const first = items[0];
                 const total = items.reduce((s: number, r: any) => s + (parseFloat(r.net_a_payer) || 0), 0);
+                const [expanded, setExpanded] = [checkedPaie.includes(ref), (v: boolean) => setCheckedPaie(prev => v ? [...prev.filter(x => x !== ref), ref] : prev.filter(x => x !== ref))];
                 return (
-                  <div key={ref} className="mb-4 bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="bg-amber-50 border-b border-amber-200 p-4 flex items-center justify-between">
-                      <div>
-                        <span className="font-mono text-sm font-black text-amber-800">{ref}</span>
-                        <div className="flex gap-3 mt-1">
-                          <span className="text-[10px] text-slate-500">Mois: {first.mois}</span>
-                          <span className="text-[10px] text-slate-500">Date: {first.date_virement}</span>
-                          <span className="text-[10px] text-slate-500">Banque: {first.banque}</span>
-                          <span className="text-[10px] text-slate-500">Agence: {first.agence}</span>
+                  <div key={ref} className="mb-3">
+                    {/* Collapsed card */}
+                    <div onClick={() => setExpanded(!expanded)}
+                      className={`bg-white rounded-xl border ${expanded ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200'} p-4 flex items-center justify-between cursor-pointer hover:bg-amber-50/50 transition-all`}>
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                          <FileText size={20} className="text-amber-600" />
+                        </div>
+                        <div>
+                          <span className="text-sm font-black text-slate-800">{first.mois}</span>
+                          <div className="flex gap-3 mt-1">
+                            <span className="font-mono text-[10px] text-amber-700 font-bold">{ref}</span>
+                            <span className="text-[10px] text-slate-500">{items.length} salarié(s)</span>
+                            <span className="text-[10px] text-slate-400">Date: {first.date_virement || '—'}</span>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[9px] text-slate-400 uppercase block">Total</span>
-                        <span className="text-lg font-black text-emerald-700">{fmt2(total)} MAD</span>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <span className="text-[9px] text-slate-400 uppercase block">Total Net</span>
+                          <span className="text-lg font-black text-emerald-700">{f2(total)} MAD</span>
+                        </div>
+                        <span className="text-slate-400">{expanded ? '▼' : '▶'}</span>
                       </div>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left">
-                        <thead className="bg-slate-50 border-b border-slate-200">
-                          <tr>{['N°','Nom / Prénom','RIB / IBAN','Net à Payer'].map(h => (
-                            <th key={h} className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
-                          ))}</tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {items.map((r: any, i: number) => (
-                            <tr key={r.id} className="hover:bg-slate-50">
-                              <td className="px-4 py-2 font-mono text-xs text-slate-500">{r.numero || i + 1}</td>
-                              <td className="px-4 py-2 text-xs font-semibold text-slate-800">{r.nom_prenom}</td>
-                              <td className="px-4 py-2 font-mono text-[10px] text-slate-600">{r.rib_salarie || '—'}</td>
-                              <td className="px-4 py-2 font-mono text-xs font-bold text-emerald-700">{fmt2(parseFloat(r.net_a_payer) || 0)}</td>
-                            </tr>
-                          ))}
-                          <tr className="bg-slate-100">
-                            <td colSpan={3} className="px-4 py-2 text-right text-xs font-black text-slate-600">TOTAL</td>
-                            <td className="px-4 py-2 font-mono text-xs font-black text-emerald-700">{fmt2(total)}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="p-3 border-t border-slate-200 flex gap-2">
-                      <button onClick={() => {
-                        const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
-                        const rowsHtml = items.map((r: any, i: number) => {
-                          const bg = i%2===1?'#F8F8F8':'#fff';
-                          return `<tr><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.numero||i+1}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;background:${bg}">${r.nom_prenom}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;background:${bg}">${r.rib_salarie||'—'}</td><td style="padding:4px 8px;border:1px solid #ddd;font-size:9px;font-family:monospace;text-align:right;background:${bg}">${f2(parseFloat(r.net_a_payer)||0)}</td></tr>`;
-                        }).join('');
-                        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:10px}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
-                        <div style="width:210mm;min-height:297mm;padding:15mm">
-                          <div style="font-size:14px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:5px">Ordre de Virement</div>
-                          <div style="font-size:10px;text-align:center;color:#555;margin-bottom:15px">Réf: ${ref} — Mois: ${first.mois}</div>
-                          <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:9px">
-                            <div><strong>Banque:</strong> ${first.banque||''}<br/><strong>Agence:</strong> ${first.agence||''}<br/><strong>RIB:</strong> ${first.rib||''}</div>
-                            <div style="text-align:right"><strong>Date:</strong> ${first.date_virement||''}<br/><strong>Montant Total:</strong> ${f2(total)} MAD</div>
+
+                    {/* Expanded detail */}
+                    {expanded && (
+                      <div className="mt-1 bg-white rounded-xl border border-amber-200 overflow-hidden">
+                        <div className="bg-amber-50 border-b border-amber-200 p-3 flex items-center justify-between text-[10px]">
+                          <div className="flex gap-4">
+                            <span><strong>Banque:</strong> {first.banque || '—'}</span>
+                            <span><strong>Agence:</strong> {first.agence || '—'}</span>
+                            <span><strong>RIB:</strong> {first.rib || '—'}</span>
                           </div>
-                          <table style="width:100%;border-collapse:collapse">
-                            <thead><tr>${['N°','Nom / Prénom','RIB / IBAN','Net à Payer (MAD)'].map(h=>`<th style="background:#1F3864;color:#fff;font-size:9px;padding:6px 8px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead>
-                            <tbody>${rowsHtml}
-                              <tr><td colspan="3" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;padding:6px 8px;border:1px solid #ddd">TOTAL</td><td style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;font-family:monospace;padding:6px 8px;border:1px solid #ddd">${f2(total)}</td></tr>
+                          <div className="flex gap-2">
+                            <button onClick={() => {
+                              const html = generateOVPdf(ref, items);
+                              const win = window.open('', '_blank');
+                              if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+                            }} className="bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase flex items-center gap-1 cursor-pointer"><FileText size={10} /> PDF</button>
+                            <button onClick={() => { exportToXLS(items.map((r: any, i: number) => ({ 'N°': r.numero || i + 1, 'Nom': r.nom_prenom, 'RIB': r.rib_salarie, 'Net à Payer': r.net_a_payer })), `ov_${ref}`); }}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase flex items-center gap-1 cursor-pointer"><Download size={10} /> XLS</button>
+                            <button onClick={async () => {
+                              if (!confirm(`Supprimer l'ordre ${ref} ?`)) return;
+                              for (const r of items) await supabase.from('paie_ordre_virement').delete().eq('id', r.id);
+                              for (const r of items) {
+                                const { data } = await supabase.from('paie_journal').select('id').eq('company_id', companyId).eq('nom_prenom', r.nom_prenom).eq('mois', r.mois).eq('paid', true).limit(1);
+                                if (data?.[0]) await supabase.from('paie_journal').update({ paid: false }).eq('id', data[0].id);
+                              }
+                              toast.success(`Ordre ${ref} supprimé.`); fetchPaie('paie_ordre_virement');
+                            }} className="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase flex items-center gap-1 cursor-pointer"><Trash2 size={10} /> Suppr.</button>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                              <tr>{['N°', 'Nom & Prénom', 'RIB / IBAN', 'Net à Payer'].map(h => (
+                                <th key={h} className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                              ))}</tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {items.map((r: any, i: number) => (
+                                <tr key={r.id} className="hover:bg-slate-50">
+                                  <td className="px-4 py-2 font-mono text-xs text-slate-500">{r.numero || i + 1}</td>
+                                  <td className="px-4 py-2 text-xs font-semibold text-slate-800">{r.nom_prenom}</td>
+                                  <td className="px-4 py-2 font-mono text-[10px] text-slate-600">{r.rib_salarie || '—'}</td>
+                                  <td className="px-4 py-2 font-mono text-xs font-bold text-emerald-700">{f2(parseFloat(r.net_a_payer) || 0)}</td>
+                                </tr>
+                              ))}
+                              <tr className="bg-slate-100">
+                                <td colSpan={3} className="px-4 py-2 text-right text-xs font-black text-slate-600">TOTAL</td>
+                                <td className="px-4 py-2 font-mono text-xs font-black text-emerald-700">{f2(total)}</td>
+                              </tr>
                             </tbody>
                           </table>
-                        </div></body></html>`;
-                        const win = window.open('','_blank');
-                        if(win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
-                      }} className="bg-violet-600 hover:bg-violet-700 text-white px-2 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer"><FileText size={12} /> PDF</button>
-                      <button onClick={() => { exportToXLS(items.map((r:any,i:number) => ({ 'N°':r.numero||i+1,'Nom':r.nom_prenom,'RIB':r.rib_salarie,'Net à Payer':r.net_a_payer })), `ordre_virement_${ref}`); }}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer"><Download size={12} /> XLS</button>
-                      <button onClick={async () => {
-                        if (!confirm(`Supprimer l'ordre ${ref} ?`)) return;
-                        for (const r of items) await supabase.from('paie_ordre_virement').delete().eq('id', r.id);
-                        // Unmark paid in paie_journal
-                        for (const r of items) {
-                          const { data } = await supabase.from('paie_journal').select('id').eq('company_id', companyId).eq('nom_prenom', r.nom_prenom).eq('mois', r.mois).eq('paid', true).limit(1);
-                          if (data?.[0]) await supabase.from('paie_journal').update({ paid: false }).eq('id', data[0].id);
-                        }
-                        toast.success(`Ordre ${ref} supprimé.`);
-                        fetchPaie('paie_ordre_virement');
-                      }} className="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer"><Trash2 size={12} /> Supprimer</button>
-                    </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
