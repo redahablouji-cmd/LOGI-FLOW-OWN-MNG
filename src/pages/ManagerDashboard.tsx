@@ -2598,7 +2598,7 @@ const handleGenerateInvoicePDF = () => {
       const cnss = parseFloat((Math.min(salaireBrut, 6000) * 0.0448).toFixed(2));
       const amo = parseFloat((salaireBrut * 0.0226).toFixed(2));
       // STEP 4: SBI
-      const sbi = salaireBrut - cnss - amo;
+      const sbi = salaireBrut;
       // STEP 5: Frais Professionnels (on SBI)
       const fraisPro = sbi <= 6500 ? parseFloat((Math.min(sbi * 0.35, 2500)).toFixed(2)) : parseFloat((Math.min(sbi * 0.25, 2916.67)).toFixed(2));
       // STEP 6: Base Imposable (SNI)
