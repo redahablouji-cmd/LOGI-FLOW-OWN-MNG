@@ -2584,6 +2584,36 @@ const handleGenerateInvoicePDF = () => {
   };
 
   const generateJournalPaie = (mois: string): any[] => {
+    // Check if month is validated (all drivers have saved overrides)
+    const savedForMonth = paieList.filter((p: any) => p.mois === mois);
+    if (savedForMonth.length > 0) {
+      // Month validated — return saved data, don't recalculate
+      return savedForMonth.sort((a: any, b: any) => (parseInt(a.matricule) || 0) - (parseInt(b.matricule) || 0)).map((p: any) => ({
+        ...p,
+        has_override: true,
+        ir_net: Math.max(parseFloat(p.ir_net) || 0, 0),
+        net_a_payer: parseFloat(p.net_a_payer) || 0,
+        salaire_base: parseFloat(p.salaire_base) || 0,
+        salaire_brut: parseFloat(p.salaire_brut) || 0,
+        cnss_sal: parseFloat(p.cnss_sal) || 0,
+        amo: parseFloat(p.amo) || 0,
+        heures_sup: parseFloat(p.heures_sup) || 0,
+        primes: parseFloat(p.primes) || 0,
+        indemnites: parseFloat(p.indemnites) || 0,
+        anciennete: parseFloat(p.anciennete) || 0,
+        avances: parseFloat(p.avances) || 0,
+        frais_deplacement: parseFloat(p.frais_deplacement) || 0,
+        frais_pro: parseFloat(p.frais_pro) || 0,
+        base_imposable: parseFloat(p.base_imposable) || 0,
+        ded_famille: parseFloat(p.ded_famille) || 0,
+        taux_ir: parseFloat(p.taux_ir) || 0,
+        som_deduire: parseFloat(p.som_deduire) || 0,
+        nb_annees: parseFloat(p.nb_annees) || 0,
+        taux_anciennete: parseFloat(p.taux_anciennete) || 0,
+        nb_deduction: parseInt(p.nb_deduction) || 0,
+      }));
+    }
+    // Month not validated — calculate live
     return fleetDrivers.filter((d: any) => d.cin && d.imm_cnss).sort((a: any, b: any) => (parseInt(a.code) || 0) - (parseInt(b.code) || 0)).map((d: any) => {
       const override = paieList.find((p: any) => p.matricule === d.code && p.mois === mois) || {};
       // STEP 1: Salaire Brut
@@ -6354,15 +6384,66 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Download size={14} /> Export XLS</button>
                     <button onClick={() => {
                       if (!filtered.length) return;
+                      const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
                       const rowsHtml = filtered.map((r: any, i: number) => {
                         const bg = i%2===1?'#F8F8F8':'#fff';
-                        return `<tr>${[r.matricule,r.nom_prenom,r.fonction,r.date_embauche||'',r.date_naissance||'',r.mois,r.situation_fam,r.nb_deduction,r.cnss_num||'',fmt2(r.salaire_base),fmt2(r.heures_sup),fmt2(r.primes),fmt2(r.indemnites),fmt2(r.anciennete),fmt2(r.salaire_brut),r.nb_annees,fmt2(r.cnss_sal),fmt2(r.amo),fmt2(r.ir_net),fmt2(r.avances),fmt2(r.frais_deplacement),fmt2(r.net_a_payer),r.mode_paiement,fmt2(r.frais_pro),fmt2(r.base_imposable),fmt2(r.ded_famille),(r.taux_ir*100).toFixed(0)+'%',fmt2(r.som_deduire),fmt2(r.ir_brut)].map(v=>`<td style="padding:2px 3px;border:1px solid #ddd;font-size:6px;background:${bg}">${v}</td>`).join('')}</tr>`;
+                        return `<tr>${[r.matricule,r.nom_prenom,r.fonction,r.date_embauche||'',r.date_naissance||'',r.mois,r.situation_fam,r.nb_deduction,r.cnss_num||'',f2(r.salaire_base),f2(r.heures_sup),f2(r.primes),f2(r.indemnites),f2(r.anciennete),f2(r.salaire_brut),r.nb_annees,f2(r.cnss_sal),f2(r.amo),f2(r.ir_net),f2(r.avances),f2(r.frais_deplacement),f2(r.net_a_payer),r.mode_paiement,f2(r.frais_pro),f2(r.base_imposable),f2(r.ded_famille),((r.taux_ir||0)*100).toFixed(0)+'%',f2(r.som_deduire)].map(v=>`<td style="padding:2px 3px;border:1px solid #ddd;font-size:6px;background:${bg}">${v}</td>`).join('')}</tr>`;
                       }).join('');
-                      const headers = ['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup','Primes','Indemn.','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances','Frais D.','Net','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd','IR Brut'];
-                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:8px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div style="width:297mm;min-height:210mm;padding:8mm"><div style="font-size:13px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:8px">Journal de Paie — ${mois}</div><table style="width:100%;border-collapse:collapse"><thead><tr>${headers.map(h=>`<th style="background:#1F3864;color:#fff;font-size:7px;padding:3px 4px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table></div></body></html>`;
+                      const headers = ['Mat.','Nom','Fonction','Embauche','Naissance','Paie de','Sit.F','Déd.','CNSS N°','Sal.Base','H.Sup','Primes','Indemn.','Anc.','Brut','Nb Ans','CNSS','AMO','IR Net','Avances','Frais D.','Net','Mode','Frais Pro','Base Imp.','Déd.Fam','Taux IR','Som.Déd'];
+                      const totals = ['TOTAUX','','','','','','','','',
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.salaire_base||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.heures_sup||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.primes||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.indemnites||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.anciennete||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.salaire_brut||0),0)),
+                        '',
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.cnss_sal||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.amo||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.ir_net||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.avances||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.frais_deplacement||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.net_a_payer||0),0)),
+                        '',
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.frais_pro||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.base_imposable||0),0)),
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.ded_famille||0),0)),
+                        '',
+                        f2(filtered.reduce((s:number,r:any)=>s+(r.som_deduire||0),0)),
+                      ];
+                      const totalsHtml = `<tr>${totals.map(v => `<td style="padding:3px 4px;border:1px solid #1F3864;font-size:7px;background:#1F3864;color:#fff;font-weight:900;text-align:right;font-family:monospace">${v}</td>`).join('')}</tr>`;
+                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:8px}@page{margin:0;size:A4 landscape}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div style="width:297mm;min-height:210mm;padding:8mm"><div style="font-size:13px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:8px">Journal de Paie — ${mois}</div><table style="width:100%;border-collapse:collapse"><thead><tr>${headers.map(h=>`<th style="background:#1F3864;color:#fff;font-size:7px;padding:3px 4px;border:1px solid #1F3864">${h}</th>`).join('')}</tr></thead><tbody>${rowsHtml}${totalsHtml}</tbody></table></div></body></html>`;
                       const win = window.open('','_blank');
                       if(win){win.document.write(html);win.document.close();win.focus();setTimeout(()=>win.print(),600);}
                     }} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF</button>
+                    <button onClick={async () => {
+                      if (!filtered.length) { toast.error("Aucune ligne."); return; }
+                      if (!confirm(`Valider ${filtered.length} lignes pour ${mois} ? Les données seront sauvegardées et ne changeront plus.`)) return;
+                      let count = 0;
+                      for (const r of filtered) {
+                        const payload: any = {
+                          company_id: companyId, mois, matricule: r.matricule, nom_prenom: r.nom_prenom,
+                          fonction: r.fonction, date_embauche: r.date_embauche, date_naissance: r.date_naissance,
+                          situation_fam: r.situation_fam, nb_deduction: r.nb_deduction, cnss_num: r.cnss_num,
+                          salaire_base: r.salaire_base, anciennete: r.anciennete, heures_sup: r.heures_sup,
+                          primes: r.primes, indemnites: r.indemnites, salaire_brut: r.salaire_brut,
+                          cnss_sal: r.cnss_sal, amo: r.amo, ir_net: r.ir_net, avances: r.avances,
+                          frais_deplacement: r.frais_deplacement, net_a_payer: r.net_a_payer,
+                          mode_paiement: r.mode_paiement, frais_pro: r.frais_pro,
+                          base_imposable: r.base_imposable, ded_famille: r.ded_famille,
+                          taux_ir: r.taux_ir, som_deduire: r.som_deduire,
+                          nb_annees: r.nb_annees, taux_anciennete: r.taux_anciennete,
+                        };
+                        if (r.has_override && r.id && !r.id.startsWith('gen-')) {
+                          await supabase.from('paie_journal').update(payload).eq('id', r.id);
+                        } else {
+                          await supabase.from('paie_journal').insert(payload);
+                        }
+                        count++;
+                      }
+                      toast.success(`${count} lignes validées pour ${mois}.`);
+                      fetchPaie('paie_journal');
+                    }} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Check size={14} /> Valider le mois</button>
                   </div>
                 </div>
               </div>
