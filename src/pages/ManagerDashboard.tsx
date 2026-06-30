@@ -6549,6 +6549,35 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         <FileText size={14} /> Payer ({checkedPaie.length})
                       </button>
                     )}
+                    {checkedPaie.length === 1 && (
+                      <button onClick={async () => {
+                        const r = filtered.find((row: any) => row.id === checkedPaie[0]);
+                        if (!r) return;
+                        const label = `${r.nom_prenom} — ${r.mois}`;
+                        // Check if already exists
+                        const { data: existing } = await supabase.from('paie_bulletin').select('id').eq('company_id', companyId).eq('matricule', r.matricule).eq('mois', r.mois).limit(1);
+                        if (existing && existing.length > 0) { toast.error("Bulletin déjà créé pour ce salarié ce mois."); return; }
+                        const { error } = await supabase.from('paie_bulletin').insert({
+                          company_id: companyId, mois: r.mois, matricule: r.matricule, nom_prenom: r.nom_prenom,
+                          qualification: r.fonction, mode_paiement: r.mode_paiement, periode: r.mois,
+                          date_naissance: r.date_naissance, date_embauche: r.date_embauche,
+                          cnss_num: r.cnss_num, cin: '', sf: r.situation_fam, nb_deduction: r.nb_deduction,
+                          fonction: r.fonction, label,
+                          salaire_base: r.salaire_base, heures_sup: r.heures_sup, anciennete: r.anciennete,
+                          primes: r.primes, indemnites: r.indemnites, salaire_brut: r.salaire_brut,
+                          cnss_sal: r.cnss_sal, amo: r.amo, ir_net: r.ir_net, avances: r.avances,
+                          frais_deplacement: r.frais_deplacement, net_a_payer: r.net_a_payer,
+                          frais_pro: r.frais_pro, base_imposable: r.base_imposable, ded_famille: r.ded_famille,
+                          taux_ir: r.taux_ir, som_deduire: r.som_deduire, taux_anciennete: r.taux_anciennete,
+                          situation_fam: r.situation_fam, journal_id: r.id,
+                        });
+                        if (!error) { toast.success(`Bulletin créé: ${label}`); setCheckedPaie([]); }
+                        else toast.error(`Erreur: ${error.message}`);
+                      }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                        <FileText size={14} /> Bulletin
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -6987,8 +7016,157 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             </div>
           );
         })()}
+        {activeTab === 'paie_bulletin' && (() => {
+          const f2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
 
-        {activeTab.startsWith('paie_') && activeTab !== 'paie_parametres' && activeTab !== 'paie_journal' && activeTab !== 'paie_ordre_virement' && PAIE_CONFIG[activeTab] && (() => {
+          const generateBulletinPdf = (b: any) => {
+            const rows = [
+              ['001', 'SALAIRE DE BASE', f2(b.salaire_base), '', f2(b.salaire_base), ''],
+              ['010', 'Congé payé', '', '', '', ''],
+              ['015', 'Heures Supplémentaires', '', '', f2(b.heures_sup), ''],
+              ['020', "PRIME D'ANCIENNETÉ", f2(b.salaire_base), `${((b.taux_anciennete||0)*100).toFixed(0)}%`, f2(b.anciennete), ''],
+              ['021', 'PRIME DE RENDEMENT', '', '', f2(b.primes), ''],
+              ['023', 'IND. DE TRANSPORT', '', '', f2(b.indemnites), ''],
+            ];
+            const rowsHtml = rows.map((r, i) => {
+              const bg = i % 2 === 1 ? '#F5F5F5' : '#fff';
+              return `<tr><td style="padding:4px 6px;border:1px solid #999;font-size:9px;background:${bg};font-weight:700">${r[0]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;background:${bg}">${r[1]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;font-family:monospace;background:${bg}">${r[2]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;background:${bg}">${r[3]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;font-family:monospace;font-weight:700;color:#006600;background:${bg}">${r[4]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;font-family:monospace;color:#990000;background:${bg}">${r[5]}</td></tr>`;
+            }).join('');
+            const deductions = [
+              ['030', 'COTISATION CNSS', '', '4,48%', '', f2(b.cnss_sal)],
+              ['031', 'COTISATION AMO', '', '2,26%', '', f2(b.amo)],
+              ['040', "IMPÔT SUR LE REVENU", '', `${((b.taux_ir||0)*100).toFixed(0)}%`, '', f2(b.ir_net)],
+              ['054', 'AVANCE SUR SALAIRE', '', '', '', f2(b.avances)],
+            ];
+            const dedHtml = deductions.map((r, i) => {
+              const bg = i % 2 === 1 ? '#F5F5F5' : '#fff';
+              return `<tr><td style="padding:4px 6px;border:1px solid #999;font-size:9px;background:${bg};font-weight:700">${r[0]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;background:${bg}">${r[1]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;font-family:monospace;background:${bg}">${r[2]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;background:${bg}">${r[3]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;font-family:monospace;color:#006600;background:${bg}">${r[4]}</td><td style="padding:4px 6px;border:1px solid #999;font-size:9px;text-align:right;font-family:monospace;color:#990000;background:${bg}">${r[5]}</td></tr>`;
+            }).join('');
+
+            return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;font-size:10px}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+            <div style="width:210mm;height:297mm;padding:12mm">
+              <div style="font-size:16px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:15px;text-decoration:underline">BULLETIN DE PAIE</div>
+              <table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:9px">
+                <tr><td style="border:1px solid #999;padding:4px 8px;width:15%"><strong>MATRICULE</strong></td><td style="border:1px solid #999;padding:4px 8px;width:25%">${b.matricule||''}</td><td style="border:1px solid #999;padding:4px 8px;width:15%"><strong>QUALIFICATION</strong></td><td style="border:1px solid #999;padding:4px 8px;width:20%">${b.qualification||b.fonction||''}</td><td style="border:1px solid #999;padding:4px 8px;width:10%"><strong>PÉRIODE</strong></td><td style="border:1px solid #999;padding:4px 8px;width:15%">${b.mois||''}</td></tr>
+                <tr><td style="border:1px solid #999;padding:4px 8px"><strong>NOM / PRÉNOM</strong></td><td style="border:1px solid #999;padding:4px 8px;font-weight:700" colspan="3">${b.nom_prenom||''}</td><td style="border:1px solid #999;padding:4px 8px"><strong>MODE</strong></td><td style="border:1px solid #999;padding:4px 8px">${b.mode_paiement||'Virement'}</td></tr>
+              </table>
+              <table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:9px">
+                <tr><td style="border:1px solid #999;padding:4px 8px"><strong>DATE NAISSANCE</strong></td><td style="border:1px solid #999;padding:4px 8px">${b.date_naissance||''}</td><td style="border:1px solid #999;padding:4px 8px"><strong>DATE EMBAUCHE</strong></td><td style="border:1px solid #999;padding:4px 8px">${b.date_embauche||''}</td><td style="border:1px solid #999;padding:4px 8px"><strong>DÉDUCTION</strong></td><td style="border:1px solid #999;padding:4px 8px">${b.nb_deduction||0}</td></tr>
+                <tr><td style="border:1px solid #999;padding:4px 8px"><strong>SF</strong></td><td style="border:1px solid #999;padding:4px 8px">${b.situation_fam||b.sf||''}</td><td style="border:1px solid #999;padding:4px 8px"><strong>N° CNSS</strong></td><td style="border:1px solid #999;padding:4px 8px">${b.cnss_num||''}</td><td style="border:1px solid #999;padding:4px 8px"><strong>N° CIN</strong></td><td style="border:1px solid #999;padding:4px 8px">${b.cin||''}</td></tr>
+              </table>
+              <table style="width:100%;border-collapse:collapse;margin-bottom:3px">
+                <thead><tr>
+                  <th style="background:#1F3864;color:#fff;font-size:8px;padding:5px 6px;border:1px solid #1F3864;width:8%">CODE</th>
+                  <th style="background:#1F3864;color:#fff;font-size:8px;padding:5px 6px;border:1px solid #1F3864;width:35%">DÉSIGNATION RUBRIQUE</th>
+                  <th style="background:#1F3864;color:#fff;font-size:8px;padding:5px 6px;border:1px solid #1F3864;width:15%">BASE</th>
+                  <th style="background:#1F3864;color:#fff;font-size:8px;padding:5px 6px;border:1px solid #1F3864;width:10%">TAUX</th>
+                  <th style="background:#1F3864;color:#fff;font-size:8px;padding:5px 6px;border:1px solid #1F3864;width:16%">À PAYER</th>
+                  <th style="background:#1F3864;color:#fff;font-size:8px;padding:5px 6px;border:1px solid #1F3864;width:16%">À RETENIR</th>
+                </tr></thead>
+                <tbody>
+                  ${rowsHtml}
+                  <tr><td colspan="4" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;padding:5px 8px;border:1px solid #999">SALAIRE BRUT IMPOSABLE</td><td style="text-align:right;font-family:monospace;font-weight:900;font-size:10px;padding:5px 8px;border:1px solid #999;color:#006600">${f2(b.salaire_brut)}</td><td style="border:1px solid #999"></td></tr>
+                  ${dedHtml}
+                  <tr><td colspan="4" style="text-align:right;background:#E8EDF3;font-weight:900;font-size:10px;padding:5px 8px;border:1px solid #999">SALAIRE NET IMPOSABLE</td><td style="border:1px solid #999"></td><td style="text-align:right;font-family:monospace;font-weight:900;font-size:10px;padding:5px 8px;border:1px solid #999;color:#990000">${f2(b.base_imposable)}</td></tr>
+                </tbody>
+              </table>
+              <table style="width:100%;border-collapse:collapse;margin-bottom:10px;margin-top:15px">
+                <tr style="background:#1F3864;color:#fff;font-size:8px;font-weight:700">
+                  <td style="padding:4px 6px;border:1px solid #1F3864">CUMUL BRUT</td><td style="padding:4px 6px;border:1px solid #1F3864">IMPÔT REVENU</td><td style="padding:4px 6px;border:1px solid #1F3864">CNSS</td><td style="padding:4px 6px;border:1px solid #1F3864">AMO</td><td style="padding:4px 6px;border:1px solid #1F3864">TOTAL GAIN</td><td style="padding:4px 6px;border:1px solid #1F3864">TOTAL RETENUES</td>
+                </tr>
+                <tr style="font-size:9px;font-family:monospace">
+                  <td style="padding:4px 6px;border:1px solid #999">${f2(b.salaire_brut)}</td><td style="padding:4px 6px;border:1px solid #999">${f2(b.ir_net)}</td><td style="padding:4px 6px;border:1px solid #999">${f2(b.cnss_sal)}</td><td style="padding:4px 6px;border:1px solid #999">${f2(b.amo)}</td><td style="padding:4px 6px;border:1px solid #999;font-weight:700;color:#006600">${f2(b.salaire_brut + (b.frais_deplacement||0))}</td><td style="padding:4px 6px;border:1px solid #999;font-weight:700;color:#990000">${f2(b.cnss_sal + b.amo + b.ir_net + (b.avances||0))}</td>
+                </tr>
+              </table>
+              <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px">
+                <div style="font-weight:900">BON POUR QUITTANCE DU NET À PAYER</div>
+                <div style="font-weight:900;font-size:14px;color:#1F3864;border:2px solid #1F3864;padding:5px 15px;font-family:monospace">NET À PAYER : ${f2(b.net_a_payer)} MAD</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:40px;font-size:10px">
+                <div style="text-align:center;width:40%"><div style="border-top:1px solid #999;padding-top:5px">Signature du Salarié(e)</div></div>
+                <div style="text-align:center;width:40%"><div style="border-top:1px solid #999;padding-top:5px">Signature et Cachet de l'Employeur</div></div>
+              </div>
+            </div></body></html>`;
+          };
+
+          return (
+            <div>
+              <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-emerald-500 text-white mb-2"><FileText className="w-3.5 h-3.5" /> Bulletin de Paie</span>
+                    <h1 className="text-2xl font-extrabold tracking-tight">Bulletins de Paie</h1>
+                    <p className="text-sm text-slate-400 mt-1">{paieList.length} bulletin(s)</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => fetchPaie('paie_bulletin')} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Actualiser</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom</label>
+                  <input type="text" placeholder="Rechercher..." value={paieFilter.name} onChange={e => setPaieFilter(p => ({...p, name: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500 w-40" /></div>
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mois</label>
+                  <input type="month" value={paieFilter.mois} onChange={e => setPaieFilter(p => ({...p, mois: e.target.value}))} className="block mt-1 h-8 rounded-lg border-2 border-slate-200 px-3 text-xs focus:outline-none focus:border-blue-500" /></div>
+                <button onClick={() => setPaieFilter({name:'',mois:''})} className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">Réinitialiser</button>
+              </div>
+
+              {/* Bulletin cards */}
+              {paieList.length === 0 ? (
+                <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">Aucun bulletin. Sélectionnez un salarié dans le Journal de Paie et cliquez "Bulletin".</div>
+              ) : paieList.filter((b: any) => {
+                if (paieFilter.name && !b.nom_prenom?.toLowerCase().includes(paieFilter.name.toLowerCase())) return false;
+                if (paieFilter.mois && b.mois !== paieFilter.mois) return false;
+                return true;
+              }).map((b: any) => (
+                <div key={b.id} className="mb-3 bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between hover:bg-slate-50 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                      <FileText size={20} className="text-emerald-600" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-black text-slate-800">{b.label || `${b.nom_prenom} — ${b.mois}`}</span>
+                      <div className="flex gap-3 mt-1">
+                        <span className="text-[10px] text-slate-500">Mat: {b.matricule}</span>
+                        <span className="text-[10px] text-slate-500">{b.qualification || b.fonction}</span>
+                        <span className="text-[10px] font-bold text-emerald-600">Net: {f2(b.net_a_payer)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => {
+                      const html = generateBulletinPdf(b);
+                      const win = window.open('', '_blank');
+                      if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 600); }
+                    }} className="px-3 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 text-[10px] font-black uppercase rounded-lg cursor-pointer flex items-center gap-1">
+                      <FileText size={12} /> PDF
+                    </button>
+                    <button onClick={() => {
+                      setEditingPaie(b);
+                      const f: any = {};
+                      Object.keys(b).forEach(k => f[k] = String(b[k] ?? ''));
+                      setPaieForm(f);
+                      setShowPaieForm(true);
+                    }} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-black uppercase rounded-lg cursor-pointer flex items-center gap-1">
+                      <Pencil size={12} /> Modifier
+                    </button>
+                    <button onClick={async () => {
+                      if (!confirm(`Supprimer le bulletin de ${b.nom_prenom} ?`)) return;
+                      await supabase.from('paie_bulletin').delete().eq('id', b.id);
+                      toast.success("Bulletin supprimé."); fetchPaie('paie_bulletin');
+                    }} className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black uppercase rounded-lg cursor-pointer flex items-center gap-1">
+                      <Trash2 size={12} /> Supprimer
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {activeTab.startsWith('paie_') && activeTab !== 'paie_parametres' && activeTab !== 'paie_journal' && activeTab !== 'paie_ordre_virement' && activeTab !== 'paie_bulletin' && PAIE_CONFIG[activeTab] && (() => {
           const cfg = PAIE_CONFIG[activeTab];
           const fmt2 = (n: any) => (n === undefined || n === null || isNaN(n)) ? '0,00' : Number(n).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
           const filtered = paieList.filter((r: any) => {
