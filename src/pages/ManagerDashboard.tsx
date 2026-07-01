@@ -7714,110 +7714,184 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
         {activeTab === 'contrats' && (() => {
           const driverC = fleetDrivers.find((d: any) => d.code === contratDriver) || null;
           const today = new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' });
-          const pageStyle = `*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:12px;line-height:1.7}@page{margin:0;size:A4}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}h1{font-size:16px;font-weight:900;color:#1F3864;text-align:center;margin-bottom:20px;text-decoration:underline}h2{font-size:13px;font-weight:900;color:#1F3864;margin:15px 0 8px}p{margin-bottom:8px;text-align:justify}.page{width:210mm;min-height:297mm;padding:20mm}`;
+
+          const cS = `@page{size:A4;margin:20mm 25mm 25mm 25mm}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2{page-break-after:avoid}}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10.5pt;color:#000;line-height:1.5;padding:0}.hdr{background:#1F3864;text-align:center;padding:18px 30px;margin-bottom:25px}.hdr h1{color:#FFF;font-size:18pt;font-weight:bold;margin:0}.hdr .sub{color:#C5D8F0;font-size:9.5pt;margin:3px 0}.hdr h2{color:#FFF;font-size:16pt;font-weight:bold;margin:6px 0 2px}h2.sec{color:#1F3864;font-size:13pt;font-weight:bold;border-bottom:2px solid #2E75B6;padding-bottom:4px;margin:25px 0 10px}.tbl{width:100%;border-collapse:collapse;margin:10px 0 15px}.tbl td{padding:5px 10px;border-bottom:1px solid #CCC;font-size:9.5pt;vertical-align:top}.tbl td.l{font-weight:bold;color:#444;width:35%}.tbl tr:nth-child(even) td{background:#F5F8FC}hr.sep{border:none;border-top:1px solid #CCC;margin:18px 0}p{margin:7px 0;text-align:justify}ul{margin:7px 0 7px 22px}ul li{margin:3px 0}.sig{display:flex;justify-content:space-between;margin-top:50px}.sig>div{width:45%}.sig .t{font-weight:bold}.sig .c{font-weight:bold;color:#1F3864}.sig .ln{border-top:1px solid #000;margin-top:70px;width:80%}.ft{text-align:center;color:#888;font-size:9pt;border-top:1px solid #CCC;padding-top:8px;margin-top:35px}.cb{display:inline-block;width:14px;height:14px;border:1.5px solid #444;margin-right:8px;vertical-align:middle}.page{width:210mm;min-height:297mm;padding:20mm}`;
+
+          const cEmpl = `<h2 class="sec">ENTRE LES SOUSSIGNÉS</h2><table class="tbl"><tr><td class="l">Raison sociale :</td><td>FOTRAL SARL</td></tr><tr><td class="l">Forme juridique :</td><td>Société à Responsabilité Limitée (SARL)</td></tr><tr><td class="l">Secteur d'activité :</td><td>Transport Routier de Marchandises &amp; Logistique</td></tr><tr><td class="l">Siège social :</td><td>45 premiére étage rue 6 hay rekbout sidi moumen, Casablanca, Maroc</td></tr><tr><td class="l">N° RC :</td><td>143123</td></tr><tr><td class="l">N° ICE :</td><td>000079867000095</td></tr><tr><td class="l">N° IF :</td><td>02801217</td></tr><tr><td class="l">N° CNSS :</td><td>7473896</td></tr><tr><td class="l">Représentée par :</td><td>Hablouji Bouchaib</td></tr></table><p>Ci-après désignée « L'Employeur »,</p><p style="text-align:center"><strong>D'UNE PART,</strong></p><p><strong>ET</strong></p>`;
+
+          const cSal = (d: any) => `<table class="tbl"><tr><td class="l">Nom complet :</td><td><strong>${d.nom_prenom || ''}</strong></td></tr><tr><td class="l">Date de naissance :</td><td>${d.date_naissance || ''}</td></tr><tr><td class="l">Nationalité :</td><td>Marocaine</td></tr><tr><td class="l">N° CIN :</td><td>${d.cin || ''}</td></tr><tr><td class="l">Adresse :</td><td>${d.adresse || ''}</td></tr><tr><td class="l">N° CNSS :</td><td>${d.imm_cnss || ''}</td></tr><tr><td class="l">Diplôme / Qualification :</td><td>${d.fonction || ''}</td></tr></table><p>Ci-après désigné(e) « L'Employé(e) »,</p><p style="text-align:center"><strong>D'AUTRE PART,</strong></p><p><strong>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</strong></p><hr class="sep"/>`;
+
+          const cSig = `<div class="sig"><div><p class="t">Pour l'Employeur,</p><p class="c">FOTRAL SARL</p><p>Le Gérant / Directeur Général</p><p>Nom : ___________________________</p><p>Signature et cachet de la Société :</p><div class="ln"></div></div><div><p class="t">L'Employé(e),</p><p>Nom et prénom : _________________</p><p>CIN N° : _______________________</p><p>Lu et approuvé – Bon pour accord :</p><div class="ln"></div></div></div><p style="text-align:center;margin-top:30px">Casablanca, le ___/___/${new Date().getFullYear()}</p><div class="ft">FOTRAL SARL – Transport Routier &amp; Logistique – Casablanca, Maroc</div>`;
+
+          const cA4 = (sal: string) => `<h2 class="sec">ARTICLE 4 – LIEU ET CONDITIONS DE TRAVAIL</h2>
+<p>L'Employé exercera ses fonctions principalement au siège social de FOTRAL SARL sis à Casablanca, Maroc, et/ou en tout autre lieu désigné par l'Employeur en fonction des besoins opérationnels de la Société, notamment sur les sites clients, entrepôts, plateformes logistiques ou tout lieu de prestation de transport.</p>
+<p>L'Employé pourra être amené à effectuer des déplacements professionnels sur le territoire national ou à l'étranger. Ces déplacements seront pris en charge par l'Employeur conformément à la politique de remboursement des frais en vigueur au sein de la Société.</p>
+<h2 class="sec">ARTICLE 5 – DURÉE DU TRAVAIL</h2>
+<p>La durée de travail est fixée à quarante-quatre (44) heures par semaine, conformément aux dispositions de l'article 184 du Code du Travail marocain (Loi n° 65-99) et du Décret n° 2-04-513 du 4 Joumada II 1425 (22 juillet 2004).</p>
+<p>L'Employé est soumis à l'horaire collectif en vigueur dans la Société, affiché sur les lieux de travail et consigné dans le Règlement Intérieur. Toute heure de travail effectuée au-delà de cette durée légale constitue une heure supplémentaire et sera rémunérée conformément aux taux légaux majorés (25 % ou 50 % selon les cas, et 100 % pour les heures effectuées le jour de repos hebdomadaire).</p>
+<h2 class="sec">ARTICLE 6 – RÉMUNÉRATION</h2>
+<p>L'Employeur s'engage à verser à l'Employé un salaire brut mensuel de <strong>${sal}</strong> MAD, payable à terme échu dans les cinq (5) premiers jours ouvrables du mois suivant la période travaillée, par virement bancaire sur le compte dont les coordonnées seront communiquées par l'Employé.</p>
+<p>Ce salaire est soumis aux retenues légales et sociales en vigueur, notamment :</p>
+<ul><li>La Cotisation Nationale de Sécurité Sociale (CNSS) – part salariale : 4,48 % sur le salaire brut plafonné à 6.000 DH/mois ;</li>
+<li>L'Assurance Maladie Obligatoire (AMO) – part salariale : 2,26 % sur le salaire brut total ;</li>
+<li>L'Impôt sur le Revenu (IR) – calculé sur le salaire net imposable selon le barème en vigueur fixé par la Direction Générale des Impôts.</li></ul>
+<p>La rémunération pourra être révisée annuellement lors de l'entretien d'évaluation, en fonction des performances individuelles, des résultats de la Société et de l'évolution du Salaire Minimum Interprofessionnel Garanti (SMIG).</p>
+<h2 class="sec">ARTICLE 7 – AVANTAGES EN NATURE ET PRIMES</h2>
+<p>En plus du salaire de base, l'Employé peut bénéficier, sous réserve des décisions de la Direction :</p>
+<ul><li>Une prime d'ancienneté calculée conformément à l'article 350 du Code du Travail : 5 % du salaire après 2 ans, 10 % après 5 ans, 15 % après 12 ans, 20 % après 20 ans et 25 % après 25 ans de service continu ;</li>
+<li>Une prime de rendement ou d'objectifs, versée selon les critères définis par note de service ;</li>
+<li>Une indemnité de représentation et/ou de déplacement selon le poste et les missions effectuées ;</li>
+<li>Une participation aux frais de transport domicile-travail, le cas échéant, selon les modalités fixées par la Direction.</li></ul>
+<h2 class="sec">ARTICLE 8 – CONGÉS PAYÉS</h2>
+<p>L'Employé bénéficie d'un droit à congé annuel payé conformément aux articles 231 à 255 du Code du Travail, soit un minimum de dix-huit (18) jours ouvrables par an (1,5 jour par mois travaillé), avec une majoration de un jour et demi (1,5) par tranche de cinq (5) années d'ancienneté, sans que cette majoration ne puisse dépasser trente (30) jours ouvrables.</p>
+<p>Les congés seront pris selon le planning établi par la Direction, en tenant compte des nécessités de service. La date de départ en congé sera fixée au moins trente (30) jours à l'avance.</p>
+<h2 class="sec">ARTICLE 9 – OBLIGATIONS DE L'EMPLOYÉ</h2>
+<p>L'Employé s'engage à :</p>
+<ul><li>Consacrer l'intégralité de son temps de travail à l'exécution de ses fonctions au service de la Société ;</li>
+<li>Respecter scrupuleusement les consignes de sécurité, les procédures internes, le Règlement Intérieur, et toutes les directives légales et réglementaires applicables ;</li>
+<li>Faire preuve de loyauté, de diligence et de bonne foi dans l'exécution de ses missions ;</li>
+<li>Préserver la confidentialité des informations commerciales, financières, techniques et stratégiques auxquelles il aurait accès dans l'exercice de ses fonctions, y compris après la cessation du contrat ;</li>
+<li>Signaler sans délai à sa hiérarchie tout incident, dysfonctionnement, accident ou situation à risque constaté dans l'exercice de ses fonctions ;</li>
+<li>Entretenir et utiliser avec soin le matériel, les véhicules et équipements mis à sa disposition ;</li>
+<li>N'exercer aucune activité professionnelle concurrente, à titre personnel ou pour le compte d'un tiers, sans autorisation écrite préalable de l'Employeur.</li></ul>
+<h2 class="sec">ARTICLE 10 – CONFIDENTIALITÉ ET PROPRIÉTÉ INTELLECTUELLE</h2>
+<p>L'Employé est tenu au secret professionnel le plus absolu concernant toutes les informations confidentielles auxquelles il a accès dans le cadre de ses fonctions, incluant sans limitation : les données clients, tarifs, contrats, stratégies commerciales, données de transport et tout document à usage interne.</p>
+<p>Cette obligation de confidentialité s'applique pendant toute la durée du contrat et pendant une période de trois (3) ans après sa cessation, quelle qu'en soit la cause.</p>
+<p>Tout travail, création, invention, logiciel ou document produit par l'Employé dans l'exercice de ses fonctions appartient à FOTRAL SARL et ne peut faire l'objet d'aucune revendication de la part de l'Employé.</p>
+<h2 class="sec">ARTICLE 11 – DISCIPLINE ET SANCTIONS</h2>
+<p>L'Employé est soumis au pouvoir disciplinaire de l'Employeur. Tout manquement aux obligations contractuelles ou au Règlement Intérieur pourra entraîner l'application de sanctions disciplinaires graduées, conformément aux articles 37 à 67 du Code du Travail, à savoir :</p>
+<ul><li>Avertissement écrit ;</li><li>Blâme ;</li><li>Mise à pied de un (1) à huit (8) jours ;</li><li>Licenciement pour faute simple ou faute grave, selon la nature et la gravité des faits.</li></ul>
+<p>Les fautes graves pouvant justifier un licenciement immédiat sans préavis ni indemnité incluent notamment : l'insubordination caractérisée, le vol, la falsification de documents, l'ivresse au travail, la mise en danger d'autrui ou la divulgation d'informations confidentielles.</p>
+<h2 class="sec">ARTICLE 12 – SÉCURITÉ ET HYGIÈNE AU TRAVAIL</h2>
+<p>L'Employeur garantit à l'Employé des conditions de travail conformes aux normes d'hygiène et de sécurité prévues par la législation marocaine (Titre IV du Code du Travail, articles 281 à 333) et les textes réglementaires applicables au secteur du transport routier.</p>
+<p>L'Employé s'engage à respecter toutes les mesures de sécurité et à porter les équipements de protection individuelle mis à sa disposition. Tout accident du travail doit être déclaré immédiatement à l'Employeur, qui procèdera à sa déclaration auprès de la CNSS dans le délai légal de quarante-huit (48) heures.</p>
+<h2 class="sec">ARTICLE 13 – FORMATION PROFESSIONNELLE</h2>
+<p>FOTRAL SARL s'engage à assurer le maintien et le développement des compétences professionnelles de l'Employé, notamment par l'accès à des formations adaptées à l'évolution de ses fonctions et aux exigences du secteur du transport et de la logistique.</p>
+<p>L'Employé bénéficiera des dispositions relatives à la formation professionnelle continue prévues par la législation marocaine en vigueur (Loi n° 13-00 portant statut de la formation professionnelle privée et ses textes d'application).</p>
+<h2 class="sec">ARTICLE 14 – COUVERTURE SOCIALE ET MUTUELLE</h2>
+<p>L'Employé bénéficie de l'affiliation obligatoire à la Caisse Nationale de Sécurité Sociale (CNSS) dès le premier jour d'embauche, ce qui lui ouvre droit aux prestations de : assurance maladie, maternité, invalidité, vieillesse, décès, et allocations familiales.</p>
+<p>L'Employé est également affilié à l'Assurance Maladie Obligatoire (AMO) gérée par la CNSS conformément à la loi n° 65-00 sur la couverture médicale de base.</p>
+<h2 class="sec">ARTICLE 15 – RUPTURE DU CONTRAT</h2>
+<p>En cas de licenciement pour faute non grave, l'Employé a droit à un préavis et à une indemnité de licenciement calculée conformément aux articles 52 à 57 du Code du Travail, soit :</p>
+<ul><li>96 heures de salaire par année de travail pour les 5 premières années d'ancienneté ;</li><li>144 heures de salaire par an entre 6 et 10 ans ;</li><li>192 heures de salaire par an entre 11 et 15 ans ;</li><li>240 heures de salaire par an au-delà de 15 ans.</li></ul>
+<p>En cas de démission, l'Employé doit respecter un délai de préavis identique à celui prévu pour le licenciement selon son ancienneté. Le solde de tout compte sera établi conformément à l'article 73 du Code du Travail.</p>
+<h2 class="sec">ARTICLE 16 – RÈGLEMENT DES LITIGES</h2>
+<p>Tout litige relatif à l'interprétation, l'exécution ou la résiliation du présent contrat sera soumis, à titre préalable, à une tentative de conciliation amiable entre les parties.</p>
+<p>À défaut de conciliation, le différend sera porté devant le Tribunal du Travail compétent de Casablanca, conformément aux articles 530 à 583 du Code du Travail marocain, les parties reconnaissant sa compétence exclusive.</p>
+<p>Le présent contrat est régi par le droit marocain, et notamment par la Loi n° 65-99 formant Code du Travail, telle que modifiée et complétée.</p>
+<h2 class="sec">ARTICLE 17 – DISPOSITIONS DIVERSES</h2>
+<p>Le présent contrat est établi en deux (2) exemplaires originaux, dont un remis à chacune des parties et conservé dans le dossier individuel de l'Employé.</p>
+<p>Le Règlement Intérieur de la Société, la convention collective sectorielle applicable, et toute note de service dûment portée à la connaissance de l'Employé font partie intégrante du présent contrat.</p>
+<p>Toute modification substantielle du présent contrat devra faire l'objet d'un avenant écrit signé par les deux parties.</p>
+<p>La nullité d'une quelconque clause du présent contrat n'affectera pas la validité des autres dispositions qui demeureront en vigueur.</p>`;
 
           const contratTemplates: Record<string, { label: string; generate: (d: any) => string }> = {
-            cdi: { label: 'Contrat CDI', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${pageStyle}</style></head><body>
-              <div class="page">
-                <h1>CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE</h1>
-                <h2>ENTRE LES SOUSSIGNÉS</h2>
-                <p><strong>FOTRAL SARL</strong>, société à responsabilité limitée au capital de ____________ MAD, immatriculée au Registre du Commerce de Casablanca sous le n° ____________, dont le siège social est situé à Imm 45, 1ère étage, Rue 6, Hay Rekbout, Sidi Moumen, Casablanca, représentée par M. HABLOUJI Bouchaib, en sa qualité de Gérant.</p>
-                <p>Ci-après désignée « <strong>L'Employeur</strong> »,</p>
-                <p style="text-align:center"><strong>D'UNE PART,</strong></p>
-                <p><strong>ET</strong></p>
-                <p>M./Mme <strong>${d.nom_prenom}</strong>, né(e) le <strong>${d.date_naissance || '___________'}</strong>, titulaire de la CIN n° <strong>${d.cin || '___________'}</strong>, immatriculé(e) à la CNSS sous le n° <strong>${d.imm_cnss || '___________'}</strong>, demeurant à <strong>${d.adresse || '___________'}</strong>.</p>
-                <p>Ci-après désigné(e) « <strong>L'Employé(e)</strong> »,</p>
-                <p style="text-align:center"><strong>D'AUTRE PART,</strong></p>
-                <h2>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</h2>
-                <h2>ARTICLE 1 – NATURE ET OBJET DU CONTRAT</h2>
-                <p>Le présent contrat est conclu à durée indéterminée (CDI) conformément aux articles 16, 17, 18 et 19 de la Loi n° 65-99 formant Code du Travail du Royaume du Maroc.</p>
-                <h2>ARTICLE 2 – PÉRIODE D'ESSAI</h2>
-                <p>Conformément aux articles 13 et 14 du Code du Travail, le présent contrat est soumis à une période d'essai de trois (3) mois pour les cadres, un mois et demi (1,5 mois) pour les employés, quinze (15) jours pour les ouvriers. Cette période est renouvelable une (1) seule fois.</p>
-                <h2>ARTICLE 3 – POSTE ET ATTRIBUTIONS</h2>
-                <p>L'Employé est engagé(e) au poste de : <strong>${d.fonction || '___________'}</strong></p>
-                <p>Date de prise de fonction : <strong>${d.date_embauche || '___________'}</strong></p>
-                <h2>ARTICLE 4 – RÉMUNÉRATION</h2>
-                <p>L'Employé percevra un salaire mensuel brut de <strong>${d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits:2}) : '___________'}</strong> MAD, soumis aux retenues légales (CNSS, AMO, IR).</p>
-                <h2>ARTICLE 5 – DURÉE DU TRAVAIL</h2>
-                <p>La durée hebdomadaire de travail est fixée à 44 heures, conformément à l'article 184 du Code du Travail.</p>
-                <h2>ARTICLE 6 – LIEU DE TRAVAIL</h2>
-                <p>Le lieu principal de travail est situé au siège de la Société. L'Employé pourra être amené à se déplacer dans le cadre de ses fonctions.</p>
-                <h2>ARTICLE 7 – OBLIGATIONS</h2>
-                <p>L'Employé s'engage à respecter le Règlement Intérieur de la Société, les consignes de sécurité et les directives de la hiérarchie. Il est tenu à une obligation de confidentialité sur toutes les informations relatives à l'activité de la Société.</p>
-                <h2>ARTICLE 8 – RUPTURE DU CONTRAT</h2>
-                <p>Le contrat peut être résilié par l'une ou l'autre des parties, sous réserve du respect des dispositions légales en matière de préavis et d'indemnités, conformément aux articles 51 à 60 du Code du Travail.</p>
-                <div style="margin-top:50px;display:flex;justify-content:space-between">
-                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employeur</strong><br/>Lu et approuvé</div></div>
-                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employé(e)</strong><br/>Lu et approuvé</div></div>
-                </div>
-                <p style="text-align:center;margin-top:30px;font-size:10px">Fait à Casablanca, le ${today}, en deux (2) exemplaires originaux.</p>
-              </div></body></html>` },
+            cdi: { label: 'Contrat CDI', generate: (d) => {
+              const sal = d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits: 2}) : '___________';
+              return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${cS}</style></head><body><div class="page">
+<div class="hdr"><h1>FOTRAL SARL</h1><p class="sub">Société à Responsabilité Limitée – Transport Routier &amp; Logistique</p><h2>CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE (CDI)</h2><p class="sub">Conforme au Code du Travail Marocain – Loi n° 65-99</p></div>
+${cEmpl}${cSal(d)}
+<h2 class="sec">ARTICLE 1 – NATURE ET OBJET DU CONTRAT</h2>
+<p>Le présent contrat est conclu à durée indéterminée (CDI) conformément aux articles 16, 17, 18 et 19 de la Loi n° 65-99 formant Code du Travail du Royaume du Maroc, promulguée par le Dahir n° 1-03-194 du 11 septembre 2003 (14 Rajab 1424).</p>
+<p>Le CDI constitue la forme normale et générale de la relation de travail. Il ne peut être rompu que pour un motif valable lié à l'aptitude ou à la conduite du salarié, ou fondé sur les nécessités du fonctionnement de l'entreprise.</p>
+<h2 class="sec">ARTICLE 2 – PÉRIODE D'ESSAI</h2>
+<p>Conformément aux articles 13 et 14 du Code du Travail, le présent contrat est soumis à une période d'essai de :</p>
+<ul><li>Trois (3) mois pour les cadres et agents de maîtrise ;</li><li>Un mois et demi (1,5 mois) pour les employés ;</li><li>Quinze (15) jours pour les ouvriers.</li></ul>
+<p>Cette période d'essai est renouvelable une (1) seule fois pour une durée égale à la période initiale, sous réserve d'un accord exprès des deux parties consigné par écrit.</p>
+<p>Durant la période d'essai, le contrat peut être résilié par l'une ou l'autre des parties sans préavis, à condition de respecter les délais de prévenance légaux : huit (8) jours pour l'Employeur et quarante-huit (48) heures pour l'Employé.</p>
+<h2 class="sec">ARTICLE 3 – POSTE, CLASSIFICATION ET ATTRIBUTIONS</h2>
+<p>L'Employé est engagé(e) au poste de : <strong>${d.fonction || '___________'}</strong></p>
+<p>Date de prise de fonction : <strong>${d.date_embauche || '___________'}</strong></p>
+<p>À titre indicatif, ses principales attributions comprennent :</p>
+<ul><li>Planification et supervision des tournées de transport</li><li>Gestion et suivi des documents de transport (LDV, CMR, bons de livraison)</li><li>Coordination avec les clients, sous-traitants et chauffeurs</li><li>Reporting opérationnel et administratif à la Direction</li><li>Veille au respect des réglementations du transport routier</li></ul>
+<p>Cette liste est non exhaustive. L'Employé pourra être amené à accomplir toute tâche relevant de sa qualification et nécessitée par l'activité de la Société.</p>
+${cA4(sal)}
+<h2 class="sec">ARTICLE 18 – CLAUSE DE NON-CONCURRENCE</h2>
+<p>Compte tenu de la nature sensible des informations auxquelles l'Employé aura accès et de la spécificité du secteur du transport et de la logistique, l'Employé s'interdit, pendant une durée de douze (12) mois suivant la cessation du présent contrat, quelle qu'en soit la cause, d'exercer directement ou indirectement une activité similaire ou concurrente à celle de FOTRAL SARL dans la région du Grand Casablanca.</p>
+<p>En contrepartie de cette obligation, l'Employeur versera à l'Employé une indemnité compensatrice mensuelle égale à ________ % du dernier salaire brut, pendant toute la durée de la clause. L'Employeur pourra libérer l'Employé de cette clause par écrit dans un délai de ________ jours suivant la notification de la rupture.</p>
+${cSig}
+</div></body></html>`; } },
 
-            cdd: { label: 'Contrat CDD', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${pageStyle}</style></head><body>
-              <div class="page">
-                <h1>CONTRAT DE TRAVAIL À DURÉE DÉTERMINÉE</h1>
-                <h2>ENTRE LES SOUSSIGNÉS</h2>
-                <p><strong>FOTRAL SARL</strong>, société à responsabilité limitée, dont le siège social est situé à Imm 45, 1ère étage, Rue 6, Hay Rekbout, Sidi Moumen, Casablanca, représentée par M. HABLOUJI Bouchaib, en sa qualité de Gérant.</p>
-                <p>Ci-après désignée « <strong>L'Employeur</strong> »,</p>
-                <p style="text-align:center"><strong>D'UNE PART,</strong></p>
-                <p><strong>ET</strong></p>
-                <p>M./Mme <strong>${d.nom_prenom}</strong>, né(e) le <strong>${d.date_naissance || '___________'}</strong>, titulaire de la CIN n° <strong>${d.cin || '___________'}</strong>, immatriculé(e) à la CNSS sous le n° <strong>${d.imm_cnss || '___________'}</strong>, demeurant à <strong>${d.adresse || '___________'}</strong>.</p>
-                <p>Ci-après désigné(e) « <strong>L'Employé(e)</strong> »,</p>
-                <p style="text-align:center"><strong>D'AUTRE PART,</strong></p>
-                <h2>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</h2>
-                <h2>ARTICLE 1 – NATURE ET OBJET DU CONTRAT</h2>
-                <p>Le présent contrat est conclu à durée déterminée (CDD) conformément aux articles 16 à 28 de la Loi n° 65-99 formant Code du Travail du Royaume du Maroc.</p>
-                <p>Le recours au CDD est justifié par : ________________________________________________</p>
-                <h2>ARTICLE 2 – DURÉE DU CONTRAT</h2>
-                <p>Le présent contrat prend effet à compter du : <strong>${d.date_embauche || '___________'}</strong></p>
-                <p>Il prend fin le : <strong>___________</strong></p>
-                <p>La durée totale du CDD, renouvellements inclus, ne peut excéder une (1) année.</p>
-                <h2>ARTICLE 3 – POSTE</h2>
-                <p>L'Employé est engagé(e) pour exercer les fonctions de : <strong>${d.fonction || '___________'}</strong></p>
-                <h2>ARTICLE 4 – RÉMUNÉRATION</h2>
-                <p>L'Employé percevra un salaire mensuel brut de <strong>${d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits:2}) : '___________'}</strong> MAD.</p>
-                <h2>ARTICLE 5 – DURÉE DU TRAVAIL</h2>
-                <p>La durée hebdomadaire de travail est fixée à 44 heures conformément à l'article 184 du Code du Travail.</p>
-                <h2>ARTICLE 6 – FIN DU CONTRAT</h2>
-                <p>Le contrat prend fin automatiquement à son terme. Toute rupture anticipée non justifiée donne lieu au versement de dommages et intérêts conformément à l'article 33 du Code du Travail.</p>
-                <div style="margin-top:50px;display:flex;justify-content:space-between">
-                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employeur</strong><br/>Lu et approuvé</div></div>
-                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employé(e)</strong><br/>Lu et approuvé</div></div>
-                </div>
-                <p style="text-align:center;margin-top:30px;font-size:10px">Fait à Casablanca, le ${today}, en deux (2) exemplaires originaux.</p>
-              </div></body></html>` },
+            cdd: { label: 'Contrat CDD', generate: (d) => {
+              const sal = d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits: 2}) : '___________';
+              return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${cS}</style></head><body><div class="page">
+<div class="hdr"><h1>FOTRAL SARL</h1><p class="sub">Société à Responsabilité Limitée – Transport Routier &amp; Logistique</p><h2>CONTRAT DE TRAVAIL À DURÉE DÉTERMINÉE (CDD)</h2><p class="sub">Conforme au Code du Travail Marocain – Loi n° 65-99</p></div>
+${cEmpl}${cSal(d)}
+<h2 class="sec">ARTICLE 1 – NATURE, OBJET ET JUSTIFICATION DU CONTRAT</h2>
+<p>Le présent contrat est conclu à durée déterminée (CDD) conformément aux articles 16 à 28 de la Loi n° 65-99 formant Code du Travail du Royaume du Maroc.</p>
+<p>Le recours au CDD est justifié par le motif suivant (cocher la case applicable) :</p>
+<p><span class="cb"></span> Accroissement temporaire d'activité lié à un pic de commandes / saison haute</p>
+<p><span class="cb"></span> Remplacement d'un salarié absent (maladie, congé, maternité)</p>
+<p><span class="cb"></span> Exécution d'un travail lié par nature à l'activité normale mais nécessitant un renfort ponctuel</p>
+<p><span class="cb"></span> Réalisation d'un marché ou contrat déterminé avec un client</p>
+<p><span class="cb"></span> Autre motif légal : ______________________________________</p>
+<p><strong>IMPORTANT :</strong> L'article 16 du Code du Travail limite strictement les cas de recours au CDD. Tout CDD conclu en dehors des cas prévus par la loi est réputé CDI.</p>
+<h2 class="sec">ARTICLE 2 – DURÉE DU CONTRAT</h2>
+<p>Le présent contrat prend effet à compter du : <strong>${d.date_embauche || '___________'}</strong></p>
+<p>Il prend fin le : <strong>___________</strong></p>
+<p>Soit une durée totale de : <strong>___________</strong></p>
+<p>Conformément à l'article 16 du Code du Travail, la durée totale du CDD, renouvellements inclus, ne peut excéder une (1) année. Le renouvellement ne peut intervenir qu'une (1) seule fois pour une durée égale ou inférieure à la durée initiale. Tout dépassement de ces limites entraîne la requalification du contrat en CDI.</p>
+<h2 class="sec">ARTICLE 3 – POSTE ET ATTRIBUTIONS</h2>
+<p>L'Employé est engagé(e) pour exercer les fonctions de : <strong>${d.fonction || '___________'}</strong></p>
+<p>Ses attributions principales pour la durée du contrat comprennent :</p>
+<ul><li>Planification et supervision des tournées de transport</li><li>Gestion et suivi des documents de transport (LDV, CMR, bons de livraison)</li><li>Coordination avec les clients, sous-traitants et chauffeurs</li><li>Reporting opérationnel et administratif à la Direction</li></ul>
+${cA4(sal)}
+<h2 class="sec">ARTICLE 18 – TERME ET RUPTURE ANTICIPÉE DU CONTRAT</h2>
+<p>Le présent CDD prend fin de plein droit à la date fixée à l'Article 2, sans qu'il soit nécessaire de donner un préavis.</p>
+<p>Toutefois, la rupture anticipée avant le terme est possible dans les cas suivants, conformément à l'article 19 du Code du Travail :</p>
+<ul><li>Accord exprès écrit des deux parties ;</li><li>Faute grave de l'une ou l'autre des parties ;</li><li>Force majeure dûment constatée.</li></ul>
+<p>En cas de rupture anticipée à l'initiative de l'Employeur pour un motif autre que la faute grave ou la force majeure, l'Employé aura droit à une indemnité correspondant aux rémunérations qu'il aurait perçues jusqu'au terme du contrat.</p>
+<p>En cas de rupture anticipée à l'initiative de l'Employé, celui-ci sera redevable envers l'Employeur des dommages et intérêts correspondant au préjudice subi, conformément au droit commun.</p>
+<h2 class="sec">ARTICLE 19 – REQUALIFICATION EN CDI</h2>
+<p>Si, à l'issue du présent CDD et de son éventuel renouvellement, l'Employé est maintenu dans ses fonctions au-delà du terme du contrat, la relation de travail sera présumée transformée en CDI conformément à l'article 28 du Code du Travail.</p>
+${cSig}
+</div></body></html>`; } },
 
-            provisoire: { label: 'Contrat Provisoire (Essai)', generate: (d) => `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${pageStyle}</style></head><body>
-              <div class="page">
-                <h1>CONTRAT DE TRAVAIL PROVISOIRE — PÉRIODE D'ESSAI</h1>
-                <h2>ENTRE LES SOUSSIGNÉS</h2>
-                <p><strong>FOTRAL SARL</strong>, société à responsabilité limitée, dont le siège social est situé à Imm 45, 1ère étage, Rue 6, Hay Rekbout, Sidi Moumen, Casablanca, représentée par M. HABLOUJI Bouchaib, en sa qualité de Gérant.</p>
-                <p>Ci-après désignée « <strong>L'Employeur</strong> »,</p>
-                <p style="text-align:center"><strong>D'UNE PART,</strong></p>
-                <p><strong>ET</strong></p>
-                <p>M./Mme <strong>${d.nom_prenom}</strong>, né(e) le <strong>${d.date_naissance || '___________'}</strong>, titulaire de la CIN n° <strong>${d.cin || '___________'}</strong>, demeurant à <strong>${d.adresse || '___________'}</strong>.</p>
-                <p>Ci-après désigné(e) « <strong>L'Employé(e)</strong> »,</p>
-                <h2>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</h2>
-                <h2>ARTICLE 1 – NATURE DU CONTRAT</h2>
-                <p>Le présent contrat est conclu à titre provisoire, constituant une période d'essai préalable à la conclusion d'un CDI, conformément aux articles 13 à 15 du Code du Travail.</p>
-                <h2>ARTICLE 2 – DURÉE DE LA PÉRIODE D'ESSAI</h2>
-                <p>Trois (3) mois pour les cadres, un mois et demi (1,5 mois) pour les employés, quinze (15) jours pour les ouvriers. Renouvelable une (1) seule fois.</p>
-                <p>Date de début : <strong>${d.date_embauche || '___________'}</strong></p>
-                <h2>ARTICLE 3 – POSTE</h2>
-                <p>L'Employé est engagé(e) à titre d'essai pour le poste de : <strong>${d.fonction || '___________'}</strong></p>
-                <h2>ARTICLE 4 – RÉMUNÉRATION</h2>
-                <p>Salaire brut mensuel : <strong>${d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits:2}) : '___________'}</strong> MAD.</p>
-                <p>En cas de confirmation en CDI, la rémunération définitive sera précisée dans le contrat CDI.</p>
-                <h2>ARTICLE 5 – RUPTURE</h2>
-                <p>Durant la période d'essai, le contrat peut être résilié par l'une ou l'autre des parties sans préavis (8 jours pour l'Employeur, 48h pour l'Employé).</p>
-                <h2>ARTICLE 6 – CONFIRMATION</h2>
-                <p>Si l'Employé est maintenu en poste au-delà de la période d'essai sans notification de rupture, le contrat sera réputé transformé en CDI à compter de la date d'embauche initiale.</p>
-                <div style="margin-top:50px;display:flex;justify-content:space-between">
-                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employeur</strong><br/>Lu et approuvé</div></div>
-                  <div style="width:45%;text-align:center"><div style="border-top:1px solid #000;padding-top:8px;margin-top:60px"><strong>L'Employé(e)</strong><br/>Lu et approuvé</div></div>
-                </div>
-                <p style="text-align:center;margin-top:30px;font-size:10px">Fait à Casablanca, le ${today}, en deux (2) exemplaires originaux.</p>
-              </div></body></html>` },
+            provisoire: { label: 'Contrat Provisoire (Essai)', generate: (d) => {
+              const sal = d.salaire_base ? Number(d.salaire_base).toLocaleString('fr-MA', {minimumFractionDigits: 2}) : '___________';
+              return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${cS}</style></head><body><div class="page">
+<div class="hdr"><h1>FOTRAL SARL</h1><p class="sub">Société à Responsabilité Limitée – Transport Routier &amp; Logistique</p><h2>CONTRAT DE TRAVAIL PROVISOIRE (PÉRIODE D'ESSAI)</h2><p class="sub">Conforme au Code du Travail Marocain – Loi n° 65-99</p></div>
+${cEmpl}${cSal(d)}
+<h2 class="sec">ARTICLE 1 – NATURE ET OBJET DU CONTRAT</h2>
+<p>Le présent contrat est conclu à titre provisoire, constituant une période d'essai préalable à la conclusion d'un contrat à durée indéterminée (CDI), conformément aux articles 13 à 15 de la Loi n° 65-99 formant Code du Travail du Royaume du Maroc.</p>
+<p>La période d'essai a pour objectif de permettre à l'Employeur d'évaluer les compétences, l'aptitude professionnelle et l'adéquation de l'Employé aux exigences du poste, et à l'Employé d'apprécier les conditions de travail et l'environnement de la Société.</p>
+<p>Ce contrat provisoire est distinct du CDD et ne saurait être requalifié en CDD ou en CDI avant son terme, sauf accord exprès des parties ou maintien en poste au-delà de la période d'essai.</p>
+<h2 class="sec">ARTICLE 2 – DURÉE DE LA PÉRIODE D'ESSAI</h2>
+<p>La durée du présent contrat provisoire est fixée comme suit, en application de l'article 13 du Code du Travail :</p>
+<table class="tbl"><tr><td class="l">Catégorie de l'Employé :</td><td>___________</td></tr><tr><td class="l">Durée maximale légale :</td><td>___________</td></tr><tr><td class="l">Date de début :</td><td><strong>${d.date_embauche || '___________'}</strong></td></tr><tr><td class="l">Date de fin prévue :</td><td>___________</td></tr></table>
+<p>La période d'essai pourra être renouvelée une (1) seule fois, pour une durée égale, sur accord écrit exprès des deux parties, signé avant le terme de la période initiale.</p>
+<h2 class="sec">ARTICLE 3 – POSTE ET ATTRIBUTIONS</h2>
+<p>L'Employé est engagé(e) à titre d'essai pour occuper le poste de : <strong>${d.fonction || '___________'}</strong></p>
+<p>Les critères d'évaluation porteront notamment sur :</p>
+<ul><li>Maîtrise technique du poste et des outils de travail ;</li><li>Respect des procédures internes, de la réglementation et du Règlement Intérieur ;</li><li>Qualité du travail fourni et sens des responsabilités ;</li><li>Aptitude relationnelle, esprit d'équipe et communication professionnelle ;</li><li>Ponctualité, assiduité et organisation personnelle.</li></ul>
+<h2 class="sec">ARTICLE 4 – RÉMUNÉRATION DURANT LA PÉRIODE D'ESSAI</h2>
+<p>Durant la période d'essai, l'Employé percevra un salaire brut mensuel de <strong>${sal}</strong> MAD, soumis aux mêmes retenues légales (CNSS, AMO, IR) que tout salarié permanent.</p>
+<p>En cas de confirmation en CDI à l'issue de la période d'essai, la rémunération définitive sera précisée dans le contrat CDI.</p>
+<h2 class="sec">ARTICLE 5 – DURÉE DU TRAVAIL ET CONDITIONS</h2>
+<p>L'Employé est soumis aux mêmes conditions de travail que les salariés permanents de la Société : durée légale de 44 heures/semaine, horaires collectifs affichés, dispositions du Règlement Intérieur.</p>
+<h2 class="sec">ARTICLE 6 – COUVERTURE SOCIALE</h2>
+<p>Dès le premier jour d'exécution du présent contrat, l'Employeur procède à l'affiliation ou au rattachement de l'Employé à la CNSS et à l'AMO, conformément à la législation en vigueur.</p>
+<h2 class="sec">ARTICLE 7 – RUPTURE DURANT LA PÉRIODE D'ESSAI</h2>
+<p>Conformément à l'article 14 du Code du Travail, le présent contrat peut être résilié par l'une ou l'autre des parties durant la période d'essai, sous réserve du respect des délais de prévenance suivants :</p>
+<table class="tbl"><tr><td class="l">Par l'Employeur :</td><td>8 jours minimum (calendaires)</td></tr><tr><td class="l">Par l'Employé :</td><td>48 heures minimum</td></tr></table>
+<p>La rupture durant la période d'essai ne donne lieu à aucune indemnité de licenciement ni indemnité de préavis, sous réserve du respect des délais de prévenance susmentionnés.</p>
+<p>La résiliation sera notifiée par lettre remise en main propre contre décharge ou par lettre recommandée avec accusé de réception.</p>
+<h2 class="sec">ARTICLE 8 – SUITE À L'ISSUE DE LA PÉRIODE D'ESSAI</h2>
+<p>À l'issue de la période d'essai :</p>
+<ul><li><strong>En cas d'évaluation favorable :</strong> L'Employé sera confirmé dans ses fonctions par la signature d'un Contrat à Durée Indéterminée (CDI). L'ancienneté sera comptabilisée dès la date de prise de poste mentionnée à l'Article 2 du présent contrat.</li>
+<li><strong>En cas d'évaluation défavorable :</strong> L'Employeur notifiera l'Employé avant le terme de la période d'essai, dans le respect des délais de prévenance légaux. La relation de travail prendra fin au terme de ladite période.</li>
+<li><strong>En cas de maintien en poste sans notification de fin d'essai :</strong> Le contrat sera réputé transformé en CDI de plein droit, conformément à la jurisprudence et aux principes généraux du droit du travail marocain.</li></ul>
+<h2 class="sec">ARTICLE 9 – OBLIGATIONS ET CONFIDENTIALITÉ</h2>
+<p>Les obligations de loyauté, de diligence, de respect des consignes de sécurité et de confidentialité s'appliquent à l'Employé dès le premier jour d'exécution du présent contrat, dans les mêmes conditions que pour tout salarié permanent.</p>
+<h2 class="sec">ARTICLE 10 – DISCIPLINE</h2>
+<p>L'Employé est soumis au pouvoir disciplinaire de l'Employeur. Tout comportement contraire aux obligations professionnelles ou aux valeurs de la Société pourra entraîner la rupture anticipée de la période d'essai.</p>
+<h2 class="sec">ARTICLE 11 – RÈGLEMENT DES LITIGES</h2>
+<p>Tout litige relatif au présent contrat sera soumis au Tribunal du Travail de Casablanca, conformément à la législation marocaine applicable.</p>
+<h2 class="sec">ARTICLE 12 – DISPOSITIONS FINALES</h2>
+<p>Le présent contrat est établi en deux (2) exemplaires originaux, un pour chaque partie.</p>
+<p>Le Règlement Intérieur de la Société et la Convention Collective sectorielle applicable font partie intégrante du présent contrat.</p>
+${cSig}
+</div></body></html>`; } },
           };
 
           return (
