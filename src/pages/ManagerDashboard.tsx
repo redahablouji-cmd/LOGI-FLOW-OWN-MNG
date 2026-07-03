@@ -202,6 +202,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [savingWizard, setSavingWizard] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [showAvoirForm, setShowAvoirForm] = useState(false);
+  const [avoirViewMode, setAvoirViewMode] = useState(false);
   // Devis state
   const [devisList, setDevisList] = useState<any[]>([]);
   const [loadingDevis, setLoadingDevis] = useState(false);
@@ -1143,6 +1144,11 @@ const handleStartWizard = () => {
   };
 
 const handleDeleteFact = async (id: string) => {
+  const rec = facturationList.find((f: any) => f.id === id);
+  if (rec && rec.was_avoir && !rec.is_avoir) {
+    toast.error("Impossible de supprimer une facture convertie depuis un avoir. Revenez d'abord en avoir.");
+    return;
+  }
   if (!confirm('Supprimer cette facture ?')) return;
   const { error } = await supabase.from('suivi_facturation').delete().eq('id', id);
   if (!error) { setFacturationList(prev => prev.filter(f => f.id !== id)); toast.success("Supprimé."); }
@@ -3855,7 +3861,68 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
 {activeTab === 'truck_docs' && (
   <TruckDocumentsTab companyId={companyId} />
 )}
-{activeTab === 'facturation' && (
+{activeTab === 'facturation' && avoirViewMode ? (
+  <div>
+    <div className="mb-6 bg-slate-900 text-white rounded-xl p-6 border border-slate-800">
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-rose-500 text-white mb-2"><FileText className="w-3.5 h-3.5" /> Avoirs</span>
+          <h1 className="text-2xl font-extrabold tracking-tight">Factures d'Avoir</h1>
+          <p className="text-sm text-slate-400 mt-1">{facturationList.filter((f: any) => f.is_avoir).length} avoir(s)</p>
+        </div>
+        <button onClick={() => setAvoirViewMode(false)}
+          className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer">
+          <X size={14} /> Retour Facturation
+        </button>
+      </div>
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead><tr className="bg-slate-50 border-b border-slate-200">
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">Date</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">N° Avoir</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">Client</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">Départ</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">Arrivée</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">HT</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">TVA</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">TTC</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">Statut</th>
+            <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase">Actions</th>
+          </tr></thead>
+          <tbody>
+            {facturationList.filter((f: any) => f.is_avoir).length === 0 ? (
+              <tr><td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-400">Aucun avoir enregistré.</td></tr>
+            ) : facturationList.filter((f: any) => f.is_avoir).map((f: any) => (
+              <tr key={f.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100">
+                <td className="px-3 py-3 text-xs text-slate-700">{f.date || '—'}</td>
+                <td className="px-3 py-3 font-mono text-xs text-rose-600 font-bold">{f.numero_facture || '—'}</td>
+                <td className="px-3 py-3 text-xs font-semibold text-slate-700">{f.client || '—'}</td>
+                <td className="px-3 py-3 text-xs text-slate-500">{f.depart || '—'}</td>
+                <td className="px-3 py-3 text-xs text-slate-500">{f.arrivee || '—'}</td>
+                <td className="px-3 py-3 font-mono text-xs text-slate-700">{Number(f.montant_ht || 0).toLocaleString('fr-MA', {minimumFractionDigits: 2})}</td>
+                <td className="px-3 py-3 font-mono text-xs text-amber-700">{Number(f.tva || 0).toLocaleString('fr-MA', {minimumFractionDigits: 2})}</td>
+                <td className="px-3 py-3 font-mono text-xs font-bold text-slate-900">{Number(f.montant_ttc || 0).toLocaleString('fr-MA', {minimumFractionDigits: 2})}</td>
+                <td className="px-3 py-3"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${f.was_avoir && !f.is_avoir ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{f.was_avoir && !f.is_avoir ? 'CONVERTI' : 'AVOIR'}</span></td>
+                <td className="px-3 py-3">
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => { setEditingFact(f); setFactForm({...f, montant_ht: String(Math.abs(f.montant_ht)), tva: String(Math.abs(f.tva)), montant_ttc: String(Math.abs(f.montant_ttc)), delai_paiement: String(f.delai_paiement || 60), is_avoir: f.is_avoir || false }); setShowFactForm(true); }}
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase cursor-pointer">Modifier</button>
+                    {f.is_avoir && (
+                      <button onClick={() => handleDeleteFact(f.id)}
+                        className="text-[10px] font-bold text-rose-600 hover:text-rose-700 uppercase cursor-pointer ml-2">Supprimer</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+) : activeTab === 'facturation' && (
   <div>
   {/* Payment Due Notifications */}
     {(dueIn15.length > 0 || overdue.length > 0) && (
@@ -4004,17 +4071,28 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             {uploadingFacts ? 'Importation...' : 'Importer XLS'}
             <input type="file" accept=".xlsx,.xls" onChange={handleFactXLSUpload} className="hidden" disabled={uploadingFacts} />
           </label>
-          <button onClick={async () => {
-            const yy = new Date().getFullYear().toString().slice(-2);
-            const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
-            let mx = 0;
-            (allAv || []).forEach((a: any) => { if (a.numero_facture && a.numero_facture.startsWith('AV')) { const n = parseInt(a.numero_facture.replace('AV', '').split('/')[0]); if (!isNaN(n) && n > mx) mx = n; } });
-            setAvoirForm(p => ({ ...p, date: new Date().toISOString().split('T')[0], numero_facture: 'AV' + (mx + 1).toString().padStart(4, '0') + '/' + yy }));
-            setShowAvoirForm(true);
-          }}
-                  className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
-                  <FileText size={14} /> Facture d'Avoir
-                </button>
+          <div className="relative group">
+            <button className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+              <FileText size={14} /> Avoir ▾
+            </button>
+            <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[180px]">
+              <button onClick={async () => {
+                const yy = new Date().getFullYear().toString().slice(-2);
+                const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
+                let mx = 0;
+                (allAv || []).forEach((a: any) => { if (a.numero_facture && a.numero_facture.startsWith('AV')) { const n = parseInt(a.numero_facture.replace('AV', '').split('/')[0]); if (!isNaN(n) && n > mx) mx = n; } });
+                setAvoirForm(p => ({ ...p, date: new Date().toISOString().split('T')[0], numero_facture: 'AV' + (mx + 1).toString().padStart(4, '0') + '/' + yy }));
+                setShowAvoirForm(true);
+              }}
+                className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 cursor-pointer">
+                <Plus size={13} /> Nouvel Avoir
+              </button>
+              <button onClick={() => setAvoirViewMode(true)}
+                className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 border-t border-slate-100 cursor-pointer">
+                <FileText size={13} /> Voir Tous les Avoirs
+              </button>
+            </div>
+          </div>
           <button onClick={async () => {
             const yy = new Date().getFullYear().toString().slice(-2);
             const { data: allF } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId);
@@ -9993,15 +10071,16 @@ ${cSig}
               Enregistrer comme Avoir
             </button>
             <button onClick={async () => {
+              const origNum = editingFact.numero_facture || factForm.numero_facture || null;
               const { error } = await supabase.from('suivi_facturation').update({
-                date: factForm.date || null, numero_facture: factForm.numero_facture || null,
+                date: factForm.date || null, numero_facture: origNum,
                 client: factForm.client || null, depart: factForm.depart || null, arrivee: factForm.arrivee || null,
                 montant_ht: Math.abs(parseFloat(factForm.montant_ht) || 0), tva: Math.abs(parseFloat(factForm.tva) || 0),
                 montant_ttc: Math.abs(parseFloat(factForm.montant_ttc) || 0), bl_ot: factForm.bl_ot || null, bc: factForm.bc || null,
                 observation: (factForm as any).observation || null, designation: (factForm as any).designation || null,
                 is_avoir: false, was_avoir: true, statut: 'impayé',
               }).eq('id', editingFact.id);
-              if (!error) { toast.success("Converti en facture."); setShowFactForm(false); setEditingFact(null); setFactForm(emptyFactForm); fetchFacturation(); }
+              if (!error) { toast.success("Converti en facture (N° avoir conservé)."); setShowFactForm(false); setEditingFact(null); setFactForm(emptyFactForm); fetchFacturation(); }
               else toast.error(`Erreur: ${error.message}`);
             }}
               className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">
