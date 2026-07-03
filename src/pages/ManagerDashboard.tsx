@@ -1034,6 +1034,18 @@ const handleSaveFacturation = async () => {
       fetchFacturation();
     } else toast.error(`Erreur: ${error.message}`);
   } else {
+    if (!payload.numero_facture) {
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const { data: allF } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId);
+      let mx = 0;
+      (allF || []).forEach((f: any) => {
+        if (f.numero_facture) {
+          const n = parseInt(f.numero_facture.split('/')[0]);
+          if (!isNaN(n) && n > mx) mx = n;
+        }
+      });
+      payload.numero_facture = (mx + 1) + '/' + yy;
+    }
     const { error } = await supabase
       .from('suivi_facturation')
       .insert(payload);
@@ -1629,6 +1641,19 @@ const handleGenerateInvoicePDF = () => {
       if (!error) { toast.success("Devis modifié."); setEditingDevis(null); }
       else { toast.error(`Erreur: ${error.message}`); return; }
     } else {
+      if (!payload.numero_devis) {
+        const now = new Date();
+        const pfx = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0');
+        const { data: allD } = await supabase.from('devis').select('numero_devis').eq('company_id', companyId).like('numero_devis', pfx + '%');
+        let mx = 0;
+        (allD || []).forEach((r: any) => {
+          if (r.numero_devis && r.numero_devis.startsWith(pfx)) {
+            const s = parseInt(r.numero_devis.slice(pfx.length));
+            if (!isNaN(s) && s > mx) mx = s;
+          }
+        });
+        payload.numero_devis = pfx + (mx + 1).toString().padStart(2, '0');
+      }
       const { error } = await supabase.from('devis').insert(payload);
       if (!error) toast.success("Devis ajouté.");
       else { toast.error(`Erreur: ${error.message}`); return; }
@@ -1779,6 +1804,19 @@ const handleGenerateInvoicePDF = () => {
       const { error } = await supabase.from('bon_commande').update(payload).eq('id', editingBC.id);
       if (!error) { toast.success("BC modifié."); setEditingBC(null); } else { toast.error(`Erreur: ${error.message}`); return; }
     } else {
+      if (!payload.numero_bc) {
+        const now = new Date();
+        const pfx = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0');
+        const { data: allB } = await supabase.from('bon_commande').select('numero_bc').eq('company_id', companyId).like('numero_bc', pfx + '%');
+        let mx = 0;
+        (allB || []).forEach((r: any) => {
+          if (r.numero_bc && r.numero_bc.startsWith(pfx)) {
+            const s = parseInt(r.numero_bc.slice(pfx.length));
+            if (!isNaN(s) && s > mx) mx = s;
+          }
+        });
+        payload.numero_bc = pfx + (mx + 1).toString().padStart(2, '0');
+      }
       const { error } = await supabase.from('bon_commande').insert(payload);
       if (!error) toast.success("BC ajouté."); else { toast.error(`Erreur: ${error.message}`); return; }
     }
