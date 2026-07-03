@@ -4004,7 +4004,14 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             {uploadingFacts ? 'Importation...' : 'Importer XLS'}
             <input type="file" accept=".xlsx,.xls" onChange={handleFactXLSUpload} className="hidden" disabled={uploadingFacts} />
           </label>
-          <button onClick={() => setShowAvoirForm(true)}
+          <button onClick={async () => {
+            const yy = new Date().getFullYear().toString().slice(-2);
+            const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
+            let mx = 0;
+            (allAv || []).forEach((a: any) => { if (a.numero_facture && a.numero_facture.startsWith('AV')) { const n = parseInt(a.numero_facture.replace('AV', '').split('/')[0]); if (!isNaN(n) && n > mx) mx = n; } });
+            setAvoirForm(p => ({ ...p, date: new Date().toISOString().split('T')[0], numero_facture: 'AV' + (mx + 1).toString().padStart(4, '0') + '/' + yy }));
+            setShowAvoirForm(true);
+          }}
                   className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                   <FileText size={14} /> Facture d'Avoir
                 </button>
@@ -9771,11 +9778,24 @@ ${cSig}
               const tvaAmount = parseFloat((ht * rate / 100).toFixed(2));
               const ttc = ht + tvaAmount;
             if (ht <= 0) { toast.error("Saisissez un montant."); return; }
+            let avoirNum = avoirForm.numero_facture || null;
+            if (!avoirNum) {
+              const yy = new Date().getFullYear().toString().slice(-2);
+              const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
+              let mx = 0;
+              (allAv || []).forEach((a: any) => {
+                if (a.numero_facture && a.numero_facture.startsWith('AV')) {
+                  const n = parseInt(a.numero_facture.replace('AV', '').split('/')[0]);
+                  if (!isNaN(n) && n > mx) mx = n;
+                }
+              });
+              avoirNum = 'AV' + (mx + 1).toString().padStart(4, '0') + '/' + yy;
+            }
             const { error } = await supabase.from('suivi_facturation').insert({
-              company_id: companyId,
+              company_id: companyId || null,
               manager_id: managerId || null,
               date: avoirForm.date || null,
-              numero_facture: avoirForm.numero_facture || null,
+              numero_facture: avoirNum,
               client: avoirForm.client || null,
               depart: avoirForm.depart || null,
               arrivee: avoirForm.arrivee || null,
