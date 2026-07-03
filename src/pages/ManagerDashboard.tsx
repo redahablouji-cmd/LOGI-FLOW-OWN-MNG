@@ -1148,6 +1148,20 @@ const handleDeleteFact = async (id: string) => {
   if (!error) { setFacturationList(prev => prev.filter(f => f.id !== id)); toast.success("Supprimé."); }
   else toast.error(`Erreur: ${error.message}`);
 };
+
+const handleUngroupFacts = async (groupId: string) => {
+  if (!confirm('Dégrouper ces factures ? Elles deviendront des factures individuelles.')) return;
+  const { error } = await supabase.from('suivi_facturation').update({ invoice_group_id: null }).eq('invoice_group_id', groupId);
+  if (!error) { toast.success("Factures dégroupées."); fetchFacturation(); }
+  else toast.error(`Erreur: ${error.message}`);
+};
+
+const handleDeleteGroup = async (groupId: string) => {
+  if (!confirm('Supprimer TOUTES les factures de ce groupe ?')) return;
+  const { error } = await supabase.from('suivi_facturation').delete().eq('invoice_group_id', groupId);
+  if (!error) { toast.success("Groupe supprimé."); fetchFacturation(); }
+  else toast.error(`Erreur: ${error.message}`);
+};
 const handleFactXLSUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (!file || !companyId) return;
@@ -4146,7 +4160,6 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     const allSel = childIds.every((id:string) => selectedFacts.includes(id));
                     return [
                       <tr key={`grp-${g.invoice_group_id}`}
-                        onClick={() => setExpandedGroups(prev => prev.includes(g.invoice_group_id) ? prev.filter(x => x !== g.invoice_group_id) : [...prev, g.invoice_group_id])}
                         className="bg-blue-50/50 hover:bg-blue-50 cursor-pointer border-b-2 border-blue-200">
                         <td className="px-3 py-3"><input type="checkbox" checked={allSel} onClick={e => e.stopPropagation()}
                           onChange={e => setSelectedFacts(prev => e.target.checked ? [...new Set([...prev,...childIds])] : prev.filter(id => !childIds.includes(id)))} className="accent-blue-600" /></td>
@@ -4157,7 +4170,18 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         <td className="px-3 py-3 font-mono text-xs text-slate-700">{g.montant_ht.toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
                         <td className="px-3 py-3 font-mono text-xs text-amber-700">{g.tva.toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
                         <td className="px-3 py-3 font-mono text-xs font-bold text-slate-900">{g.montant_ttc.toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
-                        <td colSpan={6} className="px-3 py-3"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${g.statut==='payé'?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}`}>{g.statut}</span></td>
+                        <td className="px-3 py-3"><span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${g.statut==='payé'?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}`}>{g.statut}</span></td>
+                        <td colSpan={3} className="px-3 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={(e) => { e.stopPropagation(); setExpandedGroups(prev => prev.includes(g.invoice_group_id) ? prev.filter(x => x !== g.invoice_group_id) : [...prev, g.invoice_group_id]); }}
+                              className="text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase cursor-pointer">{isExp ? '▼ Fermer' : '▶ Ouvrir'}</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleUngroupFacts(g.invoice_group_id); }}
+                              className="text-[9px] font-black text-amber-600 hover:text-amber-800 uppercase cursor-pointer">Dégrouper</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteGroup(g.invoice_group_id); }}
+                              className="text-[9px] font-black text-rose-600 hover:text-rose-800 uppercase cursor-pointer">Supprimer</button>
+                          </div>
+                        </td>
+                        <td colSpan={2}></td>
                       </tr>,
                       ...(isExp ? (row.children||[]).map((f:any) => (
                         <tr key={f.id} className="bg-blue-50/20 hover:bg-blue-50/40 transition-colors">
