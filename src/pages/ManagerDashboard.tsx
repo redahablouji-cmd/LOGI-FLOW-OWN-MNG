@@ -1255,6 +1255,7 @@ const handleSaveInvoiceSettings = async () => {
   setSavingSettings(false);
 };
 const filteredFacts = facturationList.filter(f => {
+  if (f.is_avoir) return false;
   if (factFilter.client  && !f.client?.toLowerCase().includes(factFilter.client.toLowerCase())) return false;
     if ((factFilter as any).numero && !f.numero_facture?.toLowerCase().includes((factFilter as any).numero.toLowerCase())) return false;
     if (factFilter.statut  && f.statut !== factFilter.statut) return false;
@@ -9859,11 +9860,12 @@ ${cSig}
             let avoirNum = avoirForm.numero_facture || null;
             if (!avoirNum) {
               const yy = new Date().getFullYear().toString().slice(-2);
-              const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
+              const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId);
               let mx = 0;
               (allAv || []).forEach((a: any) => {
-                if (a.numero_facture && a.numero_facture.startsWith('AV')) {
-                  const n = parseInt(a.numero_facture.replace('AV', '').split('/')[0]);
+                if (a.numero_facture && a.numero_facture.toUpperCase().startsWith('AV')) {
+                  const raw = a.numero_facture.toUpperCase().replace('AV', '').split('/')[0].replace(/^0+/, '');
+                  const n = parseInt(raw);
                   if (!isNaN(n) && n > mx) mx = n;
                 }
               });
