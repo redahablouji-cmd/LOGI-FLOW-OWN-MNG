@@ -3994,7 +3994,14 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                   <FileText size={14} /> Facture d'Avoir
                 </button>
-          <button onClick={() => { setPrestationPickerOpen(true); setEditingFact(null); setFactForm(emptyFactForm); }}
+          <button onClick={async () => {
+            const yy = new Date().getFullYear().toString().slice(-2);
+            const { data: allF } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId);
+            let mx = 0;
+            (allF || []).forEach((f: any) => { if (f.numero_facture) { const n = parseInt(f.numero_facture.split('/')[0]); if (!isNaN(n) && n > mx) mx = n; } });
+            setPrestationPickerOpen(true); setEditingFact(null);
+            setFactForm({ ...emptyFactForm, numero_facture: (mx + 1) + '/' + yy });
+          }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Plus size={14} /> Nouvelle Facture
           </button>
@@ -4330,7 +4337,15 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     <button onClick={handleGenerateDevisPDF}
                       className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF ({selectedDevis.length})</button>
                   )}
-                  <button onClick={() => { setDevisForm(emptyDevisForm); setEditingDevis(null); setShowDevisForm(true); }}
+                  <button onClick={async () => {
+                    const now = new Date();
+                    const pfx = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0');
+                    const { data: allD } = await supabase.from('devis').select('numero_devis').eq('company_id', companyId).like('numero_devis', pfx + '%');
+                    let mx = 0;
+                    (allD || []).forEach((r: any) => { if (r.numero_devis && r.numero_devis.startsWith(pfx)) { const s = parseInt(r.numero_devis.slice(pfx.length)); if (!isNaN(s) && s > mx) mx = s; } });
+                    setDevisForm({ ...emptyDevisForm, numero_devis: pfx + (mx + 1).toString().padStart(2, '0') });
+                    setEditingDevis(null); setShowDevisForm(true);
+                  }}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau Devis</button>
                 </div>
               </div>
@@ -4467,7 +4482,15 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   {selectedBC.length > 0 && (
                     <button onClick={handleGenerateBCPDF} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><FileText size={14} /> Générer PDF ({selectedBC.length})</button>
                   )}
-                  <button onClick={() => { setBcForm(emptyBCForm); setEditingBC(null); setShowBCForm(true); }}
+                  <button onClick={async () => {
+                    const now = new Date();
+                    const pfx = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0');
+                    const { data: allB } = await supabase.from('bon_commande').select('numero_bc').eq('company_id', companyId).like('numero_bc', pfx + '%');
+                    let mx = 0;
+                    (allB || []).forEach((r: any) => { if (r.numero_bc && r.numero_bc.startsWith(pfx)) { const s = parseInt(r.numero_bc.slice(pfx.length)); if (!isNaN(s) && s > mx) mx = s; } });
+                    setBcForm({ ...emptyBCForm, numero_bc: pfx + (mx + 1).toString().padStart(2, '0') });
+                    setEditingBC(null); setShowBCForm(true);
+                  }}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Plus size={14} /> Nouveau BC</button>
                 </div>
               </div>
