@@ -146,6 +146,10 @@ export default function ManagerDashboard() {
   const [editingTopup,     setEditingTopup]     = useState<FundTopup | null>(null);
   const [topupEditAmount,  setTopupEditAmount]  = useState('');
   const [topupEditNotes,   setTopupEditNotes]   = useState('');
+  const [fleetReservations, setFleetReservations] = useState<any[]>([]);
+  const [fleetResView, setFleetResView] = useState<'calendar' | 'driver'>('calendar');
+  const [fleetResDriver, setFleetResDriver] = useState('');
+  const [fleetResWeekOffset, setFleetResWeekOffset] = useState(0);
 
   // Suivi Facturation
   const [suiviList,        setSuiviList]        = useState<SuiviRecord[]>([]);
@@ -464,6 +468,12 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     setMaintenance(recs || []);
     setTopups(tops || []);
     setLoadingFleet(false);
+  };
+
+  const fetchFleetReservations = async () => {
+    if (!companyId) return;
+    const { data } = await supabase.from('maintenance_reservations').select('*').eq('company_id', companyId).order('start_time', { ascending: true });
+    setFleetReservations(data || []);
   };
 
   const mechanicBalance = () =>
@@ -3472,6 +3482,140 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* ── Planning des Réservations ─────────────────────────── */}
+              <div className="mt-6 bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Planning Maintenance</p>
+                    <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+                      <button onClick={() => setFleetResView('calendar')}
+                        className={`px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${fleetResView === 'calendar' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+                        Calendrier
+                      </button>
+                      <button onClick={() => setFleetResView('driver')}
+                        className={`px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${fleetResView === 'driver' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+                        Par Chauffeur
+                      </button>
+                    </div>
+                  </div>
+                  <button onClick={fetchFleetReservations}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <RefreshCw size={12} /> Charger
+                  </button>
+                </div>
+
+                {fleetResView === 'calendar' ? (() => {
+                  const today = new Date();
+                  const weekStart = new Date(today);
+                  weekStart.setDate(today.getDate() - today.getDay() + 1 + fleetResWeekOffset * 7);
+                  const days = Array.from({ length: 7 }, (_, i) => {
+                    const d = new Date(weekStart);
+                    d.setDate(weekStart.getDate() + i);
+                    return d;
+                  });
+                  const trucks = [...new Set(fleetReservations.map((r: any) => r.truck_plate))].sort();
+                  const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+                  return (
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <button onClick={() => setFleetResWeekOffset(p => p - 1)}
+                          className="px-3 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">← Sem. préc.</button>
+                        <p className="text-xs font-bold text-slate-700">
+                          {days[0].toLocaleDateString('fr-MA', { day: '2-digit', month: 'short' })} — {days[6].toLocaleDateString('fr-MA', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </p>
+                        <button onClick={() => setFleetResWeekOffset(p => p + 1)}
+                          className="px-3 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Sem. suiv. →</button>
+                      </div>
+
+                      {trucks.length === 0 ? (
+                        <p className="text-sm text-slate-400 text-center py-8">Aucune réservation. Cliquez "Charger" pour actualiser.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr>
+                                <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase text-left border-b border-slate-200 w-28">Camion</th>
+                                {days.map((d, i) => {
+                                  const isToday = d.toDateString() === new Date().toDateString();
+                                  return <th key={i} className={`px-2 py-2 text-[9px] font-black uppercase text-center border-b border-slate-200 ${isToday ? 'bg-blue-50 text-blue-700' : 'text-slate-400'}`}>
+                                    {dayNames[i]}<br/>{d.getDate()}/{d.getMonth() + 1}
+                                  </th>;
+                                })}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {trucks.map(plate => (
+                                <tr key={plate} className="border-b border-slate-100 hover:bg-slate-50/50">
+                                  <td className="px-3 py-3 font-mono text-xs font-bold text-blue-600">{plate}</td>
+                                  {days.map((day, di) => {
+                                    const dayStr = day.toISOString().split('T')[0];
+                                    const dayRes = fleetReservations.filter((r: any) => r.truck_plate === plate && r.start_time?.startsWith(dayStr));
+                                    return (
+                                      <td key={di} className="px-1 py-2 text-center align-top">
+                                        {dayRes.length > 0 ? dayRes.map((r: any) => {
+                                          const col = r.statut === 'planifié' ? 'bg-amber-100 text-amber-800 border-amber-300' : r.statut === 'en_cours' ? 'bg-blue-100 text-blue-800 border-blue-300' : r.statut === 'terminé' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-300';
+                                          return <div key={r.id} className={`rounded-lg border px-1.5 py-1 mb-1 ${col}`}>
+                                            <p className="text-[8px] font-black uppercase truncate">{r.type_maintenance}</p>
+                                            <p className="text-[7px] font-mono">{new Date(r.start_time).toLocaleTimeString('fr-MA', {hour:'2-digit',minute:'2-digit'})} · {r.estimated_duration}</p>
+                                            {r.driver_name && <p className="text-[7px] truncate">{r.driver_name}</p>}
+                                          </div>;
+                                        }) : <span className="text-[8px] text-emerald-400 font-bold">✓</span>}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <div className="p-4">
+                    <div className="mb-4">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrer par Chauffeur</label>
+                      <input type="text" value={fleetResDriver} onChange={e => setFleetResDriver(e.target.value)}
+                        placeholder="Nom du chauffeur..."
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    {(() => {
+                      const filtered = fleetResDriver
+                        ? fleetReservations.filter((r: any) => r.driver_name?.toLowerCase().includes(fleetResDriver.toLowerCase()))
+                        : fleetReservations;
+                      if (filtered.length === 0) return <p className="text-sm text-slate-400 text-center py-8">Aucune réservation trouvée.</p>;
+                      return (
+                        <div className="space-y-3">
+                          {filtered.map((r: any) => {
+                            const start = new Date(r.start_time);
+                            const col = r.statut === 'planifié' ? 'border-amber-300 bg-amber-50' : r.statut === 'en_cours' ? 'border-blue-300 bg-blue-50' : r.statut === 'terminé' ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-slate-50';
+                            return (
+                              <div key={r.id} className={`rounded-xl border-2 p-4 ${col}`}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-xs font-bold text-blue-600">{r.truck_plate}</span>
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-white/60">{r.statut}</span>
+                                  </div>
+                                  <span className="text-[10px] font-mono text-slate-500">
+                                    {start.toLocaleDateString('fr-MA')} à {start.toLocaleTimeString('fr-MA', {hour:'2-digit',minute:'2-digit'})}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-bold text-slate-800">{r.type_maintenance}</p>
+                                {r.driver_name && <p className="text-xs text-slate-600 mt-0.5">Chauffeur: <strong>{r.driver_name}</strong></p>}
+                                {r.mechanic_name && <p className="text-xs text-slate-500">Mécanicien: {r.mechanic_name}</p>}
+                                {r.description && <p className="text-[11px] text-slate-500 mt-1">{r.description}</p>}
+                                <p className="text-[10px] font-mono text-slate-400 mt-1">Durée: {r.estimated_duration}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -9851,51 +9995,41 @@ ${cSig}
         </div>
 
         <div className="flex gap-3 pt-5">
-          <button onClick={async () => {
-            const ht = parseFloat(avoirForm.montant_ht) || 0;
-            const rate = parseFloat(avoirForm.tva) || 0;
+          <button onClick={async (e) => {
+            const btn = e.currentTarget; if (btn.disabled) return; btn.disabled = true;
+            try {
+              const ht = parseFloat(avoirForm.montant_ht) || 0;
+              const rate = parseFloat(avoirForm.tva) || 0;
               const tvaAmount = parseFloat((ht * rate / 100).toFixed(2));
               const ttc = ht + tvaAmount;
-            if (ht <= 0) { toast.error("Saisissez un montant."); return; }
-            let avoirNum = avoirForm.numero_facture || null;
-            if (!avoirNum) {
-              const yy = new Date().getFullYear().toString().slice(-2);
-              const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId);
-              let mx = 0;
-              (allAv || []).forEach((a: any) => {
-                if (a.numero_facture && a.numero_facture.toUpperCase().startsWith('AV')) {
-                  const raw = a.numero_facture.toUpperCase().replace('AV', '').split('/')[0].replace(/^0+/, '');
-                  const n = parseInt(raw);
-                  if (!isNaN(n) && n > mx) mx = n;
-                }
+              if (ht <= 0) { toast.error("Saisissez un montant."); btn.disabled = false; return; }
+              if (!avoirForm.numero_facture) { toast.error("N° Avoir manquant."); btn.disabled = false; return; }
+              const { error } = await supabase.from('suivi_facturation').insert({
+                company_id: companyId || null,
+                manager_id: managerId || null,
+                date: avoirForm.date || null,
+                numero_facture: avoirForm.numero_facture,
+                client: avoirForm.client || null,
+                depart: avoirForm.depart || null,
+                arrivee: avoirForm.arrivee || null,
+                montant_ht: -ht,
+                tva: -tvaAmount,
+                montant_ttc: -ttc,
+                observation: avoirForm.observation || null,
+                is_avoir: true,
+                was_avoir: true,
+                statut: 'avoir',
+                designation: avoirForm.observation || null,
               });
-              avoirNum = 'AV' + (mx + 1).toString().padStart(4, '0') + '/' + yy;
-            }
-            const { error } = await supabase.from('suivi_facturation').insert({
-              company_id: companyId || null,
-              manager_id: managerId || null,
-              date: avoirForm.date || null,
-              numero_facture: avoirNum,
-              client: avoirForm.client || null,
-              depart: avoirForm.depart || null,
-              arrivee: avoirForm.arrivee || null,
-              montant_ht: -ht,
-              tva: -tvaAmount,
-              montant_ttc: -ttc,
-              observation: avoirForm.observation || null,
-              is_avoir: true,
-              was_avoir: true,
-              statut: 'avoir',
-              designation: avoirForm.observation || null,
-            });
-            if (!error) {
-              toast.success("Facture d'avoir enregistrée.");
-              setShowAvoirForm(false);
-              setAvoirForm({ date: new Date().toISOString().split('T')[0], numero_facture: '', client: '', depart: '', arrivee: '', montant_ht: '', tva: '', montant_ttc: '', observation: '' });
-              fetchFacturation();
-            } else toast.error(`Erreur: ${error.message}`);
+              if (!error) {
+                toast.success("Facture d'avoir enregistrée.");
+                setShowAvoirForm(false);
+                setAvoirForm({ date: new Date().toISOString().split('T')[0], numero_facture: '', client: '', depart: '', arrivee: '', montant_ht: '', tva: '', montant_ttc: '', observation: '' });
+                fetchFacturation();
+              } else toast.error(`Erreur: ${error.message}`);
+            } finally { btn.disabled = false; }
           }}
-            className="flex-1 h-10 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg cursor-pointer">
+            className="flex-1 h-10 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg cursor-pointer disabled:opacity-50">
             Enregistrer l'avoir
           </button>
           <button onClick={() => setShowAvoirForm(false)}
