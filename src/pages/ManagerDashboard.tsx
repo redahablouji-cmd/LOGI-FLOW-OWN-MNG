@@ -3578,9 +3578,13 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   <div className="p-4">
                     <div className="mb-4">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrer par Chauffeur</label>
-                      <input type="text" value={fleetResDriver} onChange={e => setFleetResDriver(e.target.value)}
-                        placeholder="Nom du chauffeur..."
-                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                      <select value={fleetResDriver} onChange={e => setFleetResDriver(e.target.value)}
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Tous les chauffeurs —</option>
+                        {[...new Set(fleetReservations.map((r: any) => r.driver_name).filter(Boolean))].sort().map(name => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
                     </div>
                     {(() => {
                       const filtered = fleetResDriver
