@@ -3581,8 +3581,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       <select value={fleetResDriver} onChange={e => setFleetResDriver(e.target.value)}
                         className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
                         <option value="">— Tous les chauffeurs —</option>
-                        {[...new Set(fleetReservations.map((r: any) => r.driver_name).filter(Boolean))].sort().map(name => (
-                          <option key={name} value={name}>{name}</option>
+                        {fleetDrivers.map((d: any) => (
+                          <option key={d.id} value={d.nom_prenom}>{d.code} — {d.nom_prenom}</option>
                         ))}
                       </select>
                     </div>
