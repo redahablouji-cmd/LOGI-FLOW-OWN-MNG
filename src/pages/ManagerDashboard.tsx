@@ -2824,7 +2824,7 @@ const handleGenerateInvoicePDF = () => {
 
   useEffect(() => {
     if (activeTab === 'purchases') fetchPurchases();
-    if (activeTab === 'fleetfix' && companyId) fetchMechanics();
+    if (activeTab === 'fleetfix' && companyId) { fetchMechanics(); fetchFleetDrivers(); fetchFleetReservations(); }
     if (activeTab === 'suivi') { fetchSuivi(); fetchClients(); if (companyId) fetchFleetDrivers(); }
     if (activeTab === 'chauffeurs' && companyId) fetchFleetDrivers();
     if (activeTab === 'clients' && companyId) fetchClients();
@@ -3581,9 +3581,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       <select value={fleetResDriver} onChange={e => setFleetResDriver(e.target.value)}
                         className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
                         <option value="">— Tous les chauffeurs —</option>
-                        {fleetDrivers.map((d: any) => (
+                        {fleetDrivers.length > 0 ? fleetDrivers.map((d: any) => (
                           <option key={d.id} value={d.nom_prenom}>{d.code} — {d.nom_prenom}</option>
-                        ))}
+                        )) : (
+                          <option disabled>Cliquez "Charger" pour afficher</option>
+                        )}
                       </select>
                     </div>
                     {(() => {
