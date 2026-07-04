@@ -3500,7 +3500,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       </button>
                     </div>
                   </div>
-                  <button onClick={fetchFleetReservations}
+                  <button onClick={() => { fetchFleetReservations(); fetchFleetDrivers(); }}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                     <RefreshCw size={12} /> Charger
                   </button>
