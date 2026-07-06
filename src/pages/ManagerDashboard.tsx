@@ -1265,7 +1265,6 @@ const handleSaveInvoiceSettings = async () => {
   setSavingSettings(false);
 };
 const filteredFacts = facturationList.filter(f => {
-  if (f.is_avoir) return false;
   if (factFilter.search) {
     const q = factFilter.search.toLowerCase();
     const haystack = [f.date, f.numero_facture, f.client, f.depart, f.arrivee, f.bl_ot, f.bc, f.statut, f.observation, f.designation, String(f.montant_ht), String(f.montant_ttc), String(f.tva), f.mode_paiement].filter(Boolean).join(' ').toLowerCase();
@@ -4227,12 +4226,15 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             {uploadingFacts ? 'Importation...' : 'Importer XLS'}
             <input type="file" accept=".xlsx,.xls" onChange={handleFactXLSUpload} className="hidden" disabled={uploadingFacts} />
           </label>
-          <div className="relative group">
-            <button className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+          <div className="relative">
+            <button onClick={() => setAvoirViewMode(avoirViewMode === false ? 'menu' as any : false)}
+              className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
               <FileText size={14} /> Avoir ▾
             </button>
-            <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[180px]">
+            {(avoirViewMode as any) === 'menu' && (
+            <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 min-w-[180px]">
               <button onClick={async () => {
+                setAvoirViewMode(false);
                 const yy = new Date().getFullYear().toString().slice(-2);
                 const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
                 let mx = 0;
@@ -4243,11 +4245,12 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 cursor-pointer">
                 <Plus size={13} /> Nouvel Avoir
               </button>
-              <button onClick={() => setAvoirViewMode(true)}
+              <button onClick={() => { setAvoirViewMode(true); }}
                 className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 border-t border-slate-100 cursor-pointer">
                 <FileText size={13} /> Voir Tous les Avoirs
               </button>
             </div>
+            )}
           </div>
           <button onClick={async () => {
             const yy = new Date().getFullYear().toString().slice(-2);
