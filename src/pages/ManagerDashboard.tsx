@@ -3758,9 +3758,22 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {suiviList.length === 0 ? (
-                          <tr><td colSpan={20} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation. Cliquez sur "Nouveau".</td></tr>
-                        ) : suiviList.map(s => (
+                        {(() => {
+                           const filtered = suiviList.filter((s: any) => {
+                             if (prestationFilter.search) {
+                               const q = prestationFilter.search.toLowerCase();
+                               const haystack = [s.date, s.client, s.matricule, s.type, s.facture, s.bon_commande, s.ot_bl_bs_be, s.depart, s.arrivee, String(s.prix_ht || ''), String(s.prix_ttc || ''), String(s.cout_revient || ''), String(s.benefice || ''), String(s.manutention || ''), String(s.immobilisation || '')].filter(Boolean).join(' ').toLowerCase();
+                               if (!haystack.includes(q)) return false;
+                             }
+                             if (prestationFilter.client && !s.client?.toLowerCase().includes(prestationFilter.client.toLowerCase())) return false;
+                             if (prestationFilter.matricule && !s.matricule?.toLowerCase().includes(prestationFilter.matricule.toLowerCase())) return false;
+                             if (prestationFilter.dateFrom && (s.date || '') < prestationFilter.dateFrom) return false;
+                             if (prestationFilter.dateTo && (s.date || '') > prestationFilter.dateTo) return false;
+                             return true;
+                           });
+                           return filtered.length === 0 ? (
+                           <tr><td colSpan={20} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation trouvée.</td></tr>
+                         ) : filtered.map(s => (
                           <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.date}</td>
                             <td className="px-3 py-3 text-xs font-semibold text-slate-700">{s.client || '—'}</td>
@@ -3797,8 +3810,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                               </div>
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
+                        )); })()}
+                       </tbody>
                     </table>
                   </div>
                 </div>
