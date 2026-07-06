@@ -206,7 +206,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [savingWizard, setSavingWizard] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [showAvoirForm, setShowAvoirForm] = useState(false);
-  const [avoirViewMode, setAvoirViewMode] = useState<boolean | 'menu'>(false);
+  const [avoirViewMode, setAvoirViewMode] = useState(false);
+  const [avoirMenuOpen, setAvoirMenuOpen] = useState(false);
   // Devis state
   const [devisList, setDevisList] = useState<any[]>([]);
   const [loadingDevis, setLoadingDevis] = useState(false);
@@ -4227,29 +4228,29 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             <input type="file" accept=".xlsx,.xls" onChange={handleFactXLSUpload} className="hidden" disabled={uploadingFacts} />
           </label>
           <div className="relative">
-            <button onClick={() => setAvoirViewMode(avoirViewMode === false ? 'menu' as any : false)}
+            <button onClick={() => setAvoirMenuOpen(!avoirMenuOpen)}
               className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
               <FileText size={14} /> Avoir ▾
             </button>
-            {(avoirViewMode as any) === 'menu' && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 min-w-[180px]">
-              <button onClick={async () => {
-                setAvoirViewMode(false);
-                const yy = new Date().getFullYear().toString().slice(-2);
-                const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
-                let mx = 0;
-                (allAv || []).forEach((a: any) => { if (a.numero_facture && a.numero_facture.startsWith('AV')) { const n = parseInt(a.numero_facture.replace('AV', '').split('/')[0]); if (!isNaN(n) && n > mx) mx = n; } });
-                setAvoirForm(p => ({ ...p, date: new Date().toISOString().split('T')[0], numero_facture: 'AV' + (mx + 1).toString().padStart(4, '0') + '/' + yy }));
-                setShowAvoirForm(true);
-              }}
-                className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 cursor-pointer">
-                <Plus size={13} /> Nouvel Avoir
-              </button>
-              <button onClick={() => { setAvoirViewMode(true); }}
-                className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 border-t border-slate-100 cursor-pointer">
-                <FileText size={13} /> Voir Tous les Avoirs
-              </button>
-            </div>
+            {avoirMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 min-w-[180px]">
+                <button onClick={async () => {
+                  setAvoirMenuOpen(false);
+                  const yy = new Date().getFullYear().toString().slice(-2);
+                  const { data: allAv } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId).eq('is_avoir', true);
+                  let mx = 0;
+                  (allAv || []).forEach((a: any) => { if (a.numero_facture && a.numero_facture.startsWith('AV')) { const n = parseInt(a.numero_facture.replace('AV', '').split('/')[0]); if (!isNaN(n) && n > mx) mx = n; } });
+                  setAvoirForm(p => ({ ...p, date: new Date().toISOString().split('T')[0], numero_facture: 'AV' + (mx + 1).toString().padStart(4, '0') + '/' + yy }));
+                  setShowAvoirForm(true);
+                }}
+                  className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 cursor-pointer">
+                  <Plus size={13} /> Nouvel Avoir
+                </button>
+                <button onClick={() => { setAvoirMenuOpen(false); setAvoirViewMode(true); }}
+                  className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 border-t border-slate-100 cursor-pointer">
+                  <FileText size={13} /> Voir Tous les Avoirs
+                </button>
+              </div>
             )}
           </div>
           <button onClick={async () => {
