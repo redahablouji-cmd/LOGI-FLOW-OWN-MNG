@@ -170,7 +170,7 @@ const [factForm,           setFactForm]           = useState<any>({});
 const [selectedFacts, setSelectedFacts] = useState<string[]>([]);
 const [allTemplates, setAllTemplates] = useState<any[]>([]);
 const [selectedTemplateId, setSelectedTemplateId] = useState('');
-const [factFilter,         setFactFilter]         = useState({ client: '', dateFrom: '', dateTo: '', statut: '' });
+const [factFilter,         setFactFilter]         = useState({ client: '', dateFrom: '', dateTo: '', statut: '', numero: '', search: '' });
 const [uploadingFacts, setUploadingFacts] = useState(false);
 const [invoiceSettings,  setInvoiceSettings]  = useState<any>({
   company_name: '', address: '', phone: '', email: '',
@@ -1266,11 +1266,16 @@ const handleSaveInvoiceSettings = async () => {
 };
 const filteredFacts = facturationList.filter(f => {
   if (f.is_avoir) return false;
-  if (factFilter.client  && !f.client?.toLowerCase().includes(factFilter.client.toLowerCase())) return false;
-    if ((factFilter as any).numero && !f.numero_facture?.toLowerCase().includes((factFilter as any).numero.toLowerCase())) return false;
-    if (factFilter.statut  && f.statut !== factFilter.statut) return false;
+  if (factFilter.search) {
+    const q = factFilter.search.toLowerCase();
+    const haystack = [f.date, f.numero_facture, f.client, f.depart, f.arrivee, f.bl_ot, f.bc, f.statut, f.observation, f.designation, String(f.montant_ht), String(f.montant_ttc), String(f.tva), f.mode_paiement].filter(Boolean).join(' ').toLowerCase();
+    if (!haystack.includes(q)) return false;
+  }
+  if (factFilter.client && !f.client?.toLowerCase().includes(factFilter.client.toLowerCase())) return false;
+  if (factFilter.numero && !f.numero_facture?.toLowerCase().includes(factFilter.numero.toLowerCase())) return false;
+  if (factFilter.statut && f.statut !== factFilter.statut) return false;
   if (factFilter.dateFrom && f.date < factFilter.dateFrom) return false;
-  if (factFilter.dateTo   && f.date > factFilter.dateTo)   return false;
+  if (factFilter.dateTo && f.date > factFilter.dateTo) return false;
   return true;
 });
 const today = new Date();
@@ -4259,6 +4264,20 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
       </div>
     </div>
 
+    {/* Global Search */}
+    <div className="mb-3 relative">
+      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+      <input type="text" placeholder="Rechercher partout — client, N° facture, départ, arrivée, montant, BL/OT, statut..."
+        value={factFilter.search}
+        onChange={e => setFactFilter(p => ({ ...p, search: e.target.value }))}
+        className="w-full h-10 rounded-xl border-2 border-slate-200 pl-11 pr-10 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+      {factFilter.search && (
+        <button onClick={() => setFactFilter(p => ({ ...p, search: '' }))}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+          <X size={16} />
+        </button>
+      )}
+    </div>
     {/* Filters */}
     <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
       <div>
@@ -4298,7 +4317,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
            <option value="avoir">Avoir</option>
          </select>
        </div>
-       <button onClick={() => setFactFilter({ client: '', numero: '', dateFrom: '', dateTo: '', statut: '' } as any)}
+       <button onClick={() => setFactFilter({ client: '', numero: '', dateFrom: '', dateTo: '', statut: '', search: '' })}
         className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
         Réinitialiser
       </button>
