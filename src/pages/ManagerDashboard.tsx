@@ -115,7 +115,7 @@ export default function ManagerDashboard() {
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [newClientForm, setNewClientForm] = useState({ nom: '', adresse: '', ice: '', delai_paiement: '60' });
   const [showNewFournisseurForm, setShowNewFournisseurForm] = useState(false);
-  const [newFournisseurForm, setNewFournisseurForm] = useState({ nom: '', adresse: '', ice: '', if_number: '', delai_paiement: '60' });
+  const [newFournisseurForm, setNewFournisseurForm] = useState({ nom: '', categorie: '', taux_tva: '20', if_number: '', ice: '', adresse: '', telephone: '', banque: '', delai_paiement: '60' });
   const [loadingClients,   setLoadingClients]   = useState(false);
   const [editingClient,    setEditingClient]    = useState<any | null>(null);
   const [clientEditForm,   setClientEditForm]   = useState<any>({});
@@ -4070,16 +4070,42 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Nouveau Fournisseur</p>
                   <button onClick={() => setShowNewFournisseurForm(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={16} /></button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom *</label>
                     <input type="text" value={newFournisseurForm.nom} onChange={e => setNewFournisseurForm(p => ({...p, nom: e.target.value}))}
                       placeholder="Nom du fournisseur" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adresse</label>
-                    <input type="text" value={newFournisseurForm.adresse} onChange={e => setNewFournisseurForm(p => ({...p, adresse: e.target.value}))}
-                      placeholder="Adresse" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catégorie</label>
+                    <select value={newFournisseurForm.categorie || ''} onChange={e => setNewFournisseurForm(p => ({...p, categorie: e.target.value}))}
+                      className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                      <option value="">— Sélectionner —</option>
+                      <option value="GASOIL">Gasoil</option>
+                      <option value="PIECES DE RECHANGE">Pièces de rechange</option>
+                      <option value="AUTOROUTE">Autoroute</option>
+                      <option value="ASSURANCE">Assurance</option>
+                      <option value="FIX-FAX-INTERNET">Fix-Fax-Internet</option>
+                      <option value="PNEUMATIQUE">Pneumatique</option>
+                      <option value="ENTRETIEN">Entretien</option>
+                      <option value="AUTRE">Autre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taux TVA (%)</label>
+                    <select value={newFournisseurForm.taux_tva || '20'} onChange={e => setNewFournisseurForm(p => ({...p, taux_tva: e.target.value}))}
+                      className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                      <option value="0">0%</option>
+                      <option value="7">7%</option>
+                      <option value="10">10%</option>
+                      <option value="14">14%</option>
+                      <option value="20">20%</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">IF</label>
+                    <input type="text" value={newFournisseurForm.if_number} onChange={e => setNewFournisseurForm(p => ({...p, if_number: e.target.value}))}
+                      placeholder="N° IF" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ICE</label>
@@ -4087,9 +4113,19 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       placeholder="N° ICE" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">IF</label>
-                    <input type="text" value={newFournisseurForm.if_number} onChange={e => setNewFournisseurForm(p => ({...p, if_number: e.target.value}))}
-                      placeholder="N° IF" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adresse</label>
+                    <input type="text" value={newFournisseurForm.adresse} onChange={e => setNewFournisseurForm(p => ({...p, adresse: e.target.value}))}
+                      placeholder="Adresse" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Téléphone</label>
+                    <input type="text" value={newFournisseurForm.telephone || ''} onChange={e => setNewFournisseurForm(p => ({...p, telephone: e.target.value}))}
+                      placeholder="Téléphone" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
+                    <input type="text" value={newFournisseurForm.banque || ''} onChange={e => setNewFournisseurForm(p => ({...p, banque: e.target.value}))}
+                      placeholder="Banque" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Délai (J)</label>
@@ -4102,8 +4138,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     if (!newFournisseurForm.nom.trim()) { toast.error('Le nom est obligatoire.'); return; }
                     const { data: dup } = await supabase.from('fournisseurs').select('id').eq('company_id', companyId).eq('nom', newFournisseurForm.nom.trim());
                     if (dup && dup.length > 0) { if (!confirm('Ce fournisseur existe déjà. Ajouter quand même ?')) return; }
-                    const { error } = await supabase.from('fournisseurs').insert({ company_id: companyId, nom: newFournisseurForm.nom.trim(), adresse: newFournisseurForm.adresse || null, ice: newFournisseurForm.ice || null, if_number: newFournisseurForm.if_number || null, delai_paiement: parseInt(newFournisseurForm.delai_paiement) || 60 });
-                    if (!error) { toast.success('Fournisseur ajouté.'); setShowNewFournisseurForm(false); setNewFournisseurForm({ nom: '', adresse: '', ice: '', if_number: '', delai_paiement: '60' }); fetchFournisseurs(); }
+                    const { error } = await supabase.from('fournisseurs').insert({ company_id: companyId, nom: newFournisseurForm.nom.trim(), categorie: newFournisseurForm.categorie || null, taux_tva: newFournisseurForm.taux_tva || null, if_number: newFournisseurForm.if_number || null, ice: newFournisseurForm.ice || null, adresse: newFournisseurForm.adresse || null, telephone: newFournisseurForm.telephone || null, banque: newFournisseurForm.banque || null, delai_paiement: parseInt(newFournisseurForm.delai_paiement) || 60 });
+                    if (!error) { toast.success('Fournisseur ajouté.'); setShowNewFournisseurForm(false); setNewFournisseurForm({ nom: '', categorie: '', taux_tva: '20', if_number: '', ice: '', adresse: '', telephone: '', banque: '', delai_paiement: '60' }); fetchFournisseurs(); }
                     else toast.error('Erreur: ' + error.message);
                   }}
                     className="h-9 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-lg cursor-pointer">Enregistrer</button>
