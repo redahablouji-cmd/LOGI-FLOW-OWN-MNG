@@ -201,7 +201,7 @@ const [uploadingLogo,    setUploadingLogo]    = useState(false);
 const [logoPreviewUrl,   setLogoPreviewUrl]   = useState('');
 const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [selectedPrestations, setSelectedPrestations] = useState<string[]>([]);
-  const [prestationFilter, setPrestationFilter] = useState({ client: '', dateFrom: '', dateTo: '', matricule: '' });
+  const [prestationFilter, setPrestationFilter] = useState({ client: '', dateFrom: '', dateTo: '', matricule: '', search: '' });
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardPrestations, setWizardPrestations] = useState<any[]>([]);
   const [wizardForms, setWizardForms] = useState<any[]>([]);
@@ -3731,6 +3731,19 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 </div>
               </div>
 
+              <div className="mb-3 relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input type="text" placeholder="Rechercher partout — client, matricule, facture, BL/OT, départ, arrivée, montant..."
+                  value={prestationFilter.search}
+                  onChange={e => setPrestationFilter(p => ({ ...p, search: e.target.value }))}
+                  className="w-full h-10 rounded-xl border-2 border-slate-200 pl-11 pr-10 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+                {prestationFilter.search && (
+                  <button onClick={() => setPrestationFilter(p => ({ ...p, search: '' }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
               {loadingSuivi ? (
                 <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
               ) : (
@@ -9498,6 +9511,11 @@ ${cSig}
           <tbody className="divide-y divide-slate-100">
             {(() => {
               const filtered = suiviList.filter((p: any) => {
+                if (prestationFilter.search) {
+                  const q = prestationFilter.search.toLowerCase();
+                  const haystack = [p.date, p.client, p.matricule, p.type, p.facture, p.bon_commande, p.ot_bl_bs_be, p.depart, p.arrivee, String(p.prix_ht), String(p.prix_ttc), String(p.cout_revient), String(p.benefice), String(p.manutention), String(p.immobilisation)].filter(Boolean).join(' ').toLowerCase();
+                  if (!haystack.includes(q)) return false;
+                }
                 if (prestationFilter.client && !p.client?.toLowerCase().includes(prestationFilter.client.toLowerCase())) return false;
                 if (prestationFilter.matricule && !p.matricule?.toLowerCase().includes(prestationFilter.matricule.toLowerCase())) return false;
                 if (prestationFilter.dateFrom && (p.date || '') < prestationFilter.dateFrom) return false;
