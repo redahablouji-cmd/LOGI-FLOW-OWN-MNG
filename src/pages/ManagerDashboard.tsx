@@ -3735,7 +3735,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     <table className="w-full text-left min-w-[1200px]">
                       <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
-                          {['Date','Matricule','Type','Facture','N° Bon Cmd','OT/BL','Client','Départ','Arrivée','Manut.','Immob.','HT','TTC','Coût Rev.','Bénéfice','Actions'].map(h => (
+                          {['Date','Client','Matricule','Type','Facture','N° Bon Cmd','OT/BL','Départ','Arrivée','Manut.','Immob.','HT','TTC','Coût Rev.','Bénéfice','Actions'].map(h => (
                             <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -3746,12 +3746,12 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         ) : suiviList.map(s => (
                           <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.date}</td>
+                            <td className="px-3 py-3 text-xs font-semibold text-slate-700">{s.client || '—'}</td>
                             <td className="px-3 py-3 font-mono text-xs font-bold text-blue-600">{s.matricule || '—'}</td>
                             <td className="px-3 py-3 text-xs text-slate-600">{s.type || '—'}</td>
                             <td className="px-3 py-3 font-mono text-xs text-slate-700">{s.facture || '—'}</td>
                             <td className="px-3 py-3 text-xs text-slate-600">{s.bon_commande || '—'}</td>
                             <td className="px-3 py-3 text-xs text-slate-600">{s.ot_bl_bs_be || '—'}</td>
-                            <td className="px-3 py-3 text-xs font-semibold text-slate-700">{s.client || '—'}</td>
                             <td className="px-3 py-3 text-xs text-slate-600">{s.depart || '—'}</td>
                             <td className="px-3 py-3 text-xs text-slate-600">{s.arrivee || '—'}</td>
                             <td className="px-3 py-3 font-mono text-xs text-slate-700">{s.manutention?.toLocaleString('fr-MA')}</td>
