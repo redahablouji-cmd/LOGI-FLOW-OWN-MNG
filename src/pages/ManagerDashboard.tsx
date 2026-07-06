@@ -111,7 +111,11 @@ export default function ManagerDashboard() {
   const [contratsList, setContratsList] = useState<any[]>([]);
   const [loadingContrats, setLoadingContrats] = useState(false);
   const [uploadingXLS,     setUploadingXLS]     = useState(false);
-  const [clientsList,      setClientsList]      = useState<any[]>([]);
+  const [clientsList, setClientsList] = useState<any[]>([]);
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [newClientForm, setNewClientForm] = useState({ nom: '', adresse: '', ice: '', delai_paiement: '60' });
+  const [showNewFournisseurForm, setShowNewFournisseurForm] = useState(false);
+  const [newFournisseurForm, setNewFournisseurForm] = useState({ nom: '', adresse: '', ice: '', if_number: '', delai_paiement: '60' });
   const [loadingClients,   setLoadingClients]   = useState(false);
   const [editingClient,    setEditingClient]    = useState<any | null>(null);
   const [clientEditForm,   setClientEditForm]   = useState<any>({});
@@ -3298,7 +3302,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   <option value="avoir">Avoir</option>
                 </select>
               </div>
-                <button onClick={() => setPurchaseFilter({ fournisseur: '', dateFrom: '', dateTo: '', category: '', matricule: '', banque: '', mode: '' })}
+                <button onClick={() => setPurchaseFilter({ fournisseur: '', dateFrom: '', dateTo: '', category: '', matricule: '', banque: '', mode: '', search: '' })}
                   className="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer">
                   Réinitialiser
                 </button>
@@ -3922,14 +3926,56 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Download size={14} /> Export XLS
           </button>
-          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingClients ? 'bg-slate-600 opacity-60' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
-            <Upload size={14} />
-            {uploadingClients ? 'Importation...' : 'Importer XLS'}
-            <input type="file" accept=".xlsx,.xls" onChange={handleClientsXLSUpload} className="hidden" disabled={uploadingClients} />
-          </label>
-        </div>
-      </div>
-    </div>
+                  <button onClick={() => setShowNewClientForm(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Plus size={14} /> Nouveau Client
+                  </button>
+                </div>
+              </div>
+            </div>
+            {showNewClientForm && (
+              <div className="mb-4 bg-white rounded-xl border-2 border-blue-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Nouveau Client</p>
+                  <button onClick={() => setShowNewClientForm(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={16} /></button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom *</label>
+                    <input type="text" value={newClientForm.nom} onChange={e => setNewClientForm(p => ({...p, nom: e.target.value}))}
+                      placeholder="Nom du client" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adresse</label>
+                    <input type="text" value={newClientForm.adresse} onChange={e => setNewClientForm(p => ({...p, adresse: e.target.value}))}
+                      placeholder="Adresse" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ICE</label>
+                    <input type="text" value={newClientForm.ice} onChange={e => setNewClientForm(p => ({...p, ice: e.target.value}))}
+                      placeholder="N° ICE" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Délai Paiement (J)</label>
+                    <input type="number" value={newClientForm.delai_paiement} onChange={e => setNewClientForm(p => ({...p, delai_paiement: e.target.value}))}
+                      className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-4">
+                  <button onClick={async () => {
+                    if (!newClientForm.nom.trim()) { toast.error('Le nom est obligatoire.'); return; }
+                    const { data: dup } = await supabase.from('clients').select('id').eq('company_id', companyId).eq('nom', newClientForm.nom.trim());
+                    if (dup && dup.length > 0) { if (!confirm('Ce client existe déjà. Ajouter quand même ?')) return; }
+                    const { error } = await supabase.from('clients').insert({ company_id: companyId, nom: newClientForm.nom.trim(), adresse: newClientForm.adresse || null, ice: newClientForm.ice || null, delai_paiement: parseInt(newClientForm.delai_paiement) || 60 });
+                    if (!error) { toast.success('Client ajouté.'); setShowNewClientForm(false); setNewClientForm({ nom: '', adresse: '', ice: '', delai_paiement: '60' }); fetchClients(); }
+                    else toast.error('Erreur: ' + error.message);
+                  }}
+                    className="h-9 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-lg cursor-pointer">Enregistrer</button>
+                  <button onClick={() => setShowNewClientForm(false)}
+                    className="h-9 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase rounded-lg cursor-pointer">Annuler</button>
+                </div>
+              </div>
+            )}
 
     <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
       📋 Format attendu : <span className="font-black">Clients | Adresse | ICE | Délai de paiement/Jour</span>
@@ -4010,14 +4056,62 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
             <Download size={14} /> Export XLS
           </button>
-          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingFournisseurs ? 'bg-slate-600 opacity-60' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
-            <Upload size={14} />
-            {uploadingFournisseurs ? 'Importation...' : 'Importer XLS'}
-            <input type="file" accept=".xlsx,.xls" onChange={handleFournisseursXLSUpload} className="hidden" disabled={uploadingFournisseurs} />
-          </label>
-        </div>
-      </div>
-    </div>
+          
+                  <button onClick={() => setShowNewFournisseurForm(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                    <Plus size={14} /> Nouveau Fournisseur
+                  </button>
+                </div>
+              </div>
+            </div>
+            {showNewFournisseurForm && (
+              <div className="mb-4 bg-white rounded-xl border-2 border-blue-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Nouveau Fournisseur</p>
+                  <button onClick={() => setShowNewFournisseurForm(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={16} /></button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom *</label>
+                    <input type="text" value={newFournisseurForm.nom} onChange={e => setNewFournisseurForm(p => ({...p, nom: e.target.value}))}
+                      placeholder="Nom du fournisseur" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adresse</label>
+                    <input type="text" value={newFournisseurForm.adresse} onChange={e => setNewFournisseurForm(p => ({...p, adresse: e.target.value}))}
+                      placeholder="Adresse" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ICE</label>
+                    <input type="text" value={newFournisseurForm.ice} onChange={e => setNewFournisseurForm(p => ({...p, ice: e.target.value}))}
+                      placeholder="N° ICE" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">IF</label>
+                    <input type="text" value={newFournisseurForm.if_number} onChange={e => setNewFournisseurForm(p => ({...p, if_number: e.target.value}))}
+                      placeholder="N° IF" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Délai (J)</label>
+                    <input type="number" value={newFournisseurForm.delai_paiement} onChange={e => setNewFournisseurForm(p => ({...p, delai_paiement: e.target.value}))}
+                      className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-4">
+                  <button onClick={async () => {
+                    if (!newFournisseurForm.nom.trim()) { toast.error('Le nom est obligatoire.'); return; }
+                    const { data: dup } = await supabase.from('fournisseurs').select('id').eq('company_id', companyId).eq('nom', newFournisseurForm.nom.trim());
+                    if (dup && dup.length > 0) { if (!confirm('Ce fournisseur existe déjà. Ajouter quand même ?')) return; }
+                    const { error } = await supabase.from('fournisseurs').insert({ company_id: companyId, nom: newFournisseurForm.nom.trim(), adresse: newFournisseurForm.adresse || null, ice: newFournisseurForm.ice || null, if_number: newFournisseurForm.if_number || null, delai_paiement: parseInt(newFournisseurForm.delai_paiement) || 60 });
+                    if (!error) { toast.success('Fournisseur ajouté.'); setShowNewFournisseurForm(false); setNewFournisseurForm({ nom: '', adresse: '', ice: '', if_number: '', delai_paiement: '60' }); fetchFournisseurs(); }
+                    else toast.error('Erreur: ' + error.message);
+                  }}
+                    className="h-9 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-lg cursor-pointer">Enregistrer</button>
+                  <button onClick={() => setShowNewFournisseurForm(false)}
+                    className="h-9 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase rounded-lg cursor-pointer">Annuler</button>
+                </div>
+              </div>
+            )}
     <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-medium">
       📋 Format attendu : <span className="font-black">Fournisseur | Catégorie | Taux TVA | IF | ICE | Adresse | Téléphone | Banque | Délai Paiement (J)</span>
     </div>
