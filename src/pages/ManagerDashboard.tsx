@@ -206,7 +206,7 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
   const [savingWizard, setSavingWizard] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [showAvoirForm, setShowAvoirForm] = useState(false);
-  const [avoirViewMode, setAvoirViewMode] = useState(false);
+  const [avoirViewMode, setAvoirViewMode] = useState<boolean | 'menu'>(false);
   // Devis state
   const [devisList, setDevisList] = useState<any[]>([]);
   const [loadingDevis, setLoadingDevis] = useState(false);
