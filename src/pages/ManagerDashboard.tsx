@@ -130,7 +130,7 @@ export default function ManagerDashboard() {
   const [editingPurchase,  setEditingPurchase]  = useState<Purchase | null>(null);
   const [uploadingPurchaseXLS, setUploadingPurchaseXLS] = useState(false);
   const [purchaseFilter, setPurchaseFilter] = useState({
-    fournisseur: '', dateFrom: '', dateTo: '', category: '', matricule: '', banque: '', mode: '',
+    fournisseur: '', dateFrom: '', dateTo: '', category: '', matricule: '', banque: '', mode: '', search: '',
   });
 
   // FleetFix
@@ -551,9 +551,25 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       }));
 
       if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
-      const { error } = await supabase.from('purchases').insert(records);
-      if (!error) { toast.success(`${records.length} achats importés.`); fetchPurchases(); }
-      else toast.error(`Erreur: ${error.message}`);
+      const { data: existing } = await supabase.from('purchases').select('numero_facture, fournisseur, date_achat').eq('company_id', companyId);
+      const existingSet = new Set((existing || []).map((e: any) => (e.numero_facture || '') + '|' + (e.fournisseur || '') + '|' + (e.date_achat || '')));
+      const dupes = records.filter(r => existingSet.has((r.numero_facture || '') + '|' + (r.fournisseur || '') + '|' + (r.date_achat || '')));
+      const newRecs = records.filter(r => !existingSet.has((r.numero_facture || '') + '|' + (r.fournisseur || '') + '|' + (r.date_achat || '')));
+      if (dupes.length > 0 && newRecs.length > 0) {
+        if (!confirm('⚠ ' + dupes.length + ' doublon(s) détecté(s). Importer uniquement les ' + newRecs.length + ' nouveaux ?')) return;
+        const { error } = await supabase.from('purchases').insert(newRecs.map(r => ({ ...r, company_id: companyId })));
+        if (!error) { toast.success(newRecs.length + ' importés (' + dupes.length + ' doublons ignorés).'); fetchPurchases(); }
+        else toast.error(`Erreur: ${error.message}`);
+      } else if (dupes.length > 0) {
+        if (!confirm('⚠ Tous les ' + dupes.length + ' achats existent déjà. Réimporter ?')) return;
+        const { error } = await supabase.from('purchases').insert(records.map(r => ({ ...r, company_id: companyId })));
+        if (!error) { toast.success(records.length + ' réimportés.'); fetchPurchases(); }
+        else toast.error(`Erreur: ${error.message}`);
+      } else {
+        const { error } = await supabase.from('purchases').insert(records.map(r => ({ ...r, company_id: companyId })));
+        if (!error) { toast.success(`${records.length} achats importés.`); fetchPurchases(); }
+        else toast.error(`Erreur: ${error.message}`);
+      }
     } catch (err: any) {
       toast.error(`Erreur: ${err.message}`);
     } finally {
@@ -659,6 +675,12 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       if (activeTab === 'facturation') fetchFacturation();
     } else toast.error(`Erreur: ${error.message}`);
   } else {
+    if (payload.date && payload.client && payload.depart && payload.arrivee) {
+      const { data: dup } = await supabase.from('suivi_prestation').select('id, date, client, depart, arrivee').eq('company_id', companyId).eq('date', payload.date).eq('client', payload.client).eq('depart', payload.depart).eq('arrivee', payload.arrivee);
+      if (dup && dup.length > 0) {
+        if (!confirm('⚠ Une prestation identique existe déjà (' + payload.client + ' — ' + payload.depart + ' → ' + payload.arrivee + ' le ' + payload.date + '). Voulez-vous quand même ajouter ?')) return;
+      }
+    }
     const { error } = await supabase
       .from('suivi_prestation')
       .insert(payload);
@@ -1046,6 +1068,12 @@ const handleSaveFacturation = async () => {
       fetchFacturation();
     } else toast.error(`Erreur: ${error.message}`);
   } else {
+    if (payload.numero_facture) {
+      const { data: dup } = await supabase.from('suivi_facturation').select('id, numero_facture, client, date').eq('company_id', companyId).eq('numero_facture', payload.numero_facture);
+      if (dup && dup.length > 0) {
+        if (!confirm('⚠ La facture N° ' + payload.numero_facture + ' existe déjà (' + (dup[0].client || '') + ' — ' + (dup[0].date || '') + '). Voulez-vous quand même ajouter ?')) return;
+      }
+    }
     if (!payload.numero_facture) {
       const yy = new Date().getFullYear().toString().slice(-2);
       const { data: allF } = await supabase.from('suivi_facturation').select('numero_facture').eq('company_id', companyId);
@@ -1677,6 +1705,12 @@ const handleGenerateInvoicePDF = () => {
       if (!error) { toast.success("Devis modifié."); setEditingDevis(null); }
       else { toast.error(`Erreur: ${error.message}`); return; }
     } else {
+      if (payload.numero_devis) {
+        const { data: dup } = await supabase.from('devis').select('id, numero_devis, client, date').eq('company_id', companyId).eq('numero_devis', payload.numero_devis);
+        if (dup && dup.length > 0) {
+          if (!confirm('⚠ Le devis N° ' + payload.numero_devis + ' existe déjà (' + (dup[0].client || '') + ' — ' + (dup[0].date || '') + '). Voulez-vous quand même ajouter ?')) return;
+        }
+      }
       if (!payload.numero_devis) {
         const now = new Date();
         const pfx = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0');
@@ -1840,6 +1874,12 @@ const handleGenerateInvoicePDF = () => {
       const { error } = await supabase.from('bon_commande').update(payload).eq('id', editingBC.id);
       if (!error) { toast.success("BC modifié."); setEditingBC(null); } else { toast.error(`Erreur: ${error.message}`); return; }
     } else {
+      if (payload.numero_bc) {
+        const { data: dup } = await supabase.from('bon_commande').select('id, numero_bc, fournisseur, date').eq('company_id', companyId).eq('numero_bc', payload.numero_bc);
+        if (dup && dup.length > 0) {
+          if (!confirm('⚠ Le BC N° ' + payload.numero_bc + ' existe déjà (' + (dup[0].fournisseur || '') + ' — ' + (dup[0].date || '') + '). Voulez-vous quand même ajouter ?')) return;
+        }
+      }
       if (!payload.numero_bc) {
         const now = new Date();
         const pfx = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0');
@@ -2955,6 +2995,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
     { label: 'Bénéfice (MAD)',         key: 'benefice',       type: 'number' },
   ];
   const filteredPurchases = purchases.filter((p: any) => {
+    if (purchaseFilter.search) {
+      const q = purchaseFilter.search.toLowerCase();
+      const haystack = [p.date_achat, p.numero_facture, p.fournisseur, p.category, p.designation, p.affectation_immatriculation, p.banque, p.numero_ref, p.mode_paiement, p.ice_number, p.if_number, String(p.montant_ht), String(p.montant_ttc), String(p.tva_amount)].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     if (purchaseFilter.fournisseur && !p.fournisseur?.toLowerCase().includes(purchaseFilter.fournisseur.toLowerCase())) return false;
     if (purchaseFilter.category && p.category !== purchaseFilter.category) return false;
     if (purchaseFilter.dateFrom && (p.date_achat || '') < purchaseFilter.dateFrom) return false;
@@ -3174,6 +3219,20 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     </button>
                   </div>
                 </div>
+              </div>
+              {/* Global Search */}
+              <div className="mb-3 relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input type="text" placeholder="Rechercher partout — fournisseur, N° facture, désignation, matricule, montant, banque..."
+                  value={purchaseFilter.search}
+                  onChange={e => setPurchaseFilter(p => ({ ...p, search: e.target.value }))}
+                  className="w-full h-10 rounded-xl border-2 border-slate-200 pl-11 pr-10 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+                {purchaseFilter.search && (
+                  <button onClick={() => setPurchaseFilter(p => ({ ...p, search: '' }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X size={16} />
+                  </button>
+                )}
               </div>
               {/* Filters */}
               <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
