@@ -115,6 +115,8 @@ export default function ManagerDashboard() {
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [newClientForm, setNewClientForm] = useState({ nom: '', adresse: '', ice: '', delai_paiement: '60' });
   const [showNewFournisseurForm, setShowNewFournisseurForm] = useState(false);
+  const [uploadingSuiviXLS, setUploadingSuiviXLS] = useState(false);
+  const [showPrestationInvoiceSelector, setShowPrestationInvoiceSelector] = useState(false);
   const [newFournisseurForm, setNewFournisseurForm] = useState({ nom: '', categorie: '', taux_tva: '20', if_number: '', ice: '', adresse: '', telephone: '', banque: '', delai_paiement: '60' });
   const [loadingClients,   setLoadingClients]   = useState(false);
   const [editingClient,    setEditingClient]    = useState<any | null>(null);
@@ -702,6 +704,51 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     const { error } = await supabase.from('suivi_prestation').delete().eq('id', id);
     if (!error) { setSuiviList(prev => prev.filter(s => s.id !== id)); toast.success("Supprimé."); }
     else toast.error(`Erreur: ${error.message}`);
+  };
+
+  const generatePrestationPDF = (tmpl: any) => {
+    const selected = suiviList.filter((s: any) => selectedPrestations.includes(s.id));
+    selected.forEach((s: any) => {
+      const ht = Number(s.prix_ht) || 0;
+      const ttc = Number(s.prix_ttc) || 0;
+      const tva = ttc - ht;
+      const rate = ht > 0 ? ((tva / ht) * 100) : 0;
+      const p: string[] = [];
+      p.push('<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>@page{size:A4;margin:0}body{font-family:Arial,sans-serif;margin:0;padding:0}*{box-sizing:border-box}</style></head><body>');
+      p.push('<div style="width:210mm;min-height:297mm;padding:15mm 20mm">');
+      if (tmpl.logo_url) p.push('<img src="' + tmpl.logo_url + '" style="max-height:60px;margin-bottom:10px" />');
+      p.push('<div style="text-align:center;margin-bottom:8px">');
+      p.push('<h1 style="font-size:16pt;color:#1F3864;margin:0">' + (tmpl.company_name || 'FOTRAL SARL') + '</h1>');
+      if (tmpl.address) p.push('<p style="font-size:9pt;color:#666;margin:2px 0">' + tmpl.address + '</p>');
+      if (tmpl.phone) p.push('<p style="font-size:9pt;color:#666;margin:2px 0">Tél: ' + tmpl.phone + '</p>');
+      if (tmpl.ice) p.push('<p style="font-size:9pt;color:#666;margin:2px 0">ICE: ' + tmpl.ice + '</p>');
+      p.push('</div>');
+      p.push('<hr style="border:1px solid #2E75B6;margin:10px 0"/>');
+      p.push('<h2 style="text-align:center;font-size:14pt;color:#1F3864;margin:10px 0">FACTURE DE PRESTATION</h2>');
+      p.push('<table style="width:100%;font-size:10pt;margin:10px 0">');
+      p.push('<tr><td style="width:50%"><strong>Client:</strong> ' + (s.client || '') + '</td><td><strong>Date:</strong> ' + (s.date || '') + '</td></tr>');
+      p.push('<tr><td><strong>Matricule:</strong> ' + (s.matricule || '') + '</td><td><strong>Type:</strong> ' + (s.type || '') + '</td></tr>');
+      p.push('<tr><td><strong>Départ:</strong> ' + (s.depart || '') + '</td><td><strong>Arrivée:</strong> ' + (s.arrivee || '') + '</td></tr>');
+      if (s.facture) p.push('<tr><td><strong>N° Facture:</strong> ' + s.facture + '</td><td></td></tr>');
+      if (s.ot_bl_bs_be) p.push('<tr><td><strong>OT/BL:</strong> ' + s.ot_bl_bs_be + '</td><td></td></tr>');
+      p.push('</table>');
+      p.push('<table style="width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt">');
+      p.push('<thead><tr style="background:#1F3864;color:white"><th style="padding:8px;text-align:left;border:1px solid #ccc">Désignation</th><th style="padding:8px;text-align:right;border:1px solid #ccc">Montant</th></tr></thead><tbody>');
+      p.push('<tr><td style="padding:8px;border:1px solid #ccc">Prestation de transport ' + (s.depart || '') + ' → ' + (s.arrivee || '') + '</td><td style="padding:8px;text-align:right;border:1px solid #ccc">' + ht.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
+      if (Number(s.manutention) > 0) p.push('<tr><td style="padding:8px;border:1px solid #ccc">Manutention</td><td style="padding:8px;text-align:right;border:1px solid #ccc">' + Number(s.manutention).toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
+      if (Number(s.immobilisation) > 0) p.push('<tr><td style="padding:8px;border:1px solid #ccc">Immobilisation</td><td style="padding:8px;text-align:right;border:1px solid #ccc">' + Number(s.immobilisation).toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
+      p.push('</tbody></table>');
+      p.push('<table style="width:300px;margin-left:auto;font-size:10pt;border-collapse:collapse">');
+      p.push('<tr><td style="padding:5px 10px"><strong>Total HT:</strong></td><td style="padding:5px 10px;text-align:right">' + ht.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
+      p.push('<tr><td style="padding:5px 10px"><strong>TVA (' + rate.toFixed(0) + '%):</strong></td><td style="padding:5px 10px;text-align:right">' + tva.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
+      p.push('<tr style="background:#f0f0f0;font-size:12pt"><td style="padding:8px 10px"><strong>Total TTC:</strong></td><td style="padding:8px 10px;text-align:right"><strong>' + ttc.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</strong></td></tr>');
+      p.push('</table>');
+      if (tmpl.rib) p.push('<p style="font-size:9pt;color:#666;margin-top:20px"><strong>RIB:</strong> ' + tmpl.rib + '</p>');
+      if (tmpl.footer_text) p.push('<p style="font-size:8pt;color:#888;text-align:center;margin-top:30px;border-top:1px solid #ccc;padding-top:8px">' + tmpl.footer_text + '</p>');
+      p.push('</div></body></html>');
+      const win = window.open('', '_blank');
+      if (win) { win.document.write(p.join('')); win.document.close(); setTimeout(() => win.print(), 600); }
+    });
   };
 // ── Fleet Drivers ──────────────────────────────────────────────────────
 const fetchFleetDrivers = async () => {
@@ -3723,6 +3770,75 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <Download size={14} /> Export XLS
                     </button>
+                    <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${uploadingSuiviXLS ? 'bg-slate-400 opacity-60' : 'bg-amber-600 hover:bg-amber-700'} text-white`}>
+                      <Upload size={14} />
+                      {uploadingSuiviXLS ? 'Import...' : 'Importer XLS'}
+                      <input type="file" accept=".xlsx,.xls" className="hidden" disabled={uploadingSuiviXLS}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]; if (!file) return;
+                          setUploadingSuiviXLS(true);
+                          try {
+                            const buffer = await file.arrayBuffer();
+                            const wb = XLSX.read(buffer, { type: 'array' });
+                            const ws = wb.Sheets[wb.SheetNames[0]];
+                            const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                            const dataRows = rows.slice(1).filter((r: any[]) => r.length > 0 && (r[0] || r[1] || r[2]));
+                            const records = dataRows.map((r: any[]) => ({
+                              company_id: companyId,
+                              date: r[0] ? String(r[0]) : null,
+                              client: String(r[1] || '').trim() || null,
+                              matricule: String(r[2] || '').trim() || null,
+                              type: String(r[3] || '').trim() || null,
+                              facture: String(r[4] || '').trim() || null,
+                              bon_commande: String(r[5] || '').trim() || null,
+                              ot_bl_bs_be: String(r[6] || '').trim() || null,
+                              depart: String(r[7] || '').trim() || null,
+                              arrivee: String(r[8] || '').trim() || null,
+                              manutention: parseFloat(r[9]) || 0,
+                              immobilisation: parseFloat(r[10]) || 0,
+                              prix_ht: parseFloat(r[11]) || 0,
+                              prix_ttc: parseFloat(r[12]) || 0,
+                              cout_revient: parseFloat(r[13]) || 0,
+                              benefice: parseFloat(r[14]) || 0,
+                            }));
+                            if (records.length === 0) { toast.error("Aucune donnée trouvée."); return; }
+                            const { error } = await supabase.from('suivi_prestation').insert(records);
+                            if (!error) { toast.success(`${records.length} prestations importées.`); fetchSuivi(); }
+                            else toast.error(`Erreur: ${error.message}`);
+                          } catch (err: any) { toast.error(`Erreur: ${err.message}`); }
+                          finally { setUploadingSuiviXLS(false); e.target.value = ''; }
+                        }} />
+                    </label>
+                    {selectedPrestations.length > 0 && (
+                      <button onClick={() => setShowPrestationInvoiceSelector(true)}
+                        className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                        <FileText size={14} /> Générer PDF ({selectedPrestations.length})
+                      </button>
+                    )}
+                    {showPrestationInvoiceSelector && (
+                      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl">
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Choisir un modèle</h3>
+                            <button onClick={() => setShowPrestationInvoiceSelector(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={18} /></button>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-4">{selectedPrestations.length} prestation(s) sélectionnée(s)</p>
+                          {invoiceSettings.length === 0 ? (
+                            <p className="text-sm text-slate-400 text-center py-6">Aucun modèle configuré.</p>
+                          ) : (
+                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                              {invoiceSettings.map((tmpl: any, idx: number) => (
+                                <button key={tmpl.id || idx} onClick={() => { setShowPrestationInvoiceSelector(false); generatePrestationPDF(tmpl); }}
+                                  className="w-full text-left px-4 py-3 rounded-lg border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all cursor-pointer">
+                                  <p className="text-sm font-bold text-slate-800">{tmpl.company_name || 'Modèle ' + (idx + 1)}</p>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">{tmpl.address || '—'} · ICE: {tmpl.ice || '—'}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <button onClick={() => { setSuiviForm(emptySuivi); setEditingSuivi(null); setShowSuiviForm(true); }}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <Plus size={14} /> Nouveau
@@ -3730,6 +3846,80 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   </div>
                 </div>
               </div>
+
+              {showPrestationInvoiceSelector && (
+                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+                  <div className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Choisir un modèle de facture</h3>
+                      <button onClick={() => setShowPrestationInvoiceSelector(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={18} /></button>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-4">{selectedPrestations.length} prestation(s) sélectionnée(s)</p>
+                    {invoiceSettings.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-6">Aucun modèle configuré. Allez dans Suivi Facturation pour configurer.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {invoiceSettings.map((tmpl: any, idx: number) => (
+                          <button key={tmpl.id || idx}
+                            onClick={() => {
+                              setShowPrestationInvoiceSelector(false);
+                              const selected = suiviList.filter((s: any) => selectedPrestations.includes(s.id));
+                              selected.forEach((s: any) => {
+                                const ht = Number(s.prix_ht) || 0;
+                                const ttc = Number(s.prix_ttc) || 0;
+                                const tvaAmount = ttc - ht;
+                                const tvaRate = ht > 0 ? ((tvaAmount / ht) * 100) : 0;
+                                const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>@page{size:A4;margin:0}body{font-family:Arial,sans-serif;margin:0;padding:0}*{box-sizing:border-box}</style></head><body>
+<div style="width:210mm;min-height:297mm;padding:15mm 20mm;position:relative">
+  ${tmpl.logo_url ? '<img src="'+tmpl.logo_url+'" style="max-height:60px;margin-bottom:10px" />' : ''}
+  <div style="text-align:center;margin-bottom:8px">
+    <h1 style="font-size:16pt;color:#1F3864;margin:0">${tmpl.company_name || 'FOTRAL SARL'}</h1>
+    ${tmpl.address ? '<p style="font-size:9pt;color:#666;margin:2px 0">'+tmpl.address+'</p>' : ''}
+    ${tmpl.phone ? '<p style="font-size:9pt;color:#666;margin:2px 0">Tél: '+tmpl.phone+'</p>' : ''}
+    ${tmpl.ice ? '<p style="font-size:9pt;color:#666;margin:2px 0">ICE: '+tmpl.ice+'</p>' : ''}
+  </div>
+  <hr style="border:1px solid #2E75B6;margin:10px 0"/>
+  <h2 style="text-align:center;font-size:14pt;color:#1F3864;margin:10px 0">FACTURE DE PRESTATION</h2>
+  <table style="width:100%;font-size:10pt;margin:10px 0">
+    <tr><td style="width:50%"><strong>Client:</strong> ${s.client || '—'}</td><td><strong>Date:</strong> ${s.date || '—'}</td></tr>
+    <tr><td><strong>Matricule:</strong> ${s.matricule || '—'}</td><td><strong>Type:</strong> ${s.type || '—'}</td></tr>
+    <tr><td><strong>Départ:</strong> ${s.depart || '—'}</td><td><strong>Arrivée:</strong> ${s.arrivee || '—'}</td></tr>
+    ${s.facture ? '<tr><td><strong>N° Facture:</strong> '+s.facture+'</td><td></td></tr>' : ''}
+    ${s.ot_bl_bs_be ? '<tr><td><strong>OT/BL:</strong> '+s.ot_bl_bs_be+'</td><td></td></tr>' : ''}
+  </table>
+  <table style="width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt">
+    <thead><tr style="background:#1F3864;color:white">
+      <th style="padding:8px;text-align:left;border:1px solid #ccc">Désignation</th>
+      <th style="padding:8px;text-align:right;border:1px solid #ccc">Montant</th>
+    </tr></thead>
+    <tbody>
+      <tr><td style="padding:8px;border:1px solid #ccc">Prestation de transport ${s.depart || ''} → ${s.arrivee || ''}</td><td style="padding:8px;text-align:right;border:1px solid #ccc">${ht.toLocaleString('fr-MA',{minimumFractionDigits:2})} MAD</td></tr>
+      ${Number(s.manutention) > 0 ? '<tr><td style="padding:8px;border:1px solid #ccc">Manutention</td><td style="padding:8px;text-align:right;border:1px solid #ccc">'+Number(s.manutention).toLocaleString('fr-MA',{minimumFractionDigits:2})+' MAD</td></tr>' : ''}
+      ${Number(s.immobilisation) > 0 ? '<tr><td style="padding:8px;border:1px solid #ccc">Immobilisation</td><td style="padding:8px;text-align:right;border:1px solid #ccc">'+Number(s.immobilisation).toLocaleString('fr-MA',{minimumFractionDigits:2})+' MAD</td></tr>' : ''}
+    </tbody>
+  </table>
+  <table style="width:300px;margin-left:auto;font-size:10pt;border-collapse:collapse">
+    <tr><td style="padding:5px 10px"><strong>Total HT:</strong></td><td style="padding:5px 10px;text-align:right">${ht.toLocaleString('fr-MA',{minimumFractionDigits:2})} MAD</td></tr>
+    <tr><td style="padding:5px 10px"><strong>TVA (${tvaRate.toFixed(0)}%):</strong></td><td style="padding:5px 10px;text-align:right">${tvaAmount.toLocaleString('fr-MA',{minimumFractionDigits:2})} MAD</td></tr>
+    <tr style="background:#f0f0f0;font-size:12pt"><td style="padding:8px 10px"><strong>Total TTC:</strong></td><td style="padding:8px 10px;text-align:right"><strong>${ttc.toLocaleString('fr-MA',{minimumFractionDigits:2})} MAD</strong></td></tr>
+  </table>
+  ${tmpl.rib ? '<p style="font-size:9pt;color:#666;margin-top:20px"><strong>RIB:</strong> '+tmpl.rib+'</p>' : ''}
+  ${tmpl.footer_text ? '<p style="font-size:8pt;color:#888;text-align:center;margin-top:30px;border-top:1px solid #ccc;padding-top:8px">'+tmpl.footer_text+'</p>' : ''}
+</div></body></html>`;
+                                const win = window.open('', '_blank');
+                                if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+                              });
+                            }}
+                            className="w-full text-left px-4 py-3 rounded-lg border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all cursor-pointer">
+                            <p className="text-sm font-bold text-slate-800">{tmpl.company_name || 'Modèle ' + (idx + 1)}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{tmpl.address || '—'} · ICE: {tmpl.ice || '—'}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="mb-3 relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
