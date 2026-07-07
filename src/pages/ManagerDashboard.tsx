@@ -667,6 +667,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       // Sync shared fields to all linked factures
       const sharedFields = {
         client:         payload.client,
+        bl_client:      payload.bl_client,
+        client_dautre:  payload.client_dautre,
         depart:         payload.depart,
         arrivee:        payload.arrivee,
         montant_ht:     payload.prix_ht,
@@ -1067,6 +1069,8 @@ const handleSaveFacturation = async () => {
     date:                  factForm.date                  || null,
     numero_facture:        factForm.numero_facture        || null,
     client:                factForm.client                || null,
+    bl_client:             (factForm as any).bl_client    || null,
+    client_dautre:         (factForm as any).client_dautre || null,
     depart:                factForm.depart                || null,
     arrivee:               factForm.arrivee               || null,
     montant_ht:            parseFloat(factForm.montant_ht)  || 0,
@@ -1105,6 +1109,8 @@ const handleSaveFacturation = async () => {
       if (editingFact.prestation_id) {
         const sharedBack = {
           client:       payload.client,
+          bl_client:    payload.bl_client,
+          client_dautre: payload.client_dautre,
           depart:       payload.depart,
           arrivee:      payload.arrivee,
           prix_ht:      payload.montant_ht,
@@ -4615,12 +4621,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
           </button>
           {selectedFacts.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <select value={selectedTemplateId}
-                    onChange={e => setSelectedTemplateId(e.target.value)}
-                    className="h-9 rounded-lg border-2 border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 focus:outline-none focus:border-violet-500">
-                    <option value="">— Modèle —</option>
-                    {allTemplates.map((t: any) => (
-                      <option key={t.id} value={t.id}>{t.template_name}{t.is_default ? ' ⭐' : ''}</option>
+                  <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)}
+                    className="h-10 rounded-lg border-2 border-slate-200 px-3 text-xs font-bold focus:outline-none focus:border-blue-500 min-w-[200px]">
+                    <option value="">— Sélectionner Modèle —</option>
+                    {invoiceSettings.map((t: any, idx: number) => (
+                      <option key={t.id} value={t.id}>{t.company_name || 'Modèle ' + (idx + 1)} {t.ice ? '· ICE: ' + t.ice : ''}</option>
                     ))}
                   </select>
                   <button onClick={handleGenerateInvoicePDF}
@@ -10525,6 +10530,8 @@ ${cSig}
           { label: 'Date',                 key: 'date',                  type: 'date'   },
           { label: 'N° Facture',           key: 'numero_facture',        type: 'text'   },
           { label: 'Client',               key: 'client',                type: 'text'   },
+          { label: 'BL Client',            key: 'bl_client',             type: 'text'   },
+          { label: 'Client Autre',         key: 'client_dautre',         type: 'text'   },
           { label: 'Départ',               key: 'depart',                type: 'text'   },
           { label: 'Arrivée',              key: 'arrivee',               type: 'text'   },
           { label: 'BL / OT',              key: 'bl_ot',                 type: 'text'   },
