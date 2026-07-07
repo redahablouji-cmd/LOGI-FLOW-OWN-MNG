@@ -117,6 +117,8 @@ export default function ManagerDashboard() {
   const [showNewFournisseurForm, setShowNewFournisseurForm] = useState(false);
   const [uploadingSuiviXLS, setUploadingSuiviXLS] = useState(false);
   const [showPrestationInvoiceSelector, setShowPrestationInvoiceSelector] = useState(false);
+  const [factClientSearch, setFactClientSearch] = useState('');
+  const [showFactClientDrop, setShowFactClientDrop] = useState(false);
   const [newFournisseurForm, setNewFournisseurForm] = useState({ nom: '', categorie: '', taux_tva: '20', if_number: '', ice: '', adresse: '', telephone: '', banque: '', delai_paiement: '60' });
   const [loadingClients,   setLoadingClients]   = useState(false);
   const [editingClient,    setEditingClient]    = useState<any | null>(null);
@@ -10512,11 +10514,46 @@ ${cSig}
           { label: 'Échéances',            key: 'echeances',             type: 'text'   },
           { label: 'Mode de Paiement',     key: 'mode_paiement',         type: 'text'   },
         ].map(({ label, key, type }) => (
-          <div key={key}>
+          <div key={key} className={key === 'client' ? 'relative' : ''}>
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
-            <input type={type} value={(factForm as any)[key] || ''}
-              onChange={e => setFactForm((p: any) => ({ ...p, [key]: e.target.value }))}
-              className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            {key === 'client' ? (
+              <>
+                <div className="relative mt-1">
+                  <input type="text"
+                    value={showFactClientDrop ? factClientSearch : ((factForm as any).client || '')}
+                    placeholder="Sélectionner ou rechercher..."
+                    onFocus={() => { setShowFactClientDrop(true); setFactClientSearch((factForm as any).client || ''); }}
+                    onChange={e => { setFactClientSearch(e.target.value); setShowFactClientDrop(true); }}
+                    className="w-full h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500 pr-8" />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">▾</span>
+                </div>
+                {showFactClientDrop && (
+                  <div className="absolute z-50 top-full left-0 right-0 bg-white border-2 border-blue-200 rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                    {clientsList.filter(c => c.nom?.toLowerCase().includes(factClientSearch.toLowerCase())).length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-slate-400 text-center">Aucun client trouvé</div>
+                    ) : clientsList.filter(c => c.nom?.toLowerCase().includes(factClientSearch.toLowerCase())).map(c => (
+                      <button key={c.id} type="button"
+                        onClick={() => { setFactForm((p: any) => ({ ...p, client: c.nom })); setShowFactClientDrop(false); setFactClientSearch(''); }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 ${(factForm as any).client === c.nom ? 'bg-blue-50 font-bold text-blue-700' : 'text-slate-700'}`}>
+                        <p className="font-semibold">{c.nom}</p>
+                        <p className="text-[10px] text-slate-400">{c.ice ? 'ICE: ' + c.ice : ''}{c.ice && c.if_number ? ' · ' : ''}{c.if_number ? 'IF: ' + c.if_number : ''}</p>
+                      </button>
+                    ))}
+                    {factClientSearch && !clientsList.find(c => c.nom?.toLowerCase() === factClientSearch.toLowerCase()) && (
+                      <button type="button"
+                        onClick={() => { setFactForm((p: any) => ({ ...p, client: factClientSearch })); setShowFactClientDrop(false); setFactClientSearch(''); }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 text-emerald-700 border-t border-slate-200 font-bold">
+                        + Utiliser "{factClientSearch}"
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <input type={type} value={(factForm as any)[key] || ''}
+                onChange={e => setFactForm((p: any) => ({ ...p, [key]: e.target.value }))}
+                className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+            )}
           </div>
         ))}
 
