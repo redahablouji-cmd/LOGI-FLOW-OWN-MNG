@@ -69,7 +69,7 @@ const emptyFactForm = {
 const emptySuivi = {
   date: new Date().toISOString().split('T')[0],
   matricule: '', type: '', facture: '', bon_commande: '', ot_bl_bs_be: '',
-  client: '', depart: '', arrivee: '',
+  client: '', bl_client: '', client_dautre: '', depart: '', arrivee: '',
   manutention: '', immobilisation: '', prix_ht: '', prix_ttc: '',
   cout_revient: '', benefice: '',
 };
@@ -642,6 +642,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     bon_commande:   suiviForm.bon_commande   || null,
     ot_bl_bs_be:    suiviForm.ot_bl_bs_be    || null,
     client:         suiviForm.client         || null,
+    bl_client:      (suiviForm as any).bl_client      || null,
+    client_dautre:  (suiviForm as any).client_dautre  || null,
     depart:         suiviForm.depart         || null,
     arrivee:        suiviForm.arrivee        || null,
     manutention:    parseFloat(suiviForm.manutention    as string) || 0,
@@ -733,6 +735,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       p.push('<tr><td><strong>Départ:</strong> ' + (s.depart || '') + '</td><td><strong>Arrivée:</strong> ' + (s.arrivee || '') + '</td></tr>');
       if (s.facture) p.push('<tr><td><strong>N° Facture:</strong> ' + s.facture + '</td><td></td></tr>');
       if (s.ot_bl_bs_be) p.push('<tr><td><strong>OT/BL:</strong> ' + s.ot_bl_bs_be + '</td><td></td></tr>');
+      if (s.bl_client) p.push('<tr><td><strong>BL Client:</strong> ' + s.bl_client + '</td><td></td></tr>');
+      if (s.client_dautre) p.push('<tr><td><strong>Client Autre:</strong> ' + s.client_dautre + '</td><td></td></tr>');
       p.push('</table>');
       p.push('<table style="width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt">');
       p.push('<thead><tr style="background:#1F3864;color:white"><th style="padding:8px;text-align:left;border:1px solid #ccc">Désignation</th><th style="padding:8px;text-align:right;border:1px solid #ccc">Montant</th></tr></thead><tbody>');
@@ -1390,7 +1394,7 @@ const handleGenerateInvoicePDF = () => {
     const totalTTC = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ttc) || 0), 0);
     const fmt = (n: number) => n.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     // Detect if this is a facture d'avoir
-    const isAvoir = selected.some((f: any) => f.is_avoir);
+    const isAvoir = selected.length > 0 && selected.every((f: any) => f.is_avoir);
 
     // Auto-fill client from clients table
     const clientName = selected[0]?.client || '';
@@ -3760,10 +3764,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     <button onClick={fetchSuivi} className="bg-white/10 hover:bg-white/15 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <RefreshCw className="w-3.5 h-3.5" /> Actualiser
                     </button>
-                    <button onClick={() => exportToXLS(suiviList.map(s => ({
-                      'Date': s.date, 'Matricule': s.matricule, 'Type': s.type,
+                    <button onClick={() => exportToXLS(suiviList.map((s: any) => ({
+                      'Date': s.date, 'Client': s.client, 'BL Client': s.bl_client, 'Client Autre': s.client_dautre,
+                      'Matricule': s.matricule, 'Type': s.type,
                       'Factures': s.facture, 'N° Bon Commande': s.bon_commande,
-                      'OT/BL-BS-BE': s.ot_bl_bs_be, 'Clients': s.client,
+                      'OT/BL-BS-BE': s.ot_bl_bs_be,
                       'Départ': s.depart, 'Arrivée': s.arrivee,
                       'Manutention': s.manutention, 'Immobilisation': s.immobilisation,
                       'Prix HT': s.prix_ht, 'Prix TTC': s.prix_ttc,
@@ -3944,7 +3949,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     <table className="w-full text-left min-w-[1200px]">
                       <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
-                          {['Date','Client','Matricule','Type','Facture','N° Bon Cmd','OT/BL','Départ','Arrivée','Manut.','Immob.','HT','TTC','Coût Rev.','Bénéfice','Actions'].map(h => (
+                          {['Date','Client','BL Client','Client Autre','Matricule','Type','Facture','N° Bon Cmd','OT/BL','Départ','Arrivée','Manut.','Immob.','HT','TTC','Coût Rev.','Bénéfice','Actions'].map(h => (
                             <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -3965,10 +3970,12 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                            });
                            return filtered.length === 0 ? (
                            <tr><td colSpan={20} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation trouvée.</td></tr>
-                         ) : filtered.map(s => (
+                         ) : filtered.map((s: any) => (
                           <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.date}</td>
                             <td className="px-3 py-3 text-xs font-semibold text-slate-700">{s.client || '—'}</td>
+                            <td className="px-3 py-3 text-xs text-slate-600">{s.bl_client || '—'}</td>
+                            <td className="px-3 py-3 text-xs text-slate-600">{s.client_dautre || '—'}</td>
                             <td className="px-3 py-3 font-mono text-xs font-bold text-blue-600">{s.matricule || '—'}</td>
                             <td className="px-3 py-3 text-xs text-slate-600">{s.type || '—'}</td>
                             <td className="px-3 py-3 font-mono text-xs text-slate-700">{s.facture || '—'}</td>
@@ -3987,11 +3994,12 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                                 <button onClick={() => { setEditingSuivi(s); setSuiviForm({
                                   date: s.date, matricule: s.matricule, type: s.type,
                                   facture: s.facture, bon_commande: s.bon_commande, ot_bl_bs_be: s.ot_bl_bs_be,
-                                  client: s.client, depart: s.depart, arrivee: s.arrivee,
+                                  client: s.client, bl_client: s.bl_client || '', client_dautre: s.client_dautre || '',
+                                  depart: s.depart, arrivee: s.arrivee,
                                   manutention: String(s.manutention), immobilisation: String(s.immobilisation),
                                   prix_ht: String(s.prix_ht), prix_ttc: String(s.prix_ttc),
                                   cout_revient: String(s.cout_revient), benefice: String(s.benefice),
-                                }); setShowSuiviForm(true); }}
+                                } as any); setShowSuiviForm(true); }}
                                   className="p-1.5 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors">
                                   <Pencil size={13} />
                                 </button>
@@ -9216,6 +9224,20 @@ ${cSig}
             <div className="fixed inset-0 z-40" onClick={() => { setShowClientDrop(false); setClientSearch(''); }} />
           )}
         </div>
+        {/* BL Client */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">BL Client</label>
+            <input type="text" value={(suiviForm as any).bl_client || ''}
+              onChange={e => setSuiviForm((p: any) => ({ ...p, bl_client: e.target.value }))}
+              placeholder="N° BL Client" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          {/* Client Autre */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client Autre</label>
+            <input type="text" value={(suiviForm as any).client_dautre || ''}
+              onChange={e => setSuiviForm((p: any) => ({ ...p, client_dautre: e.target.value }))}
+              placeholder="Client d'autre" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
 
         {/* MATRICULE — searchable dropdown from fleet_drivers */}
         <div className="relative">
