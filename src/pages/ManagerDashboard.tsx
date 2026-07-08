@@ -4629,7 +4629,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     className="h-10 rounded-lg border-2 border-slate-200 px-3 text-xs font-bold focus:outline-none focus:border-blue-500 min-w-[200px]">
                     <option value="">— Sélectionner Modèle —</option>
                     {allTemplates.map((t: any, idx: number) => (
-                      <option key={t.id} value={t.id}>{t.company_name || 'Modèle ' + (idx + 1)} {t.ice ? ' · ICE: ' + t.ice : ''}</option>
+                      <option key={t.id} value={t.id}>{t.template_name || t.company_name || 'Modèle ' + (idx + 1)}</option>
                     ))}
                   </select>
                   <button onClick={handleGenerateInvoicePDF}
