@@ -3987,7 +3987,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                     <table className="w-full text-left min-w-[1200px]">
                       <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
-                          {['Date','Client','BL Client','Client Autre','Matricule','Type','Facture','N° Bon Cmd','OT/BL','Départ','Arrivée','Manut.','Immob.','HT','TTC','Coût Rev.','Bénéfice','Actions'].map(h => (
+                          {['','Date','Client','BL Client','Client Autre','Matricule','Type','Facture','N° Bon Cmd','OT/BL','Départ','Arrivée','Manut.','Immob.','HT','TTC','Coût Rev.','Bénéfice','Actions'].map(h => (
+                            h === '' ? <th key="cb" className="px-3 py-3 w-8"><input type="checkbox" onChange={e => {
+                              if (e.target.checked) { setSelectedPrestations(suiviList.map((s: any) => s.id)); }
+                              else { setSelectedPrestations([]); }
+                            }} className="accent-blue-600" /></th> :
                             <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -4009,7 +4013,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                            return filtered.length === 0 ? (
                            <tr><td colSpan={20} className="px-4 py-10 text-center text-sm text-slate-400">Aucune prestation trouvée.</td></tr>
                          ) : filtered.map((s: any) => (
-                          <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                          <tr key={s.id} className={`hover:bg-slate-50 transition-colors ${selectedPrestations.includes(s.id) ? 'bg-blue-50/50' : ''}`}>
+                            <td className="px-3 py-3 w-8"><input type="checkbox" checked={selectedPrestations.includes(s.id)} onChange={e => {
+                              if (e.target.checked) setSelectedPrestations(p => [...p, s.id]);
+                              else setSelectedPrestations(p => p.filter(id => id !== s.id));
+                            }} className="accent-blue-600" /></td>
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.date}</td>
                             <td className="px-3 py-3 text-xs font-semibold text-slate-700">{s.client || '—'}</td>
                             <td className="px-3 py-3 text-xs text-slate-600">{s.bl_client || '—'}</td>
