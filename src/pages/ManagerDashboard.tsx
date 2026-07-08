@@ -724,7 +724,6 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       cout_revient: acc.cout_revient + (Number(s.cout_revient) || 0),
       benefice: acc.benefice + (Number(s.benefice) || 0),
     }), { manutention: 0, immobilisation: 0, prix_ht: 0, prix_ttc: 0, cout_revient: 0, benefice: 0 });
-
     const rows = selected.map((s: any) => '<tr>' +
       '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.date || '') + '</td>' +
       '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.matricule || '') + '</td>' +
@@ -744,7 +743,6 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.cout_revient) + '</td>' +
       '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.benefice) + '</td>' +
     '</tr>').join('');
-
     const totalRow = '<tr style="background:#1F3864;color:white;font-weight:bold">' +
       '<td colspan="11" style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">TOTAUX</td>' +
       '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.manutention) + '</td>' +
@@ -754,11 +752,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.cout_revient) + '</td>' +
       '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.benefice) + '</td>' +
     '</tr>';
-
     const headers = ['Date', 'Matricule', 'Type', 'Factures', 'N° Bon Cmd', 'OT/BL-BS-BE', 'Clients', 'Départ', 'Arrivée', 'Client/Livraison', 'BL Livraison', 'Manutention', 'Immobilisation', 'Prix HT', 'Prix TTC', 'Coût Revient', 'Bénéfice'];
-
     const thRow = headers.map(h => '<th style="border:1px solid #999;padding:6px;font-size:8pt;background:#1F3864;color:white;text-align:center;white-space:nowrap">' + h + '</th>').join('');
-
     const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>' +
       '@page{size:A4 landscape;margin:10mm}' +
       'body{font-family:Arial,sans-serif;margin:0;padding:0}' +
@@ -778,52 +773,8 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
       '<tbody>' + rows + totalRow + '</tbody>' +
       '</table>' +
       '</div></body></html>';
-
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
-  };
-      const ht = Number(s.prix_ht) || 0;
-      const ttc = Number(s.prix_ttc) || 0;
-      const tva = ttc - ht;
-      const rate = ht > 0 ? ((tva / ht) * 100) : 0;
-      const p: string[] = [];
-      p.push('<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>@page{size:A4;margin:0}body{font-family:Arial,sans-serif;margin:0;padding:0}*{box-sizing:border-box}</style></head><body>');
-      p.push('<div style="width:210mm;min-height:297mm;padding:15mm 20mm">');
-      if (tmpl.logo_url) p.push('<img src="' + tmpl.logo_url + '" style="max-height:60px;margin-bottom:10px" />');
-      p.push('<div style="text-align:center;margin-bottom:8px">');
-      p.push('<h1 style="font-size:16pt;color:#1F3864;margin:0">' + (tmpl.company_name || 'FOTRAL SARL') + '</h1>');
-      if (tmpl.address) p.push('<p style="font-size:9pt;color:#666;margin:2px 0">' + tmpl.address + '</p>');
-      if (tmpl.phone) p.push('<p style="font-size:9pt;color:#666;margin:2px 0">Tél: ' + tmpl.phone + '</p>');
-      if (tmpl.ice) p.push('<p style="font-size:9pt;color:#666;margin:2px 0">ICE: ' + tmpl.ice + '</p>');
-      p.push('</div>');
-      p.push('<hr style="border:1px solid #2E75B6;margin:10px 0"/>');
-      p.push('<h2 style="text-align:center;font-size:14pt;color:#1F3864;margin:10px 0">FACTURE DE PRESTATION</h2>');
-      p.push('<table style="width:100%;font-size:10pt;margin:10px 0">');
-      p.push('<tr><td style="width:50%"><strong>Client:</strong> ' + (s.client || '') + '</td><td><strong>Date:</strong> ' + (s.date || '') + '</td></tr>');
-      p.push('<tr><td><strong>Matricule:</strong> ' + (s.matricule || '') + '</td><td><strong>Type:</strong> ' + (s.type || '') + '</td></tr>');
-      p.push('<tr><td><strong>Départ:</strong> ' + (s.depart || '') + '</td><td><strong>Arrivée:</strong> ' + (s.arrivee || '') + '</td></tr>');
-      if (s.facture) p.push('<tr><td><strong>N° Facture:</strong> ' + s.facture + '</td><td></td></tr>');
-      if (s.ot_bl_bs_be) p.push('<tr><td><strong>OT/BL:</strong> ' + s.ot_bl_bs_be + '</td><td></td></tr>');
-      if (s.bl_client) p.push('<tr><td><strong>BL Client:</strong> ' + s.bl_client + '</td><td></td></tr>');
-      if (s.client_dautre) p.push('<tr><td><strong>Client Autre:</strong> ' + s.client_dautre + '</td><td></td></tr>');
-      p.push('</table>');
-      p.push('<table style="width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt">');
-      p.push('<thead><tr style="background:#1F3864;color:white"><th style="padding:8px;text-align:left;border:1px solid #ccc">Désignation</th><th style="padding:8px;text-align:right;border:1px solid #ccc">Montant</th></tr></thead><tbody>');
-      p.push('<tr><td style="padding:8px;border:1px solid #ccc">Prestation de transport ' + (s.depart || '') + ' → ' + (s.arrivee || '') + '</td><td style="padding:8px;text-align:right;border:1px solid #ccc">' + ht.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
-      if (Number(s.manutention) > 0) p.push('<tr><td style="padding:8px;border:1px solid #ccc">Manutention</td><td style="padding:8px;text-align:right;border:1px solid #ccc">' + Number(s.manutention).toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
-      if (Number(s.immobilisation) > 0) p.push('<tr><td style="padding:8px;border:1px solid #ccc">Immobilisation</td><td style="padding:8px;text-align:right;border:1px solid #ccc">' + Number(s.immobilisation).toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
-      p.push('</tbody></table>');
-      p.push('<table style="width:300px;margin-left:auto;font-size:10pt;border-collapse:collapse">');
-      p.push('<tr><td style="padding:5px 10px"><strong>Total HT:</strong></td><td style="padding:5px 10px;text-align:right">' + ht.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
-      p.push('<tr><td style="padding:5px 10px"><strong>TVA (' + rate.toFixed(0) + '%):</strong></td><td style="padding:5px 10px;text-align:right">' + tva.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</td></tr>');
-      p.push('<tr style="background:#f0f0f0;font-size:12pt"><td style="padding:8px 10px"><strong>Total TTC:</strong></td><td style="padding:8px 10px;text-align:right"><strong>' + ttc.toLocaleString('fr-MA', {minimumFractionDigits: 2}) + ' MAD</strong></td></tr>');
-      p.push('</table>');
-      if (tmpl.rib) p.push('<p style="font-size:9pt;color:#666;margin-top:20px"><strong>RIB:</strong> ' + tmpl.rib + '</p>');
-      if (tmpl.footer_text) p.push('<p style="font-size:8pt;color:#888;text-align:center;margin-top:30px;border-top:1px solid #ccc;padding-top:8px">' + tmpl.footer_text + '</p>');
-      p.push('</div></body></html>');
-      const win = window.open('', '_blank');
-      if (win) { win.document.write(p.join('')); win.document.close(); setTimeout(() => win.print(), 600); }
-    });
   };
 // ── Fleet Drivers ──────────────────────────────────────────────────────
 const fetchFleetDrivers = async () => {
