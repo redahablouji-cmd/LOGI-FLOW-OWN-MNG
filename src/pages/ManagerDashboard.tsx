@@ -3868,11 +3868,11 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       <button onClick={() => setShowPrestationInvoiceSelector(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={18} /></button>
                     </div>
                     <p className="text-xs text-slate-500 mb-4">{selectedPrestations.length} prestation(s) sélectionnée(s)</p>
-                    {invoiceSettings.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-6">Aucun modèle configuré. Allez dans Suivi Facturation pour configurer.</p>
+                    {allTemplates.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-6">Aucun modèle configuré.</p>
                     ) : (
                       <div className="space-y-2 max-h-60 overflow-y-auto">
-                        {invoiceSettings.map((tmpl: any, idx: number) => (
+                        {allTemplates.map((tmpl: any, idx: number) => (
                           <button key={tmpl.id || idx}
                             onClick={() => {
                               setShowPrestationInvoiceSelector(false);
@@ -4624,8 +4624,8 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)}
                     className="h-10 rounded-lg border-2 border-slate-200 px-3 text-xs font-bold focus:outline-none focus:border-blue-500 min-w-[200px]">
                     <option value="">— Sélectionner Modèle —</option>
-                    {invoiceSettings.map((t: any, idx: number) => (
-                      <option key={t.id} value={t.id}>{t.company_name || 'Modèle ' + (idx + 1)} {t.ice ? '· ICE: ' + t.ice : ''}</option>
+                    {allTemplates.map((t: any, idx: number) => (
+                      <option key={t.id} value={t.id}>{t.company_name || 'Modèle ' + (idx + 1)} {t.ice ? ' · ICE: ' + t.ice : ''}</option>
                     ))}
                   </select>
                   <button onClick={handleGenerateInvoicePDF}
