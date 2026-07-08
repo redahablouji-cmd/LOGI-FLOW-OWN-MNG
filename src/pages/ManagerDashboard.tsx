@@ -1404,6 +1404,8 @@ const handleGenerateInvoicePDF = () => {
     // Detect if this is a facture d'avoir
     const isAvoir = selected.length > 0 && selected.every((f: any) => f.is_avoir);
 
+    const invoiceTitle = s.invoice_title || tmpl?.invoice_title || (isAvoir ? "FACTURE D'AVOIR" : 'FACTURE');
+
     // Auto-fill client from clients table
     const clientName = selected[0]?.client || '';
     const clientData = clientsList.find((c: any) => c.nom === clientName);
