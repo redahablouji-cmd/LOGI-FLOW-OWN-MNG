@@ -1478,6 +1478,13 @@ const handleGenerateInvoicePDF = () => {
       }
     }
 
+    // ─── Client-specific column override (Cegelec: Date → Poste) ───
+    const selClientName = selected[0]?.client || '';
+    if (selClientName.toLowerCase().includes('cegelec')) {
+      const dateCol = columns.find((c: any) => c.field === 'date');
+      if (dateCol) { dateCol.header = 'Poste'; dateCol.field = 'poste'; }
+    }
+
     // ─── Dynamic row builder ───
     const getFieldValue = (f: any, field: string): string => {
       const ht = parseFloat(f.montant_ht) || 0;
