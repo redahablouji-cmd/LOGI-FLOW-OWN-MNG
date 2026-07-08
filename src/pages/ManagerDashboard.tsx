@@ -1386,12 +1386,13 @@ const overdue = facturationList.filter(f => {
 
 const handleGenerateInvoicePDF = () => {
     if (selectedFacts.length === 0) return;
+    if (!selectedTemplateId) { toast.error('Veuillez sélectionner un modèle avant de générer.'); return; }
     const selected = facturationList.filter((f: any) => selectedFacts.includes(f.id));
     if (selected.length === 0) return;
 
     // Get the selected template (or fall back to default invoiceSettings)
     const rawTmpl = allTemplates.find((t: any) => t.id === selectedTemplateId);
-    const s = { ...invoiceSettings, ...(rawTmpl || {}) };
+    const s = rawTmpl ? { ...invoiceSettings, ...rawTmpl } : invoiceSettings;
     const tmpl = rawTmpl;
     const ROWS_PER_PAGE_FIRST = tmpl?.rows_per_page || s?.rows_per_page || 18;
     const ROWS_PER_PAGE = ROWS_PER_PAGE_FIRST + 6;
