@@ -1390,9 +1390,10 @@ const handleGenerateInvoicePDF = () => {
     if (selected.length === 0) return;
 
     // Get the selected template (or fall back to default invoiceSettings)
-    const tmpl = allTemplates.find((t: any) => t.id === selectedTemplateId);
-    const s = invoiceSettings;
-    const ROWS_PER_PAGE_FIRST = s.rows_per_page || 18;
+    const rawTmpl = allTemplates.find((t: any) => t.id === selectedTemplateId);
+    const s = { ...invoiceSettings, ...(rawTmpl || {}) };
+    const tmpl = rawTmpl;
+    const ROWS_PER_PAGE_FIRST = tmpl?.rows_per_page || s?.rows_per_page || 18;
     const ROWS_PER_PAGE = ROWS_PER_PAGE_FIRST + 6;
 
     const totalHT  = selected.reduce((sum: number, f: any) => sum + (parseFloat(f.montant_ht) || 0), 0);
@@ -1427,6 +1428,8 @@ const handleGenerateInvoicePDF = () => {
           { header: 'Date', field: 'date', align: 'center' },
           { header: 'Lieu de déchargement', field: 'arrivee', align: 'left' },
           { header: 'Client', field: 'client', align: 'center' },
+          { header: 'BL Client', field: 'bl_client', align: 'center' },
+          { header: 'Client Autre', field: 'client_dautre', align: 'center' },
           { header: 'N°BL', field: 'bl_ot', align: 'center' },
           { header: 'N°EXP', field: 'numero_facture', align: 'center' },
           { header: 'Type', field: 'type', align: 'center' },
