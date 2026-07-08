@@ -712,9 +712,76 @@ const [prestationPickerOpen, setPrestationPickerOpen] = useState(false);
     else toast.error(`Erreur: ${error.message}`);
   };
 
-  const generatePrestationPDF = (tmpl: any) => {
+  const generatePrestationPDF = () => {
     const selected = suiviList.filter((s: any) => selectedPrestations.includes(s.id));
-    selected.forEach((s: any) => {
+    if (selected.length === 0) return;
+    const fmt = (n: any) => Number(n || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 });
+    const totals = selected.reduce((acc: any, s: any) => ({
+      manutention: acc.manutention + (Number(s.manutention) || 0),
+      immobilisation: acc.immobilisation + (Number(s.immobilisation) || 0),
+      prix_ht: acc.prix_ht + (Number(s.prix_ht) || 0),
+      prix_ttc: acc.prix_ttc + (Number(s.prix_ttc) || 0),
+      cout_revient: acc.cout_revient + (Number(s.cout_revient) || 0),
+      benefice: acc.benefice + (Number(s.benefice) || 0),
+    }), { manutention: 0, immobilisation: 0, prix_ht: 0, prix_ttc: 0, cout_revient: 0, benefice: 0 });
+
+    const rows = selected.map((s: any) => '<tr>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.date || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.matricule || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.type || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.facture || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.bon_commande || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.ot_bl_bs_be || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt">' + (s.client || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt">' + (s.depart || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt">' + (s.arrivee || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt">' + (s.client_dautre || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:center">' + (s.bl_client || '') + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.manutention) + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.immobilisation) + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.prix_ht) + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.prix_ttc) + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.cout_revient) + '</td>' +
+      '<td style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right">' + fmt(s.benefice) + '</td>' +
+    '</tr>').join('');
+
+    const totalRow = '<tr style="background:#1F3864;color:white;font-weight:bold">' +
+      '<td colspan="11" style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">TOTAUX</td>' +
+      '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.manutention) + '</td>' +
+      '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.immobilisation) + '</td>' +
+      '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.prix_ht) + '</td>' +
+      '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.prix_ttc) + '</td>' +
+      '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.cout_revient) + '</td>' +
+      '<td style="border:1px solid #999;padding:6px;font-size:9pt;text-align:right">' + fmt(totals.benefice) + '</td>' +
+    '</tr>';
+
+    const headers = ['Date', 'Matricule', 'Type', 'Factures', 'N° Bon Cmd', 'OT/BL-BS-BE', 'Clients', 'Départ', 'Arrivée', 'Client/Livraison', 'BL Livraison', 'Manutention', 'Immobilisation', 'Prix HT', 'Prix TTC', 'Coût Revient', 'Bénéfice'];
+
+    const thRow = headers.map(h => '<th style="border:1px solid #999;padding:6px;font-size:8pt;background:#1F3864;color:white;text-align:center;white-space:nowrap">' + h + '</th>').join('');
+
+    const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>' +
+      '@page{size:A4 landscape;margin:10mm}' +
+      'body{font-family:Arial,sans-serif;margin:0;padding:0}' +
+      '*{box-sizing:border-box}' +
+      '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}' +
+      'table{border-collapse:collapse;width:100%}' +
+      '</style></head><body>' +
+      '<div style="padding:10mm">' +
+      '<div style="text-align:center;margin-bottom:15px">' +
+      '<h1 style="font-size:14pt;color:#1F3864;margin:0">FOTRAL SARL</h1>' +
+      '<p style="font-size:9pt;color:#666;margin:2px 0">Transport Routier de Marchandises &amp; Logistique</p>' +
+      '<h2 style="font-size:12pt;color:#1F3864;margin:8px 0;border-bottom:2px solid #2E75B6;padding-bottom:4px;display:inline-block">SUIVI DES PRESTATIONS</h2>' +
+      '<p style="font-size:9pt;color:#888;margin:4px 0">' + selected.length + ' prestation(s) · Généré le ' + new Date().toLocaleDateString('fr-MA') + '</p>' +
+      '</div>' +
+      '<table>' +
+      '<thead><tr>' + thRow + '</tr></thead>' +
+      '<tbody>' + rows + totalRow + '</tbody>' +
+      '</table>' +
+      '</div></body></html>';
+
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+  };
       const ht = Number(s.prix_ht) || 0;
       const ttc = Number(s.prix_ttc) || 0;
       const tva = ttc - ht;
@@ -3837,7 +3904,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                         }} />
                     </label>
                     {selectedPrestations.length > 0 && (
-                      <button onClick={() => setShowPrestationInvoiceSelector(true)}
+                      <button onClick={() => generatePrestationPDF()}
                         className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                         <FileText size={14} /> Générer PDF ({selectedPrestations.length})
                       </button>
