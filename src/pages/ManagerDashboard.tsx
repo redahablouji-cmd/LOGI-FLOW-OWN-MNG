@@ -55,7 +55,7 @@ interface SuiviRecord {
 
 const emptyFactForm = {
   date: new Date().toISOString().split('T')[0],
-  numero_facture: '', client: '', depart: '', arrivee: '',
+  numero_facture: '', client: '', poste: '', depart: '', arrivee: '',
   montant_ht: '', tva: '', montant_ttc: '', tva_rate: '',
   bl_ot: '', bc: '', delai_paiement: '60',
   date_paiement: '', reglement_banque_type: '',
@@ -1069,6 +1069,7 @@ const handleSaveFacturation = async () => {
     date:                  factForm.date                  || null,
     numero_facture:        factForm.numero_facture        || null,
     client:                factForm.client                || null,
+    poste:                 (factForm as any).poste        || null,
     bl_client:             (factForm as any).bl_client    || null,
     client_dautre:         (factForm as any).client_dautre || null,
     depart:                factForm.depart                || null,
@@ -4783,7 +4784,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
     </div>
     <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-medium">
       📋 Format import XLS — colonnes dans l'ordre :
-      <span className="font-black ml-1">Date | N° Facture | Client | Départ | Arrivée | Montant HT | TVA | Montant TTC | BL/OT | BC | Délai (J) | Date Paiement | Statut | Mode Paiement</span>
+      <span className="font-black ml-1">Date | N° Facture | Client | Poste | Départ | Arrivée | Montant HT | TVA | Montant TTC | BL/OT | BC | Délai (J) | Date Paiement | Statut | Mode Paiement</span>
     </div>
 
     {/* Table */}
@@ -4803,7 +4804,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       setSelectedFacts(prev => prev.length === allIds.length ? [] : allIds);
                     }} />
                 </th>
-                {['Date','N° Fact.','Client','Départ','Arrivée','HT','TVA','TTC','BL/OT','BC','Délai','Date Paie.','Écart Délai','Règl. Banque','Règl. N°','Échéances','Mode','Statut','Actions'].map(h => (
+                {['Date','N° Fact.','Client','Poste','Départ','Arrivée','HT','TVA','TTC','BL/OT','BC','Délai','Date Paie.','Écart Délai','Règl. Banque','Règl. N°','Échéances','Mode','Statut','Actions'].map(h => (
                   <th key={h} className="px-3 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -4875,6 +4876,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                           <td className="px-3 py-2 text-xs text-slate-500">{f.date||'—'}</td>
                           <td className="px-3 py-2 font-mono text-xs text-blue-400">{f.numero_facture||'—'}</td>
                           <td className="px-3 py-2 text-xs text-slate-500">{f.client||'—'}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{f.poste||'—'}</td>
                           <td className="px-3 py-2 text-xs text-slate-500">{f.depart||'—'}</td>
                           <td className="px-3 py-2 text-xs text-slate-500">{f.arrivee||'—'}</td>
                           <td className="px-3 py-2 font-mono text-xs text-slate-500">{Number(f.montant_ht||0).toLocaleString('fr-MA',{minimumFractionDigits:2})}</td>
@@ -4906,6 +4908,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                   <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{f.date}</td>
                   <td className="px-3 py-3 font-mono text-xs font-bold text-blue-600">{f.numero_facture || '—'}</td>
                   <td className="px-3 py-3 text-xs font-semibold text-slate-800">{f.client || '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">{f.poste || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{f.depart || '—'}</td>
                   <td className="px-3 py-3 text-xs text-slate-600">{f.arrivee || '—'}</td>
                   <td className="px-3 py-3 font-mono text-xs text-slate-700">{Number(f.montant_ht).toLocaleString('fr-MA')}</td>
@@ -10536,6 +10539,7 @@ ${cSig}
           { label: 'Date',                 key: 'date',                  type: 'date'   },
           { label: 'N° Facture',           key: 'numero_facture',        type: 'text'   },
           { label: 'Client',               key: 'client',                type: 'text'   },
+          { label: 'Poste',                key: 'poste',                 type: 'text'   },
           { label: 'BL Client',            key: 'bl_client',             type: 'text'   },
           { label: 'Client Autre',         key: 'client_dautre',         type: 'text'   },
           { label: 'Départ',               key: 'depart',                type: 'text'   },
