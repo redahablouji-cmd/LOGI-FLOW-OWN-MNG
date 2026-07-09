@@ -115,6 +115,8 @@ export default function ManagerDashboard() {
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [newClientForm, setNewClientForm] = useState({ nom: '', adresse: '', ice: '', delai_paiement: '60' });
   const [showNewFournisseurForm, setShowNewFournisseurForm] = useState(false);
+  const [showNewPurchaseForm, setShowNewPurchaseForm] = useState(false);
+  const [newPurchaseForm, setNewPurchaseForm] = useState({ date_achat: new Date().toISOString().split('T')[0], numero_facture: '', fournisseur: '', category: '', designation: '', montant_ht: '', tva_rate: '20', tva_amount: '', montant_ttc: '', affectation_immatriculation: '', banque: '', numero_ref: '', echeance: '', mode_paiement: '', if_number: '', ice_number: '' });
   const [uploadingSuiviXLS, setUploadingSuiviXLS] = useState(false);
   const [showPrestationInvoiceSelector, setShowPrestationInvoiceSelector] = useState(false);
   const [prestationMonth, setPrestationMonth] = useState('');
@@ -3313,9 +3315,163 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
                       <Download size={14} /> Export XLS
                     </button>
+                    <button onClick={() => setShowNewPurchaseForm(true)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                      <Plus size={14} /> Nouveau Achat
+                    </button>
                   </div>
                 </div>
               </div>
+              {showNewPurchaseForm && (
+                <div className="mb-4 bg-white rounded-xl border-2 border-blue-200 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Nouveau Achat</p>
+                    <button onClick={() => setShowNewPurchaseForm(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X size={16} /></button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date *</label>
+                      <input type="date" value={newPurchaseForm.date_achat} onChange={e => setNewPurchaseForm(p => ({...p, date_achat: e.target.value}))}
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Facture</label>
+                      <input type="text" value={newPurchaseForm.numero_facture} onChange={e => setNewPurchaseForm(p => ({...p, numero_facture: e.target.value}))}
+                        placeholder="N° Facture" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fournisseur *</label>
+                      <select value={newPurchaseForm.fournisseur} onChange={e => setNewPurchaseForm(p => ({...p, fournisseur: e.target.value}))}
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Sélectionner —</option>
+                        {fournisseursList.map((f: any) => (
+                          <option key={f.id} value={f.nom}>{f.nom}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catégorie</label>
+                      <select value={newPurchaseForm.category} onChange={e => setNewPurchaseForm(p => ({...p, category: e.target.value}))}
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Sélectionner —</option>
+                        <option value="GASOIL">Gasoil</option>
+                        <option value="PIECES DE RECHANGE">Pièces de rechange</option>
+                        <option value="AUTOROUTE">Autoroute</option>
+                        <option value="ASSURANCE">Assurance</option>
+                        <option value="FIX-FAX-INTERNET">Fix-Fax-Internet</option>
+                        <option value="PNEUMATIQUE">Pneumatique</option>
+                        <option value="ENTRETIEN">Entretien</option>
+                        <option value="AUTRE">Autre</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation</label>
+                      <input type="text" value={newPurchaseForm.designation} onChange={e => setNewPurchaseForm(p => ({...p, designation: e.target.value}))}
+                        placeholder="Description de l'achat" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant HT</label>
+                      <input type="number" value={newPurchaseForm.montant_ht} onChange={e => {
+                        const ht = parseFloat(e.target.value) || 0;
+                        const rate = parseFloat(newPurchaseForm.tva_rate) || 0;
+                        const tva = parseFloat((ht * rate / 100).toFixed(2));
+                        setNewPurchaseForm(p => ({...p, montant_ht: e.target.value, tva_amount: String(tva), montant_ttc: String(parseFloat((ht + tva).toFixed(2)))}));
+                      }}
+                        placeholder="0.00" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA %</label>
+                      <select value={newPurchaseForm.tva_rate} onChange={e => {
+                        const ht = parseFloat(newPurchaseForm.montant_ht) || 0;
+                        const rate = parseFloat(e.target.value) || 0;
+                        const tva = parseFloat((ht * rate / 100).toFixed(2));
+                        setNewPurchaseForm(p => ({...p, tva_rate: e.target.value, tva_amount: String(tva), montant_ttc: String(parseFloat((ht + tva).toFixed(2)))}));
+                      }}
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="0">0%</option>
+                        <option value="7">7%</option>
+                        <option value="10">10%</option>
+                        <option value="14">14%</option>
+                        <option value="20">20%</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TVA (MAD)</label>
+                      <input type="text" value={newPurchaseForm.tva_amount} disabled className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm bg-slate-50 text-slate-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant TTC</label>
+                      <input type="text" value={newPurchaseForm.montant_ttc} disabled className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm bg-slate-50 font-bold" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Immatriculation</label>
+                      <input type="text" value={newPurchaseForm.affectation_immatriculation} onChange={e => setNewPurchaseForm(p => ({...p, affectation_immatriculation: e.target.value}))}
+                        placeholder="Matricule véhicule" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Banque</label>
+                      <select value={newPurchaseForm.banque} onChange={e => setNewPurchaseForm(p => ({...p, banque: e.target.value}))}
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Banque —</option>
+                        <option value="AWB">AWB</option>
+                        <option value="BMCE">BMCE</option>
+                        <option value="BMCI">BMCI</option>
+                        <option value="CIH">CIH</option>
+                        <option value="SG">Société Générale</option>
+                        <option value="Espèces">Espèces</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">N° Réf</label>
+                      <input type="text" value={newPurchaseForm.numero_ref} onChange={e => setNewPurchaseForm(p => ({...p, numero_ref: e.target.value}))}
+                        placeholder="N° chèque/virement" className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mode Paiement</label>
+                      <select value={newPurchaseForm.mode_paiement} onChange={e => setNewPurchaseForm(p => ({...p, mode_paiement: e.target.value}))}
+                        className="w-full mt-1 h-9 rounded-lg border-2 border-slate-200 px-3 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">— Mode —</option>
+                        <option value="Espèces">Espèces</option>
+                        <option value="Chèque">Chèque</option>
+                        <option value="Virement">Virement</option>
+                        <option value="Traite">Traite</option>
+                        <option value="Carte">Carte</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-4">
+                    <button onClick={async () => {
+                      if (!newPurchaseForm.fournisseur.trim()) { toast.error('Fournisseur obligatoire.'); return; }
+                      const { error } = await supabase.from('purchases').insert({
+                        company_id: companyId,
+                        date_achat: newPurchaseForm.date_achat || null,
+                        numero_facture: newPurchaseForm.numero_facture || null,
+                        fournisseur: newPurchaseForm.fournisseur || null,
+                        category: newPurchaseForm.category || null,
+                        designation: newPurchaseForm.designation || null,
+                        montant_ht: parseFloat(newPurchaseForm.montant_ht) || 0,
+                        tva_rate: parseFloat(newPurchaseForm.tva_rate) || 0,
+                        tva_amount: parseFloat(newPurchaseForm.tva_amount) || 0,
+                        montant_ttc: parseFloat(newPurchaseForm.montant_ttc) || 0,
+                        affectation_immatriculation: newPurchaseForm.affectation_immatriculation || null,
+                        banque: newPurchaseForm.banque || null,
+                        numero_ref: newPurchaseForm.numero_ref || null,
+                        echeance: newPurchaseForm.echeance || null,
+                        mode_paiement: newPurchaseForm.mode_paiement || null,
+                      });
+                      if (!error) {
+                        toast.success('Achat ajouté.');
+                        setShowNewPurchaseForm(false);
+                        setNewPurchaseForm({ date_achat: new Date().toISOString().split('T')[0], numero_facture: '', fournisseur: '', category: '', designation: '', montant_ht: '', tva_rate: '20', tva_amount: '', montant_ttc: '', affectation_immatriculation: '', banque: '', numero_ref: '', echeance: '', mode_paiement: '', if_number: '', ice_number: '' });
+                        fetchPurchases();
+                      } else toast.error('Erreur: ' + error.message);
+                    }}
+                      className="h-9 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-lg cursor-pointer">Enregistrer</button>
+                    <button onClick={() => setShowNewPurchaseForm(false)}
+                      className="h-9 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase rounded-lg cursor-pointer">Annuler</button>
+                  </div>
+                </div>
+              )}
               {/* Global Search */}
               <div className="mb-3 relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
