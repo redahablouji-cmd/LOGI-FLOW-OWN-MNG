@@ -117,6 +117,7 @@ export default function ManagerDashboard() {
   const [showNewFournisseurForm, setShowNewFournisseurForm] = useState(false);
   const [uploadingSuiviXLS, setUploadingSuiviXLS] = useState(false);
   const [showPrestationInvoiceSelector, setShowPrestationInvoiceSelector] = useState(false);
+  const [prestationMonth, setPrestationMonth] = useState('');
   const [factClientSearch, setFactClientSearch] = useState('');
   const [showFactClientDrop, setShowFactClientDrop] = useState(false);
   const [newFournisseurForm, setNewFournisseurForm] = useState({ nom: '', categorie: '', taux_tva: '20', if_number: '', ice: '', adresse: '', telephone: '', banque: '', delai_paiement: '60' });
@@ -3966,18 +3967,30 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                 </div>
               )}
 
-              <div className="mb-3 relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input type="text" placeholder="Rechercher partout — client, matricule, facture, BL/OT, départ, arrivée, montant..."
-                  value={prestationFilter.search}
-                  onChange={e => setPrestationFilter(p => ({ ...p, search: e.target.value }))}
-                  className="w-full h-10 rounded-xl border-2 border-slate-200 pl-11 pr-10 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
-                {prestationFilter.search && (
-                  <button onClick={() => setPrestationFilter(p => ({ ...p, search: '' }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                    <X size={16} />
-                  </button>
-                )}
+              <div className="mb-3 flex gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <input type="text" placeholder="Rechercher partout — client, matricule, facture, BL/OT, départ, arrivée, montant..."
+                    value={prestationFilter.search}
+                    onChange={e => setPrestationFilter(p => ({ ...p, search: e.target.value }))}
+                    className="w-full h-10 rounded-xl border-2 border-slate-200 pl-11 pr-10 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+                  {prestationFilter.search && (
+                    <button onClick={() => setPrestationFilter(p => ({ ...p, search: '' }))}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <select value={prestationMonth} onChange={e => { setPrestationMonth(e.target.value); setSelectedPrestations([]); }}
+                  className="h-10 rounded-xl border-2 border-slate-200 px-3 text-xs font-bold focus:outline-none focus:border-blue-500 min-w-[200px]">
+                  <option value="">— Tous les mois —</option>
+                  {[...new Set(suiviList.map((s: any) => (s.date || '').substring(0, 7)).filter(Boolean))].sort().reverse().map(m => {
+                    const [y, mo] = m.split('-');
+                    const label = new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
+                    const count = suiviList.filter((s: any) => (s.date || '').startsWith(m)).length;
+                    return <option key={m} value={m}>{label} ({count})</option>;
+                  })}
+                </select>
               </div>
               {loadingSuivi ? (
                 <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
@@ -3999,6 +4012,7 @@ const glSubItems: { id: ManagerTab; label: string }[] = [
                       <tbody className="divide-y divide-slate-100">
                         {(() => {
                            const filtered = suiviList.filter((s: any) => {
+                             if (prestationMonth && !(s.date || '').startsWith(prestationMonth)) return false;
                              if (prestationFilter.search) {
                                const q = prestationFilter.search.toLowerCase();
                                const haystack = [s.date, s.client, s.matricule, s.type, s.facture, s.bon_commande, s.ot_bl_bs_be, s.depart, s.arrivee, String(s.prix_ht || ''), String(s.prix_ttc || ''), String(s.cout_revient || ''), String(s.benefice || ''), String(s.manutention || ''), String(s.immobilisation || '')].filter(Boolean).join(' ').toLowerCase();
